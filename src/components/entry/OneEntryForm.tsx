@@ -183,7 +183,7 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
 
     setIsSubmitting(true);
     try {
-      const input = {
+      const input: Parameters<typeof createOneEntry>[0] = {
         customerMode: selectedCustomer ? 'existing' : 'new', customerId: selectedCustomer?.id,
         customerName: customerQuery, customerMobile, customerEmail, customerAddress,
         customerPassportNumber: customerPassport, customerPassportExpiry: customerPassportExpiry,
