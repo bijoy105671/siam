@@ -7,6 +7,8 @@ import { Pool, PoolClient } from 'pg';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
+if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
+if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) throw new Error('SESSION_SECRET must be set and at least 32 characters');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined });
 const PgSession = connectPgSimple(session);
 
@@ -14,7 +16,7 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '2mb' }));
 app.use(session({
   store: new PgSession({ pool, tableName: 'user_sessions', createTableIfMissing: true }),
-  secret: process.env.SESSION_SECRET || 'CHANGE_ME',
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 1000 * 60 * 60 * 12 }
@@ -311,9 +313,7 @@ app.get('/api/accounts/:account/ledger', auth, async (req, res) => {
 });
 
 const start = async () => {
-  if (!process.env.DATABASE_URL) {
-    console.error('DATABASE_URL is required. Copy .env.example to .env and configure PostgreSQL.');
-  }
+  await pool.query('SELECT 1');
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
