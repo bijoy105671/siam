@@ -43,6 +43,7 @@ import {
   User,
   Vendor,
 } from '../types';
+import { api, USE_SERVER_API } from '../services/apiClient';
 import {
   decryptDatabasePayload,
   encryptDatabasePayload,
@@ -97,6 +98,7 @@ interface AppContextType {
   currentUser: User | null;
   users: User[];
   login: (username: string, password: string) => boolean;
+  loginAsync: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   addUser: (user: Omit<User, 'id' | 'createdAt'>) => void;
   updateUser: (id: string, updates: Partial<User>) => void;
@@ -313,6 +315,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return true;
     }
     return false;
+  };
+
+  const loginAsync = async (username: string, pass: string): Promise<boolean> => {
+    if (!USE_SERVER_API) return login(username, pass);
+    try {
+      const result = await api.login(username, pass);
+      const serverUser = result.user as Partial<User> | null;
+      if (!serverUser?.username) return false;
+      const localMatch = data.users.find(
+        (u: User) => u.username.toLowerCase() === String(serverUser.username).toLowerCase()
+      );
+      setData((prev: any) => ({ ...prev, currentUserId: localMatch?.id || prev.currentUserId }));
+      return true;
+    } catch (error) {
+      console.error('Server login failed:', error);
+      return false;
+    }
   };
 
   const logout = () => {
@@ -1441,6 +1460,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         users: data.users,
         login,
+        loginAsync,
         logout,
         addUser,
         updateUser,
