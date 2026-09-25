@@ -1505,8 +1505,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return openingTotal + txDueTotal;
   }, [data.vendors, data.transactions]);
 
+  // In server mode, dashboard metrics are sourced from PostgreSQL so they are device-independent.
   // Today's summary stats
   const todaySummary = useMemo(() => {
+    if (USE_SERVER_API && serverDashboard) return {
+      totalSales: serverDashboard.totalSales,
+      totalReceived: serverDashboard.totalReceived,
+      totalExpense: serverDashboard.totalExpense,
+      totalVendorPayment: serverDashboard.totalVendorPayment,
+      grossProfit: serverDashboard.grossProfit,
+      loss: serverDashboard.loss,
+      netProfit: serverDashboard.netProfit,
+    };
     const todayStr = new Date().toISOString().split('T')[0];
 
     const todayTxs = data.transactions.filter((t: Transaction) => t.date === todayStr);
@@ -1546,7 +1556,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loss,
       netProfit,
     };
-  }, [data.transactions, data.partialPayments, data.expenses]);
+  }, [data.transactions, data.partialPayments, data.expenses, serverDashboard]);
 
   // Upcoming flights (next 30 days)
   const upcomingFlights = useMemo(() => {
