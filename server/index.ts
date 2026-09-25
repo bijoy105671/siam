@@ -106,9 +106,11 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
   const client = await pool.connect();
   try {
     const { amount, paymentType, paymentMethod, note, reference } = req.body ?? {};
+    const method = String(paymentMethod || '').toLowerCase();
     const value = Number(amount);
     if (!Number.isFinite(value) || value <= 0) return res.status(400).json({ error: 'Payment amount must be positive' });
     if (!['customer','vendor'].includes(paymentType)) return res.status(400).json({ error: 'Invalid payment type' });
+    if (!ACCOUNT_METHODS.has(method)) return res.status(400).json({ error: 'Invalid payment method' });
     await client.query('BEGIN');
     const tx = (await client.query('SELECT * FROM transactions WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
     if (!tx) throw new Error('Transaction not found');
@@ -116,9 +118,13 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
     if (value > outstanding) return res.status(400).json({ error: 'Payment exceeds outstanding due', outstanding });
     const entityId = paymentType === 'customer' ? tx.customer_id : tx.vendor_id;
     if (!entityId) return res.status(400).json({ error: 'No entity linked to this payment' });
+    if (paymentType === 'vendor') {
+      const balance = await accountBalance(client, method);
+      if (value > balance) return res.status(400).json({ error: 'Insufficient balance for vendor payment', balance });
+    }
     await client.query(
       'INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-      [tx.id, paymentType, entityId, value, paymentMethod, req.session.userId, note || null, reference || null]
+      [tx.id, paymentType, entityId, value, method, req.session.userId, note || null, reference || null]
     );
     if (paymentType === 'customer') {
       const due = outstanding - value;
@@ -127,7 +133,8 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
       const due = outstanding - value;
       await client.query('UPDATE transactions SET vendor_paid=vendor_paid+$1, vendor_due=$2, updated_at=now() WHERE id=$3', [value, due, tx.id]);
     }
-    await audit(client, req.session.userId!, 'PAYMENT_RECEIVED', 'Transaction', tx.id, tx, { paymentType, amount: value, paymentMethod });
+    await addAccountEntry(client, method, paymentType === 'customer' ? value : -value, paymentType === 'customer' ? 'customer_payment' : 'vendor_payment', tx.id, req.session.userId!, note);
+    await audit(client, req.session.userId!, 'PAYMENT_RECEIVED', 'Transaction', tx.id, tx, { paymentType, amount: value, paymentMethod: method });
     await client.query('COMMIT');
     res.json({ ok: true });
   } catch (e) {
@@ -252,6 +259,55 @@ app.post('/api/entries', auth, async (req, res) => {
     await client.query('ROLLBACK');
     res.status(400).json({ error: e instanceof Error ? e.message : 'Entry failed' });
   } finally { client.release(); }
+});
+
+
+app.post('/api/expenses', auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const category = String(req.body?.category || '').trim();
+    const description = String(req.body?.description || '').trim();
+    const amount = Number(req.body?.amount);
+    const method = String(req.body?.paymentMethod || '').toLowerCase();
+    if (!category || !description || !Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Valid category, description and positive amount are required' });
+    if (!ACCOUNT_METHODS.has(method)) return res.status(400).json({ error: 'Invalid payment method' });
+    await client.query('BEGIN');
+    const balance = await accountBalance(client, method);
+    if (amount > balance) throw new Error('Insufficient balance for expense');
+    const expense = (await client.query('INSERT INTO expenses (category,description,amount,payment_method,created_by,note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',[category,description,amount,method,req.session.userId,req.body?.note || null])).rows[0];
+    await addAccountEntry(client, method, -amount, 'expense', expense.id, req.session.userId!, description);
+    await audit(client, req.session.userId!, 'EXPENSE_CREATED', 'Expense', expense.id, null, expense);
+    await client.query('COMMIT'); res.status(201).json({ expense });
+  } catch (e) { await client.query('ROLLBACK'); res.status(400).json({ error: e instanceof Error ? e.message : 'Expense failed' }); }
+  finally { client.release(); }
+});
+
+app.post('/api/fund-transfers', auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const from = String(req.body?.fromAccount || '').toLowerCase();
+    const to = String(req.body?.toAccount || '').toLowerCase();
+    const amount = Number(req.body?.amount);
+    const reason = String(req.body?.reason || '').trim();
+    if (!ACCOUNT_METHODS.has(from) || !ACCOUNT_METHODS.has(to)) return res.status(400).json({ error: 'Invalid account' });
+    if (from === to || !Number.isFinite(amount) || amount <= 0 || !reason) return res.status(400).json({ error: 'Different accounts, positive amount and reason are required' });
+    await client.query('BEGIN');
+    const balance = await accountBalance(client, from);
+    if (amount > balance) throw new Error('Insufficient balance for fund transfer');
+    const transfer = (await client.query('INSERT INTO fund_transfers (from_account,to_account,amount,reason,created_by,note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',[from,to,amount,reason,req.session.userId,req.body?.note || null])).rows[0];
+    await addAccountEntry(client, from, -amount, 'fund_transfer_out', transfer.id, req.session.userId!, reason);
+    await addAccountEntry(client, to, amount, 'fund_transfer_in', transfer.id, req.session.userId!, reason);
+    await audit(client, req.session.userId!, 'FUND_TRANSFER_CREATED', 'FundTransfer', transfer.id, null, transfer);
+    await client.query('COMMIT'); res.status(201).json({ transfer });
+  } catch (e) { await client.query('ROLLBACK'); res.status(400).json({ error: e instanceof Error ? e.message : 'Fund transfer failed' }); }
+  finally { client.release(); }
+});
+
+app.get('/api/accounts/:account/ledger', auth, async (req, res) => {
+  const account = String(req.params.account || '').toLowerCase();
+  if (!ACCOUNT_METHODS.has(account)) return res.status(400).json({ error: 'Invalid account' });
+  const { rows } = await pool.query('SELECT id,amount,source_type,source_id,occurred_at,note FROM account_entries WHERE lower(account_name)=lower($1) AND reversed_at IS NULL ORDER BY occurred_at DESC LIMIT 500',[account]);
+  res.json({ account, rows });
 });
 
 const start = async () => {
