@@ -1,5 +1,7 @@
 export type ApiError = { error?: string; [key: string]: unknown };
 
+export const USE_SERVER_API = import.meta.env.VITE_USE_SERVER_API === 'true';
+
 export async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
