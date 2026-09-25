@@ -226,6 +226,20 @@ const STORAGE_KEY = 'siam_air_business_data_v3_clean';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load state from localStorage or initial clean data
+  const [serverDashboard, setServerDashboard] = useState<{
+    totalSales: number;
+    totalReceived: number;
+    totalExpense: number;
+    totalVendorPayment: number;
+    grossProfit: number;
+    loss: number;
+    netProfit: number;
+    customerReceivable: number;
+    vendorPayable: number;
+    balances: AccountBalances;
+    totalAvailableMoney: number;
+  } | null>(null);
+
   const [data, setData] = useState(() => {
     // Purge previous version sample storage keys if present
     try {
@@ -267,12 +281,117 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   });
 
+  const createServerTransactionForContext = (row: any): Transaction => {
+    const raw = row?.transaction || row;
+    const flightDetails = raw.flight_details
+      ? (typeof raw.flight_details === 'string' ? JSON.parse(raw.flight_details) : raw.flight_details)
+      : undefined;
+    return {
+      id: String(raw.id),
+      invoiceNumber: String(raw.invoice_number || raw.invoiceNumber || ''),
+      date: String(raw.date || ''),
+      time: String(raw.time || ''),
+      createdBy: String(raw.created_by || raw.createdBy || ''),
+      customerId: String(raw.customer_id || raw.customerId || ''),
+      customerName: String(raw.customer_name || raw.customerName || ''),
+      customerMobile: String(raw.customer_mobile || raw.customerMobile || ''),
+      serviceId: String(raw.service_id || raw.serviceId || ''),
+      serviceName: String(raw.service_name || raw.serviceName || ''),
+      description: raw.description || undefined,
+      flightDetails,
+      sellingPrice: Number(raw.selling_price || raw.sellingPrice || 0),
+      customerPaid: Number(raw.customer_paid || raw.customerPaid || 0),
+      customerDue: Number(raw.customer_due || raw.customerDue || 0),
+      customerPaymentMethod: String(raw.customer_payment_method || raw.customerPaymentMethod || 'Cash') as PaymentMethod,
+      vendorId: raw.vendor_id || raw.vendorId || undefined,
+      vendorName: raw.vendor_name || raw.vendorName || undefined,
+      vendorCost: Number(raw.vendor_cost || raw.vendorCost || 0),
+      vendorPaid: Number(raw.vendor_paid || raw.vendorPaid || 0),
+      vendorDue: Number(raw.vendor_due || raw.vendorDue || 0),
+      vendorPaymentMethod: raw.vendor_payment_method || raw.vendorPaymentMethod || undefined,
+      grossProfit: Number(raw.gross_profit || raw.grossProfit || 0),
+      reminderDate: raw.reminder_date || raw.reminderDate || undefined,
+      reminderTime: raw.reminder_time || raw.reminderTime || undefined,
+      reminderStatus: raw.reminder_status || raw.reminderStatus || undefined,
+      reminderNote: raw.reminder_note || raw.reminderNote || undefined,
+      status: raw.status || 'DUE',
+      notes: raw.notes || undefined,
+      updatedAt: raw.updated_at || raw.updatedAt || undefined,
+      updatedBy: raw.updated_by || raw.updatedBy || undefined,
+    };
+  };
+
   const hydrateServerSession = async () => {
     if (!USE_SERVER_API) return;
     try {
-      const result = await api.me();
-      const serverUser = result.user as Partial<User> | null;
+      const [sessionResult, dashboardResult, transactionResult, customerResult, vendorResult, balanceResult] =
+        await Promise.all([
+          api.me(),
+          api.dashboard(),
+          api.transactions(500),
+          api.customers(),
+          api.vendors(),
+          api.accountBalances(),
+        ]);
+
+      const serverUser = sessionResult.user as Partial<User> | null;
       if (!serverUser?.username) return;
+
+      const mapCustomer = (row: any): Customer => ({
+        id: String(row.id),
+        name: String(row.name || ''),
+        mobile: String(row.mobile || ''),
+        whatsapp: row.whatsapp || undefined,
+        email: row.email || undefined,
+        address: row.address || undefined,
+        nid: row.nid || undefined,
+        passportNumber: row.passport_number ?? row.passportNumber ?? undefined,
+        passportExpiry: row.passport_expiry ?? row.passportExpiry ?? undefined,
+        photo: row.photo || undefined,
+        notes: row.notes || undefined,
+        openingDue: Number(row.opening_due || 0),
+        createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+      });
+
+      const mapVendor = (row: any): Vendor => ({
+        id: String(row.id),
+        name: String(row.name || ''),
+        company: row.company || undefined,
+        mobile: String(row.mobile || ''),
+        whatsapp: row.whatsapp || undefined,
+        email: row.email || undefined,
+        address: row.address || undefined,
+        accountInfo: row.account_info ?? row.accountInfo ?? undefined,
+        openingPayable: Number(row.opening_payable || 0),
+        createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+      });
+
+      const serverTransactions = (transactionResult as any[]).map((row) => createServerTransactionForContext(row));
+
+      const balances: AccountBalances = {
+        Cash: Number(balanceResult.balances.cash || 0),
+        bKash: Number(balanceResult.balances.bkash || 0),
+        Nagad: Number(balanceResult.balances.nagad || 0),
+        Rocket: Number(balanceResult.balances.rocket || 0),
+        Bank: Number(balanceResult.balances.bank || 0),
+        Card: Number(balanceResult.balances.card || 0),
+        Other: Number(balanceResult.balances.other || 0),
+      };
+
+      setServerDashboard({
+        totalSales: Number((dashboardResult as any).today?.total_sales ?? (dashboardResult as any).sales?.total_sales ?? 0),
+        totalReceived: Number((dashboardResult as any).today?.total_received ?? (dashboardResult as any).sales?.total_received ?? 0),
+        totalExpense: Number((dashboardResult as any).today?.total_expense ?? (dashboardResult as any).expenses?.total_expense ?? 0),
+        totalVendorPayment: Number((dashboardResult as any).today?.total_vendor_payment ?? 0),
+        grossProfit: Number((dashboardResult as any).today?.gross_profit ?? 0),
+        loss: Number((dashboardResult as any).today?.loss ?? 0),
+        netProfit: Number((dashboardResult as any).today?.net_profit ?? 0),
+        customerReceivable: Number((dashboardResult as any).customerReceivable || 0),
+        vendorPayable: Number((dashboardResult as any).vendorPayable || 0),
+        balances,
+        totalAvailableMoney: Number(balanceResult.total || 0),
+      });
+
       setData((prev: any) => {
         const localMatch = prev.users.find((u: User) => u.username.toLowerCase() === String(serverUser.username).toLowerCase());
         const mappedUser: User = {
@@ -285,11 +404,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           permissions: serverUser.permissions || localMatch?.permissions,
           createdAt: localMatch?.createdAt || new Date().toISOString(),
         };
-        const users = localMatch ? prev.users.map((u: User) => u.id === localMatch.id ? mappedUser : u) : [mappedUser, ...prev.users];
-        return { ...prev, users, currentUserId: mappedUser.id };
+        return {
+          ...prev,
+          users: localMatch
+            ? prev.users.map((u: User) => u.id === localMatch.id ? mappedUser : u)
+            : [mappedUser, ...prev.users],
+          customers: (customerResult as any[]).map(mapCustomer),
+          vendors: (vendorResult as any[]).map(mapVendor),
+          transactions: serverTransactions,
+          currentUserId: mappedUser.id,
+        };
       });
-    } catch {
-      // No server session; local fallback remains available until server mode is fully enforced.
+    } catch (error) {
+      console.error('Server data hydration failed:', error);
+      // Keep the local cache available as a safe UI fallback if the API is temporarily unavailable.
     }
   };
 
