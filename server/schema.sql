@@ -143,3 +143,18 @@ CREATE INDEX IF NOT EXISTS idx_transactions_customer ON transactions(customer_id
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_payments_entity ON payments(entity_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_logs(created_at);
+
+
+CREATE TABLE IF NOT EXISTS account_entries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_name text NOT NULL,
+  amount numeric(14,2) NOT NULL,
+  source_type text NOT NULL,
+  source_id text NOT NULL,
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  created_by uuid REFERENCES users(id),
+  note text,
+  reversed_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_account_entries_account ON account_entries(account_name, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_account_entries_source ON account_entries(source_type, source_id);
