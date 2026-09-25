@@ -34,6 +34,14 @@ const auth = (req: express.Request, res: express.Response, next: express.NextFun
   next();
 };
 
+const adminOnly = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Authentication required' });
+  const { rows } = await pool.query('SELECT role, is_active FROM users WHERE id=$1', [req.session.userId]);
+  if (!rows[0]?.is_active) return res.status(401).json({ error: 'Account inactive' });
+  if (rows[0].role !== 'admin') return res.status(403).json({ error: 'Administrator permission required' });
+  next();
+};
+
 app.get('/api/health', async (_req, res) => {
   try {
     await pool.query('SELECT 1');
@@ -66,14 +74,14 @@ app.get('/api/dashboard', auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue] = await Promise.all([
     pool.query('SELECT COALESCE(SUM(selling_price),0) total_sales, COALESCE(SUM(customer_paid),0) total_received, COALESCE(SUM(gross_profit),0) gross_profit FROM transactions WHERE status <> $1', ['CANCELLED']),
     pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL'),
-    pool.query('SELECT COALESCE(SUM(opening_due),0) opening_due FROM customers'),
-    pool.query('SELECT COALESCE(SUM(opening_payable),0) opening_payable FROM vendors')
+    pool.query('SELECT COALESCE(SUM(customer_due),0) customer_receivable FROM transactions WHERE status <> $1', ['CANCELLED']),
+    pool.query('SELECT COALESCE(SUM(vendor_due),0) vendor_payable FROM transactions WHERE status <> $1', ['CANCELLED'])
   ]);
   res.json({
     sales: sales.rows[0],
     expenses: expenses.rows[0],
-    customerReceivableOpening: customerDue.rows[0].opening_due,
-    vendorPayableOpening: vendorDue.rows[0].opening_payable
+    customerReceivable: customerDue.rows[0].customer_receivable,
+    vendorPayable: vendorDue.rows[0].vendor_payable
   });
 });
 
@@ -161,6 +169,36 @@ const addAccountEntry = async (client: PoolClient, account: string, amount: numb
     [account.toLowerCase(), amount, sourceType, sourceId, userId, note || null]
   );
 };
+
+app.get('/api/opening-balances', adminOnly, async (_req, res) => {
+  const { rows } = await pool.query('SELECT account_name, amount, updated_at FROM account_opening_balances ORDER BY account_name');
+  res.json(rows);
+});
+
+app.put('/api/opening-balances/:account', adminOnly, async (req, res) => {
+  const account = String(req.params.account || '').toLowerCase();
+  const amount = Number(req.body?.amount);
+  if (!ACCOUNT_METHODS.has(account) || !Number.isFinite(amount) || amount < 0) {
+    return res.status(400).json({ error: 'Invalid account or opening balance' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const old = (await client.query('SELECT amount FROM account_opening_balances WHERE account_name=$1 FOR UPDATE', [account])).rows[0];
+    await client.query(
+      `INSERT INTO account_opening_balances (account_name,amount,updated_at)
+       VALUES ($1,$2,now())
+       ON CONFLICT (account_name) DO UPDATE SET amount=EXCLUDED.amount, updated_at=now()`,
+      [account, amount]
+    );
+    await audit(client, req.session.userId!, 'OPENING_BALANCE_UPDATED', 'AccountOpeningBalance', account, { amount: Number(old?.amount || 0) }, { amount });
+    await client.query('COMMIT');
+    res.json({ account, amount });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Opening balance update failed' });
+  } finally { client.release(); }
+});
 
 app.get('/api/accounts/balances', auth, async (_req, res) => {
   const accounts = ['cash','bkash','nagad','rocket','bank','card','other'];
