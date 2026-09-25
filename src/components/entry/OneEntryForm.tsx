@@ -19,6 +19,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { Customer, FlightDetails, PaymentMethod, TicketStatus, Transaction, Vendor } from '../../types';
 import { formatCurrency, formatDate, formatTime, sanitizePhoneForWhatsapp } from '../../utils/formatters';
+import { USE_SERVER_API } from '../../services/apiClient';
 
 interface OneEntryFormProps {
   onClose?: () => void;
@@ -26,7 +27,7 @@ interface OneEntryFormProps {
 }
 
 export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoice }) => {
-  const { customers, vendors, services, createOneEntry, settings } = useApp();
+  const { customers, vendors, services, createOneEntry, createOneEntryAsync, settings } = useApp();
 
   // Customer state
   const [customerQuery, setCustomerQuery] = useState('');
@@ -93,6 +94,8 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
 
   // Post submit state
   const [createdTx, setCreatedTx] = useState<Transaction | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   // Autocomplete matching for customers (min 1 letter)
   const filteredCustomers = customerQuery.trim()
@@ -159,74 +162,49 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
     setVendorDropdownOpen(false);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError('');
 
-    if (!customerQuery.trim()) {
-      alert('Please enter or select a customer name.');
-      return;
-    }
-    if (!customerMobile.trim()) {
-      alert('Please enter customer mobile number.');
-      return;
-    }
-    if (numSellingPrice <= 0) {
-      alert('Please enter a valid selling price.');
-      return;
-    }
+    if (!customerQuery.trim()) { alert('Please enter or select a customer name.'); return; }
+    if (!customerMobile.trim()) { alert('Please enter customer mobile number.'); return; }
+    if (numSellingPrice <= 0) { alert('Please enter a valid selling price.'); return; }
 
     let flightDetails: FlightDetails | undefined = undefined;
     if (isFlightService) {
       flightDetails = {
-        pnr: pnr.trim().toUpperCase(),
-        ticketNumber: ticketNumber.trim(),
-        passengerName: passengerName.trim() || customerQuery.trim(),
-        airline: airline.trim(),
-        flightNumber: flightNumber.trim().toUpperCase(),
-        route: route.trim().toUpperCase(),
-        departureDate,
-        departureTime,
-        arrivalDate: arrivalDate || undefined,
-        arrivalTime: arrivalTime || undefined,
-        flightClass,
-        ticketStatus,
-        notes: flightNotes,
+        pnr: pnr.trim().toUpperCase(), ticketNumber: ticketNumber.trim(),
+        passengerName: passengerName.trim() || customerQuery.trim(), airline: airline.trim(),
+        flightNumber: flightNumber.trim().toUpperCase(), route: route.trim().toUpperCase(),
+        departureDate, departureTime, arrivalDate: arrivalDate || undefined,
+        arrivalTime: arrivalTime || undefined, flightClass, ticketStatus, notes: flightNotes,
       };
     }
 
-    const tx = createOneEntry({
-      customerMode: selectedCustomer ? 'existing' : 'new',
-      customerId: selectedCustomer?.id,
-      customerName: customerQuery,
-      customerMobile,
-      customerEmail,
-      customerAddress,
-      customerPassportNumber: customerPassport,
-      customerPassportExpiry,
-      serviceId,
-      serviceName: selectedService?.name || 'General Service',
-      description: description || (isFlightService ? `${airline} ${route}` : selectedService?.name),
-      isFlight: Boolean(isFlightService),
-      flightDetails,
-      sellingPrice: numSellingPrice,
-      customerPaid: numCustomerPaid,
-      customerPaymentMethod,
-      hasVendor,
-      vendorMode: selectedVendor ? 'existing' : 'new',
-      vendorId: selectedVendor?.id,
-      vendorName: vendorQuery.trim(),
-      vendorMobile,
-      vendorCompany,
-      vendorCost: numVendorCost,
-      vendorPaid: numVendorPaid,
-      vendorPaymentMethod,
-      reminderDate: setReminder ? reminderDate : undefined,
-      reminderTime: setReminder ? reminderTime : undefined,
-      reminderNote: reminderNote || `Collect remaining balance ${formatCurrency(calculatedCustomerDue)}`,
-      notes: generalNotes,
-    });
-
-    setCreatedTx(tx);
+    setIsSubmitting(true);
+    try {
+      const input = {
+        customerMode: selectedCustomer ? 'existing' : 'new', customerId: selectedCustomer?.id,
+        customerName: customerQuery, customerMobile, customerEmail, customerAddress,
+        customerPassportNumber: customerPassport, customerPassportExpiry: customerPassportExpiry,
+        serviceId, serviceName: selectedService?.name || 'General Service',
+        description: description || (isFlightService ? airline + ' ' + route : selectedService?.name),
+        isFlight: Boolean(isFlightService), flightDetails, sellingPrice: numSellingPrice,
+        customerPaid: numCustomerPaid, customerPaymentMethod, hasVendor,
+        vendorMode: selectedVendor ? 'existing' : 'new', vendorId: selectedVendor?.id,
+        vendorName: vendorQuery.trim(), vendorMobile, vendorCompany, vendorCost: numVendorCost,
+        vendorPaid: numVendorPaid, vendorPaymentMethod,
+        reminderDate: setReminder ? reminderDate : undefined, reminderTime: setReminder ? reminderTime : undefined,
+        reminderNote: reminderNote || ('Collect remaining balance ' + formatCurrency(calculatedCustomerDue)),
+        notes: generalNotes,
+      };
+      const tx = USE_SERVER_API ? await createOneEntryAsync(input) : createOneEntry(input);
+      setCreatedTx(tx);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Entry could not be saved.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleResetForm = () => {
@@ -423,6 +401,12 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
       </div>
 
       <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-6">
+        {submitError && (
+          <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-700 font-medium">
+            <div className="font-bold">Entry was not saved</div>
+            <div className="mt-1">{submitError}</div>
+          </div>
+        )}
         {/* 1. CUSTOMER SECTION WITH AUTOCOMPLETE */}
         <div className="space-y-3">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
