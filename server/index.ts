@@ -71,17 +71,34 @@ app.get('/api/auth/me', async (req, res) => {
 });
 
 app.get('/api/dashboard', auth, async (_req, res) => {
-  const [sales, expenses, customerDue, vendorDue] = await Promise.all([
+  const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query('SELECT COALESCE(SUM(selling_price),0) total_sales, COALESCE(SUM(customer_paid),0) total_received, COALESCE(SUM(gross_profit),0) gross_profit FROM transactions WHERE status <> $1', ['CANCELLED']),
     pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL'),
-    pool.query('SELECT COALESCE(SUM(customer_due),0) customer_receivable FROM transactions WHERE status <> $1', ['CANCELLED']),
-    pool.query('SELECT COALESCE(SUM(vendor_due),0) vendor_payable FROM transactions WHERE status <> $1', ['CANCELLED'])
+    pool.query('SELECT COALESCE(SUM(customer_due),0) + COALESCE((SELECT SUM(opening_due) FROM customers),0) customer_receivable FROM transactions WHERE status <> $1', ['CANCELLED']),
+    pool.query('SELECT COALESCE(SUM(vendor_due),0) + COALESCE((SELECT SUM(opening_payable) FROM vendors),0) vendor_payable FROM transactions WHERE status <> $1', ['CANCELLED']),
+    pool.query('SELECT COALESCE(SUM(selling_price),0) total_sales, COALESCE(SUM(gross_profit),0) gross_profit FROM transactions WHERE status <> $1 AND date = CURRENT_DATE', ['CANCELLED']),
+    pool.query("SELECT COALESCE(SUM(amount),0) total_received FROM payments WHERE payment_type='customer' AND paid_at::date = CURRENT_DATE"),
+    pool.query("SELECT COALESCE(SUM(amount),0) total_vendor_payment FROM payments WHERE payment_type='vendor' AND paid_at::date = CURRENT_DATE"),
+    pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL AND date = CURRENT_DATE')
   ]);
+  const todayGross = Number(todaySales.rows[0].gross_profit || 0);
+  const todayLoss = Math.max(0, -todayGross);
+  const todayPositiveGross = Math.max(0, todayGross);
+  const todayExpense = Number(todayExpenses.rows[0].total_expense || 0);
   res.json({
     sales: sales.rows[0],
     expenses: expenses.rows[0],
-    customerReceivable: customerDue.rows[0].customer_receivable,
-    vendorPayable: vendorDue.rows[0].vendor_payable
+    customerReceivable: Number(customerDue.rows[0].customer_receivable || 0),
+    vendorPayable: Number(vendorDue.rows[0].vendor_payable || 0),
+    today: {
+      total_sales: Number(todaySales.rows[0].total_sales || 0),
+      total_received: Number(todayPayments.rows[0].total_received || 0),
+      total_vendor_payment: Number(todayVendorPayments.rows[0].total_vendor_payment || 0),
+      total_expense: todayExpense,
+      gross_profit: todayPositiveGross,
+      loss: todayLoss,
+      net_profit: todayPositiveGross - todayLoss - todayExpense
+    }
   });
 });
 
