@@ -1441,6 +1441,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // CALCULATIONS FOR ACCOUNT BALANCES
   // Formula: Opening + Customer payments received - Vendor payments - Expenses + Transfers In - Transfers Out
   const accountBalances: AccountBalances = useMemo(() => {
+    if (USE_SERVER_API && serverDashboard?.balances) return serverDashboard.balances;
     const balances: AccountBalances = {
       Cash: data.openingBalances?.Cash || 0,
       bKash: data.openingBalances?.bKash || 0,
@@ -1484,11 +1485,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // TOTAL AVAILABLE MONEY = Cash + bKash + Nagad + Rocket + Bank + Other
   // Customer due must NOT be added. Vendor payable must NOT be deducted.
   const totalAvailableMoney = useMemo(() => {
+    if (USE_SERVER_API && serverDashboard) return serverDashboard.totalAvailableMoney;
     return Object.values(accountBalances).reduce((sum, val) => sum + val, 0);
-  }, [accountBalances]);
+  }, [accountBalances, serverDashboard]);
 
   // Customer Receivable: Sum of opening due + unpaid dues across all transactions
   const totalCustomerReceivable = useMemo(() => {
+    if (USE_SERVER_API && serverDashboard) return serverDashboard.customerReceivable;
     const openingTotal = data.customers.reduce((sum: number, c: Customer) => sum + (c.openingDue || 0), 0);
     const txDueTotal = data.transactions.reduce((sum: number, t: Transaction) => sum + (t.customerDue || 0), 0);
     return openingTotal + txDueTotal;
@@ -1496,6 +1499,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Vendor Payable: Sum of opening payable + unpaid vendor dues across all transactions
   const totalVendorPayable = useMemo(() => {
+    if (USE_SERVER_API && serverDashboard) return serverDashboard.vendorPayable;
     const openingTotal = data.vendors.reduce((sum: number, v: Vendor) => sum + (v.openingPayable || 0), 0);
     const txDueTotal = data.transactions.reduce((sum: number, t: Transaction) => sum + (t.vendorDue || 0), 0);
     return openingTotal + txDueTotal;
