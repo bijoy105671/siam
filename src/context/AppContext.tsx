@@ -267,6 +267,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   });
 
+  const hydrateServerSession = async () => {
+    if (!USE_SERVER_API) return;
+    try {
+      const result = await api.me();
+      const serverUser = result.user as Partial<User> | null;
+      if (!serverUser?.username) return;
+      setData((prev: any) => {
+        const localMatch = prev.users.find((u: User) => u.username.toLowerCase() === String(serverUser.username).toLowerCase());
+        const mappedUser: User = {
+          ...(localMatch || {}),
+          id: localMatch?.id || String(serverUser.id || 'server-user'),
+          username: String(serverUser.username),
+          fullName: String(serverUser.fullName || serverUser.username),
+          role: (serverUser.role as User['role']) || 'staff',
+          isActive: true,
+          permissions: serverUser.permissions || localMatch?.permissions,
+          createdAt: localMatch?.createdAt || new Date().toISOString(),
+        };
+        const users = localMatch ? prev.users.map((u: User) => u.id === localMatch.id ? mappedUser : u) : [mappedUser, ...prev.users];
+        return { ...prev, users, currentUserId: mappedUser.id };
+      });
+    } catch {
+      // No server session; local fallback remains available until server mode is fully enforced.
+    }
+  };
+
+  useEffect(() => {
+    void hydrateServerSession();
+  }, []);
+
   // Sync to localStorage
   useEffect(() => {
     try {
@@ -336,6 +366,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = () => {
+    if (USE_SERVER_API) void api.logout().catch((error) => console.error('Server logout failed:', error));
     if (currentUser) {
       recordAudit('User Logout', 'User', currentUser.id, undefined, `${currentUser.fullName} logged out`);
     }
