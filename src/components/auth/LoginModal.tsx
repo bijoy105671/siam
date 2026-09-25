@@ -133,7 +133,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               </div>
             </div>
           )}
-/div>
+        </div>
         </form>
       </div>
     </div>
