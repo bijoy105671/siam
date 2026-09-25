@@ -8,26 +8,37 @@ interface LoginModalProps {
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
-  const { login, users, currentUser } = useApp();
+  const { login, loginAsync, users, currentUser } = useApp();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = login(username, password);
-    if (success) {
-      onClose();
-    } else {
-      setError('Invalid username or password. Please try again.');
+    setError('');
+    setIsSubmitting(true);
+    try {
+      const success = await loginAsync(username, password);
+      if (success) onClose();
+      else setError('Invalid username or password. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleQuickSwitch = (uName: string, pass: string) => {
-    login(uName, pass);
-    onClose();
+  const handleQuickSwitch = async (uName: string, pass: string) => {
+    setError('');
+    setIsSubmitting(true);
+    try {
+      const success = await loginAsync(uName, pass);
+      if (success) onClose();
+      else setError('Server authentication failed.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -92,7 +103,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             type="submit"
             className="w-full py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs cursor-pointer"
           >
-            Sign In to System
+            {isSubmitting ? 'Signing In...' : 'Sign In to System'}
           </button>
 
           {/* Quick Demo Switcher */}
@@ -105,6 +116,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 <button
                   key={u.id}
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => handleQuickSwitch(u.username, u.password || 'admin123')}
                   className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-blue-50 text-xs border border-slate-200 text-left transition-colors cursor-pointer"
                 >
