@@ -44,6 +44,10 @@ export const api = {
     apiRequest<{ balances: Record<string, number>; total: number }>('/api/accounts/balances'),
   openingBalances: () =>
     apiRequest<unknown[]>('/api/opening-balances'),
+  customerLedger: (id: string) =>
+    apiRequest<Record<string, any>>(`/api/customers/${encodeURIComponent(id)}/ledger`),
+  vendorLedger: (id: string) =>
+    apiRequest<Record<string, any>>(`/api/vendors/${encodeURIComponent(id)}/ledger`),
 };
 
 
@@ -52,6 +56,16 @@ export type ServerTransaction = Record<string, any>;
 function mapServerTransaction(tx: ServerTransaction): ServerTransaction {
   return {
     ...tx,
+    customerName: tx.customer_name ?? tx.customerName ?? '',
+    customerMobile: tx.customer_mobile ?? tx.customerMobile ?? '',
+    vendorName: tx.vendor_name ?? tx.vendorName ?? undefined,
+    serviceName: tx.service_name ?? tx.serviceName ?? '',
+    date: tx.date,
+    time: tx.time,
+    status: tx.status,
+    notes: tx.notes,
+    createdAt: tx.created_at,
+    updatedAt: tx.updated_at,
     invoiceNumber: tx.invoice_number,
     createdBy: tx.created_by,
     customerId: tx.customer_id,
