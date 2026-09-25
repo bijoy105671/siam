@@ -94,6 +94,30 @@ app.get('/api/customers', auth, async (req, res) => {
   res.json(rows);
 });
 
+app.get('/api/customers/:id/ledger', auth, async (req, res) => {
+  const customerId = req.params.id;
+  const customer = (await pool.query('SELECT * FROM customers WHERE id=$1', [customerId])).rows[0];
+  if (!customer) return res.status(404).json({ error: 'Customer not found' });
+  const transactions = (await pool.query(
+    'SELECT * FROM transactions WHERE customer_id=$1 ORDER BY date DESC, time DESC, created_at DESC',
+    [customerId]
+  )).rows;
+  const payments = (await pool.query(
+    'SELECT * FROM payments WHERE entity_id=$1 AND payment_type=\'customer\' ORDER BY paid_at DESC',
+    [customerId]
+  )).rows;
+  const totalSales = transactions.filter((t:any) => t.status !== 'CANCELLED').reduce((s:number,t:any)=>s+Number(t.selling_price),0);
+  const totalPaid = payments.reduce((s:number,p:any)=>s+Number(p.amount),0);
+  res.json({
+    customer,
+    totalSales,
+    totalPaid,
+    currentDue: Number(customer.opening_due || 0) + totalSales - totalPaid,
+    transactions,
+    payments
+  });
+});
+
 app.get('/api/vendors', auth, async (req, res) => {
   const q = String(req.query.q || '').trim();
   const { rows } = await pool.query(
@@ -101,6 +125,30 @@ app.get('/api/vendors', auth, async (req, res) => {
     q ? [q + '%'] : []
   );
   res.json(rows);
+});
+
+app.get('/api/vendors/:id/ledger', auth, async (req, res) => {
+  const vendorId = req.params.id;
+  const vendor = (await pool.query('SELECT * FROM vendors WHERE id=$1', [vendorId])).rows[0];
+  if (!vendor) return res.status(404).json({ error: 'Vendor not found' });
+  const transactions = (await pool.query(
+    'SELECT * FROM transactions WHERE vendor_id=$1 ORDER BY date DESC, time DESC, created_at DESC',
+    [vendorId]
+  )).rows;
+  const payments = (await pool.query(
+    'SELECT * FROM payments WHERE entity_id=$1 AND payment_type=\'vendor\' ORDER BY paid_at DESC',
+    [vendorId]
+  )).rows;
+  const totalCost = transactions.filter((t:any) => t.status !== 'CANCELLED').reduce((s:number,t:any)=>s+Number(t.vendor_cost),0);
+  const totalPaid = payments.reduce((s:number,p:any)=>s+Number(p.amount),0);
+  res.json({
+    vendor,
+    totalCost,
+    totalPaid,
+    currentPayable: Number(vendor.opening_payable || 0) + totalCost - totalPaid,
+    transactions,
+    payments
+  });
 });
 
 app.get('/api/transactions', auth, async (req, res) => {
