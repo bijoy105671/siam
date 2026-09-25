@@ -45,6 +45,7 @@
     "@types/express-session": "^1.18.2",
     "@types/pg": "^8.15.5",
     "esbuild": "^0.28.2",
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "@types/connect-pg-simple": "^7.0.3"
   }
 }
