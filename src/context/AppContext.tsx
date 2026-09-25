@@ -43,7 +43,7 @@ import {
   User,
   Vendor,
 } from '../types';
-import { api, USE_SERVER_API } from '../services/apiClient';
+import { api, createServerOneEntry, USE_SERVER_API } from '../services/apiClient';
 import {
   decryptDatabasePayload,
   encryptDatabasePayload,
@@ -137,6 +137,7 @@ interface AppContextType {
 
   // Actions
   createOneEntry: (input: OneEntryInput) => Transaction;
+  createOneEntryAsync: (input: OneEntryInput) => Promise<Transaction>;
   updateTransaction: (id: string, updates: Partial<Transaction>, changeReason?: string) => void;
   deleteTransaction: (id: string) => void;
   updateFlightStatus: (txId: string, status: TicketStatus, note?: string) => void;
@@ -608,6 +609,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     return newTransaction;
+  };
+
+  const createOneEntryAsync = async (input: OneEntryInput): Promise<Transaction> => {
+    if (!USE_SERVER_API) return createOneEntry(input);
+
+    const result = await createServerOneEntry(input as unknown as Record<string, any>);
+    const tx = result.transaction as Transaction;
+
+    // Keep the local UI cache coherent after a successful server commit.
+    setData((prev: any) => ({
+      ...prev,
+      transactions: [tx, ...prev.transactions.filter((t: Transaction) => t.id !== tx.id)],
+    }));
+
+    return tx;
   };
 
   const updateTransaction = (id: string, updates: Partial<Transaction>, changeReason?: string) => {
@@ -1485,6 +1501,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         todayReminders,
         overdueReminders,
         createOneEntry,
+        createOneEntryAsync,
         updateTransaction,
         deleteTransaction,
         updateFlightStatus,
