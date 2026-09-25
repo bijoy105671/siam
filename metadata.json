@@ -1,0 +1,6 @@
+{
+  "name": "SIAM AIR & DIGITAL SERVICE - Business Management System",
+  "description": "Complete Business Management, Accounting, Customer & Vendor Ledger, Flight & Reminder System for Siam Air & Digital Service travel agency and digital services.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
