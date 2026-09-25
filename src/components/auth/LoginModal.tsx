@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, Key, User, X, CheckCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { USE_SERVER_API } from '../../services/apiClient';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -106,31 +107,33 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             {isSubmitting ? 'Signing In...' : 'Sign In to System'}
           </button>
 
-          {/* Quick Demo Switcher */}
-          <div className="pt-3 border-t border-slate-100">
-            <div className="text-[10px] font-mono uppercase text-slate-400 font-bold mb-2">
-              Quick One-Click Sign In:
+          {!USE_SERVER_API && (
+            <div className="pt-3 border-t border-slate-100">
+              <div className="text-[10px] font-mono uppercase text-slate-400 font-bold mb-2">
+                Quick Demo Sign In (local mode only)
+              </div>
+              <div className="space-y-1.5">
+                {users.map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => handleQuickSwitch(u.username, u.password || 'admin123')}
+                    className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-blue-50 text-xs border border-slate-200 text-left transition-colors cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-bold text-slate-800">{u.fullName}</span>
+                      <span className="text-[11px] text-slate-500 font-mono ml-2">({u.username})</span>
+                    </div>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white border border-slate-200 uppercase font-semibold">
+                      {u.role}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="space-y-1.5">
-              {users.map((u) => (
-                <button
-                  key={u.id}
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={() => handleQuickSwitch(u.username, u.password || 'admin123')}
-                  className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-blue-50 text-xs border border-slate-200 text-left transition-colors cursor-pointer"
-                >
-                  <div>
-                    <span className="font-bold text-slate-800">{u.fullName}</span>
-                    <span className="text-[11px] text-slate-500 font-mono ml-2">({u.username})</span>
-                  </div>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white border border-slate-200 uppercase font-semibold">
-                    {u.role}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
+/div>
         </form>
       </div>
     </div>
