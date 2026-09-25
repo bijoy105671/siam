@@ -45,3 +45,70 @@ export const api = {
   openingBalances: () =>
     apiRequest<unknown[]>('/api/opening-balances'),
 };
+
+
+export type ServerTransaction = Record<string, any>;
+
+function mapServerTransaction(tx: ServerTransaction): ServerTransaction {
+  return {
+    ...tx,
+    invoiceNumber: tx.invoice_number,
+    createdBy: tx.created_by,
+    customerId: tx.customer_id,
+    serviceId: tx.service_id,
+    flightDetails: tx.flight_details
+      ? (typeof tx.flight_details === 'string' ? JSON.parse(tx.flight_details) : tx.flight_details)
+      : undefined,
+    sellingPrice: Number(tx.selling_price || 0),
+    customerPaid: Number(tx.customer_paid || 0),
+    customerDue: Number(tx.customer_due || 0),
+    vendorId: tx.vendor_id,
+    vendorCost: Number(tx.vendor_cost || 0),
+    vendorPaid: Number(tx.vendor_paid || 0),
+    vendorDue: Number(tx.vendor_due || 0),
+    grossProfit: Number(tx.gross_profit || 0),
+    reminderDate: tx.reminder_date,
+    reminderTime: tx.reminder_time,
+    reminderStatus: tx.reminder_status,
+    reminderNote: tx.reminder_note,
+  };
+}
+
+export const createServerOneEntry = async (input: Record<string, any>) => {
+  const payload = {
+    customer: {
+      name: input.customerName,
+      mobile: input.customerMobile,
+      email: input.customerEmail || null,
+      address: input.customerAddress || null,
+      passportNumber: input.customerPassportNumber || null,
+      passportExpiry: input.customerPassportExpiry || null,
+    },
+    service: { name: input.serviceName },
+    serviceName: input.serviceName,
+    description: input.description || null,
+    flightDetails: input.flightDetails || null,
+    sellingPrice: input.sellingPrice,
+    customerPaid: input.customerPaid,
+    customerPaymentMethod: String(input.customerPaymentMethod || 'Cash').toLowerCase(),
+    vendor: input.hasVendor ? {
+      name: input.vendorName || '',
+      mobile: input.vendorMobile || '',
+      company: input.vendorCompany || '',
+    } : null,
+    vendorName: input.hasVendor ? (input.vendorName || '') : '',
+    vendorCost: input.vendorCost,
+    vendorPaid: input.vendorPaid,
+    vendorPaymentMethod: String(input.vendorPaymentMethod || 'Cash').toLowerCase(),
+    reminderDate: input.reminderDate || null,
+    reminderTime: input.reminderTime || null,
+    reminderStatus: input.reminderDate ? 'pending' : null,
+    reminderNote: input.reminderNote || null,
+    notes: input.notes || null,
+  };
+  const result = await apiRequest<{ transaction: ServerTransaction; invoiceNumber: string }>(
+    '/api/entries',
+    { method: 'POST', body: JSON.stringify(payload) }
+  );
+  return { ...result, transaction: mapServerTransaction(result.transaction) };
+};
