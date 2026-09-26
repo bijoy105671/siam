@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import { Pool, PoolClient } from 'pg';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomInt, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -15,6 +16,13 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL, options: '-c
 
 const PASSWORD_RESET_EMAIL = 'bijoy105671@gmail.com';
 const hashOtp = (otp: string) => createHash('sha256').update(otp).digest('hex');
+
+const initializeDatabase = async () => {
+  const schemaUrl = new URL('./schema.sql', import.meta.url);
+  const schema = await readFile(schemaUrl, 'utf8');
+  await pool.query(schema);
+  console.log('SIAM AIR database schema initialized');
+};
 
 const sendPasswordResetOtp = async (otp: string) => {
   const apiKey = process.env.RESEND_API_KEY;
@@ -780,6 +788,7 @@ app.use(express.static(distPath));
 app.get('*', (_req, res) => res.sendFile('index.html', { root: distPath }));
 
 const start = async () => {
+  await initializeDatabase();
   await pool.query('SELECT 1');
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
