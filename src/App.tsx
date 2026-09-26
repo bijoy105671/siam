@@ -17,6 +17,7 @@ import { ReminderManager } from './components/reminders/ReminderManager';
 import { ReportsView } from './components/reports/ReportsView';
 import { AdminSettings } from './components/admin/AdminSettings';
 import { InvoiceModal } from './components/transactions/InvoiceModal';
+import { InvoiceCenter } from './components/invoices/InvoiceCenter';
 import { PaymentModal } from './components/common/PaymentModal';
 import { DuePaymentManager } from './components/payments/DuePaymentManager';
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
@@ -267,6 +268,10 @@ const MainLayout: React.FC = () => {
           )}
 
           {currentView === 'reports' && <ReportsView />}
+
+          {currentView === 'invoices' && (
+            <InvoiceCenter onSelectTransaction={(tx) => setActiveInvoiceTx(tx)} />
+          )}
 
           {currentView === 'admin' && <AdminSettings defaultTab="business" />}
 
