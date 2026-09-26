@@ -27,3 +27,39 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+      - name: Prepare deployment package
+        run: |
+          rm -rf release
+          mkdir -p release
+          cp -R dist release/dist
+          cp -R server release/server
+          cp package.json release/package.json
+          cp package-lock.json release/package-lock.json
+          cp tsconfig.json release/tsconfig.json
+          cp vite.config.ts release/vite.config.ts
+          if [ -f index.html ]; then cp index.html release/index.html; fi
+          if [ -f .env.example ]; then cp .env.example release/.env.example; fi
+          if [ -f DEPLOYMENT.md ]; then cp DEPLOYMENT.md release/DEPLOYMENT.md; fi
+          cat > release/START_SERVER.txt <<'EOF'
+          SIAM AIR & DIGITAL SERVICE - PRODUCTION PACKAGE
+          
+          1. Set DATABASE_URL and SESSION_SECRET in your hosting environment.
+          2. Run: npm ci
+          3. Run: npm run db:migrate
+          4. Run: npm run db:bootstrap-admin
+          5. Start API: npm run server
+          6. Serve the built dist/ folder through your web server, or configure your host to proxy the SPA to the API.
+          
+          Read DEPLOYMENT.md before going live.
+          EOF
+          cd release
+          zip -r ../siam-air-digital-service-production.zip . -x "*.DS_Store"
+
+      - name: Upload deployment package
+        uses: actions/upload-artifact@v4
+        with:
+          name: siam-air-digital-service-production
+          path: siam-air-digital-service-production.zip
+          if-no-files-found: error
+          retention-days: 14
