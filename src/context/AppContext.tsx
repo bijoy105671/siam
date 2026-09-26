@@ -165,7 +165,7 @@ interface AppContextType {
   addFundTransfer: (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => Promise<void>;
 
   updateOpeningBalance: (method: PaymentMethod, amount: number) => Promise<void>;
-  updateSettings: (settings: Partial<BusinessSettings>) => void;
+  updateSettings: (settings: Partial<BusinessSettings>) => Promise<void>;
   updateServices: (services: ServiceItem[]) => void;
 
   completeReminder: (txId: string) => Promise<void>;
