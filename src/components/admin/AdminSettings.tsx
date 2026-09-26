@@ -8,6 +8,7 @@ import {
   Users,
   MessageSquare,
   Layers,
+  Pencil,
   Save,
   Download,
   Upload,
@@ -25,7 +26,7 @@ import { AutomatedBackupSettings } from './AutomatedBackupSettings';
 import { formatCurrency } from '../../utils/formatters';
 
 interface AdminSettingsProps {
-  defaultTab?: 'business' | 'services' | 'templates' | 'opening' | 'users' | 'backup' | 'audit';
+  defaultTab?: 'business' | 'services' | 'expenses' | 'templates' | 'opening' | 'users' | 'backup' | 'audit';
 }
 
 export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'business' }) => {
@@ -41,7 +42,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
     currentUser,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'business' | 'services' | 'templates' | 'opening' | 'users' | 'backup' | 'audit'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'business' | 'services' | 'expenses' | 'templates' | 'opening' | 'users' | 'backup' | 'audit'>(defaultTab);
 
   // Business info form state
   const [bizName, setBizName] = useState(settings.name);
@@ -61,9 +62,14 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
   // Service item management
   const [newServiceName, setNewServiceName] = useState('');
   const [newServiceCategory, setNewServiceCategory] = useState<ServiceItem['category']>('Air Ticket');
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [editingServiceName, setEditingServiceName] = useState('');
+  const [editingServiceCategory, setEditingServiceCategory] = useState<ServiceItem['category']>('Air Ticket');
 
   // New Expense Category
   const [newCatName, setNewCatName] = useState('');
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editingCatName, setEditingCatName] = useState('');
 
   // Status message
   const [saveMessage, setSaveMessage] = useState('');
@@ -119,6 +125,23 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
     }
   };
 
+  const startEditService = (service: ServiceItem) => {
+    setEditingServiceId(service.id);
+    setEditingServiceName(service.name);
+    setEditingServiceCategory(service.category);
+  };
+
+  const saveEditService = () => {
+    if (!editingServiceId || !editingServiceName.trim()) return;
+    updateServices(services.map((s) =>
+      s.id === editingServiceId
+        ? { ...s, name: editingServiceName.trim(), category: editingServiceCategory }
+        : s
+    ));
+    setEditingServiceId(null);
+    setEditingServiceName('');
+  };
+
   const handleAddExpenseCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) return;
@@ -127,6 +150,26 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
       { id: `cat_${Date.now()}`, name: newCatName.trim() },
     ]);
     setNewCatName('');
+  };
+
+  const startEditExpenseCategory = (cat: { id: string; name: string }) => {
+    setEditingCatId(cat.id);
+    setEditingCatName(cat.name);
+  };
+
+  const saveEditExpenseCategory = () => {
+    if (!editingCatId || !editingCatName.trim()) return;
+    updateExpenseCategories(expenseCategories.map((cat) =>
+      cat.id === editingCatId ? { ...cat, name: editingCatName.trim() } : cat
+    ));
+    setEditingCatId(null);
+    setEditingCatName('');
+  };
+
+  const deleteExpenseCategory = (id: string) => {
+    if (confirm('Delete this expense category?')) {
+      updateExpenseCategories(expenseCategories.filter((cat) => cat.id !== id));
+    }
   };
 
   return (
@@ -175,6 +218,18 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
         >
           <Layers className="w-3.5 h-3.5" />
           <span>Services Catalog</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('expenses')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+            activeTab === 'expenses'
+              ? 'bg-blue-600 text-white font-semibold'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <CreditCard className="w-3.5 h-3.5" />
+          <span>Expense Catalog</span>
         </button>
 
         <button
@@ -405,6 +460,21 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
                   key={s.id}
                   className="p-3 flex items-center justify-between hover:bg-slate-50 text-xs"
                 >
+                  {editingServiceId === s.id ? (
+                    <div className="flex flex-1 flex-wrap items-center gap-2">
+                      <input value={editingServiceName} onChange={(e) => setEditingServiceName(e.target.value)} className="px-2 py-1 border border-slate-300 rounded-lg text-xs min-w-[220px]" />
+                      <select value={editingServiceCategory} onChange={(e) => setEditingServiceCategory(e.target.value as ServiceItem['category'])} className="px-2 py-1 border border-slate-300 rounded-lg text-xs bg-white">
+                        <option value="Air Ticket">Air Ticket</option>
+                        <option value="Visa">Visa</option>
+                        <option value="Passport">Passport</option>
+                        <option value="Digital">Digital</option>
+                        <option value="Other">Other</option>
+                      </select>
+                      <button type="button" onClick={saveEditService} className="px-3 py-1 bg-emerald-600 text-white rounded-lg font-semibold">Save</button>
+                      <button type="button" onClick={() => setEditingServiceId(null)} className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg">Cancel</button>
+                    </div>
+                  ) : (
+                    <>
                   <div className="flex items-center gap-3">
                     <span className="font-mono text-slate-400 text-[11px] w-6">#{idx + 1}</span>
                     <span className={`font-semibold ${s.enabled ? 'text-slate-900' : 'text-slate-400 line-through'}`}>
@@ -416,6 +486,15 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startEditService(s)}
+                      className="p-1 text-slate-400 hover:text-blue-600"
+                      title="Edit service"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+
                     <button
                       onClick={() => handleToggleService(s.id)}
                       className={`px-2.5 py-1 text-[11px] font-semibold rounded ${
@@ -434,6 +513,64 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
+                  </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: EXPENSE CATALOG */}
+      {activeTab === 'expenses' && (
+        <div className="space-y-5">
+          <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs">
+            <h3 className="text-xs font-bold text-slate-900 uppercase mb-3">Add New Expense Category</h3>
+            <form onSubmit={handleAddExpenseCategory} className="flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                required
+                placeholder="e.g. Office Rent, Internet Bill, Bank Charge"
+                value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+                className="px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none flex-1 min-w-[220px]"
+              />
+              <button type="submit" className="flex items-center gap-1 px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg">
+                <Plus className="w-3.5 h-3.5" /> Add Expense Category
+              </button>
+            </form>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <div className="p-3 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700">
+              Expense Catalog ({expenseCategories.length})
+            </div>
+            <div className="divide-y divide-slate-100">
+              {expenseCategories.map((cat, idx) => (
+                <div key={cat.id} className="p-3 flex items-center justify-between hover:bg-slate-50 text-xs">
+                  {editingCatId === cat.id ? (
+                    <div className="flex flex-1 items-center gap-2">
+                      <input value={editingCatName} onChange={(e) => setEditingCatName(e.target.value)} className="px-2 py-1 border border-slate-300 rounded-lg text-xs flex-1" />
+                      <button type="button" onClick={saveEditExpenseCategory} className="px-3 py-1 bg-emerald-600 text-white rounded-lg font-semibold">Save</button>
+                      <button type="button" onClick={() => setEditingCatId(null)} className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg">Cancel</button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-slate-400 text-[11px] w-6">#{idx + 1}</span>
+                        <span className="font-semibold text-slate-900">{cat.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => startEditExpenseCategory(cat)} className="p-1 text-slate-400 hover:text-blue-600" title="Edit expense category">
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button type="button" onClick={() => deleteExpenseCategory(cat.id)} className="p-1 text-slate-400 hover:text-rose-600" title="Delete expense category">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
