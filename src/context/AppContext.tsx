@@ -139,7 +139,8 @@ interface AppContextType {
   overdueReminders: (Transaction & { overdueDays: number })[];
 
   // Actions
-  createOneEntry: (input: OneEntryInput) => Transaction;\n  createOneEntryAsync: (input: OneEntryInput) => Promise<Transaction>;
+  createOneEntry: (input: OneEntryInput) => Transaction;
+  createOneEntryAsync: (input: OneEntryInput) => Promise<Transaction>;
   updateTransaction: (id: string, updates: Partial<Transaction>, changeReason?: string) => void;
   deleteTransaction: (id: string) => void;
   updateFlightStatus: (txId: string, status: TicketStatus, note?: string) => void;
