@@ -544,12 +544,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteLoanAdvanceAdjustment = (id: string): boolean => {
-    if (USE_SERVER_API) { void deleteLoanAdvanceAdjustmentAsync(id).catch(err=>alert(err instanceof Error?err.message:'Adjustment reversal failed')); return true; }
+    if (USE_SERVER_API) {
+      void deleteLoanAdvanceAdjustmentAsync(id).catch(err => alert(err instanceof Error ? err.message : 'Adjustment reversal failed'));
+      return true;
+    }
     const adjustment = (data.loanAdvanceAdjustments || []).find((a: LoanAdvanceAdjustment) => a.id === id);
     const tx = adjustment ? data.transactions.find((t: Transaction) => t.id === adjustment.transactionId) : undefined;
     if (!adjustment || !tx) return false;
-    setData((prev:any)=>({...prev,loanAdvanceAdjustments:(prev.loanAdvanceAdjustments||[]).filter((a:LoanAdvanceAdjustment)=>a.id!==id),transactions:prev.transactions.map((t:Transaction)=>t.id===adjustment.transactionId?adjustment.partyType==='customer'?{...t,customerPaid:Math.max(0,t.customerPaid-adjustment.amount),customerDue:Math.max(0,t.sellingPrice-(t.customerPaid-adjustment.amount)),status:t.sellingPrice-(t.customerPaid-adjustment.amount)<=0&&t.sellingPrice>0?'PAID':t.customerPaid-adjustment.amount>0?'PARTIAL':'DUE',updatedAt:new Date().toISOString(),updatedBy:currentUser?.fullName||'Staff'}:{...t,vendorPaid:Math.max(0,t.vendorPaid-adjustment.amount),vendorDue:Math.max(0,t.vendorCost-(t.vendorPaid-adjustment.amount)),updatedAt:new Date().toISOString(),updatedBy:currentUser?.fullName||'Staff'} }));
-    recordAudit('Reversed Loan / Advance Adjustment','LoanAdvance',id,undefined,'Adjustment reversed without cash movement'); return true;
+    const now = new Date().toISOString();
+    setData((prev: any) => {
+      const nextTransactions = prev.transactions.map((t: Transaction) => {
+        if (t.id !== adjustment.transactionId) return t;
+        if (adjustment.partyType === 'customer') {
+          const paid = Math.max(0, t.customerPaid - adjustment.amount);
+          const due = Math.max(0, t.sellingPrice - paid);
+          return {
+            ...t,
+            customerPaid: paid,
+            customerDue: due,
+            status: due === 0 && t.sellingPrice > 0 ? 'PAID' : paid > 0 ? 'PARTIAL' : 'DUE',
+            updatedAt: now,
+            updatedBy: currentUser?.fullName || 'Staff'
+          };
+        }
+        const paid = Math.max(0, t.vendorPaid - adjustment.amount);
+        return {
+          ...t,
+          vendorPaid: paid,
+          vendorDue: Math.max(0, t.vendorCost - paid),
+          updatedAt: now,
+          updatedBy: currentUser?.fullName || 'Staff'
+        };
+      });
+      return {
+        ...prev,
+        loanAdvanceAdjustments: (prev.loanAdvanceAdjustments || []).filter((a: LoanAdvanceAdjustment) => a.id !== id),
+        transactions: nextTransactions
+      };
+    });
+    recordAudit('Reversed Loan / Advance Adjustment', 'LoanAdvance', id, undefined, 'Adjustment reversed without cash movement');
+    return true;
   };
 
   const createOneEntryAsync = async (input: OneEntryInput): Promise<Transaction> => {
