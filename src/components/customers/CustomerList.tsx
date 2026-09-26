@@ -20,9 +20,10 @@ import { api } from '../../services/apiClient';
 
 interface CustomerListProps {
   onSelectTransaction: (tx: Transaction) => void;
+  onOpenPayment?: (tx: Transaction, type: 'customer' | 'vendor') => void;
 }
 
-export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction }) => {
+export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction, onOpenPayment }) => {
   const { customers, addCustomer, updateCustomer, getCustomerLedger, settings, currentUser } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -301,6 +302,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction 
           customerId={selectedCustomerId}
           onClose={() => setSelectedCustomerId(null)}
           onSelectTransaction={onSelectTransaction}
+          onOpenPayment={(tx) => onOpenPayment?.(tx, 'customer')}
         />
       )}
 
