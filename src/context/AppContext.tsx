@@ -139,7 +139,7 @@ interface AppContextType {
   createOneEntry: (input: OneEntryInput) => Transaction;
   createOneEntryAsync: (input: OneEntryInput) => Promise<Transaction>;
   updateTransaction: (id: string, updates: Partial<Transaction>, changeReason?: string) => void;
-  deleteTransaction: (id: string) => void;
+  deleteTransaction: (id: string) => Promise<void>;
   updateFlightStatus: (txId: string, status: TicketStatus, note?: string) => void;
 
   addPartialPayment: (params: {
@@ -828,7 +828,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const deleteTransaction = (id: string) => {
+  const deleteTransaction = async (id: string) => {
+    if (USE_SERVER_API) {
+      await api.deleteTransaction(id);
+      await hydrateServerSession();
+      return;
+    }
     let deletedTx: Transaction | undefined;
     setData((prev: any) => {
       deletedTx = prev.transactions.find((t: Transaction) => t.id === id);
