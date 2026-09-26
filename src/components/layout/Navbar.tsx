@@ -8,10 +8,7 @@ import {
   LogOut,
   Bell,
   Plane,
-  Trash2,
   RefreshCw,
-  AlertTriangle,
-  X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -30,17 +27,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenLogin,
   onNavigate,
 }) => {
-  const { currentUser, logout, settings, todayReminders, overdueReminders, clearAllInputData, loadDemoSampleData } = useApp();
+  const { currentUser, logout, settings, todayReminders, overdueReminders } = useApp();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
-
-  const handleClearAll = () => {
-    clearAllInputData();
-    setShowClearConfirm(false);
-    setNotification('All input data has been cleared! System is ready for fresh entries.');
-    setTimeout(() => setNotification(null), 4000);
-  };
 
   const totalAlerts = todayReminders.length + overdueReminders.length;
 
@@ -187,17 +176,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={() => {
                   setShowUserDropdown(false);
-                  setShowClearConfirm(true);
-                }}
-                className="w-full text-left px-3.5 py-2 text-amber-700 hover:bg-amber-50 flex items-center gap-2 cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4 text-amber-600" />
-                <span>Clear All Input Data</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowUserDropdown(false);
                   logout();
                 }}
                 className="w-full text-left px-3.5 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2"
@@ -210,78 +188,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* Toast Notification */}
-      {notification && (
-        <div className="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl border border-slate-800 flex items-center gap-2 text-xs animate-bounce">
-          <Trash2 className="w-4 h-4 text-emerald-400" />
-          <span>{notification}</span>
-        </div>
-      )}
-
-      {/* Clear All Input Data Modal */}
-      {showClearConfirm && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5 text-rose-600">
-                <AlertTriangle className="w-6 h-6 text-rose-600" />
-                <h3 className="font-bold text-slate-900 text-base">Clear All Input Data?</h3>
-              </div>
-              <button
-                onClick={() => setShowClearConfirm(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-600 leading-relaxed">
-              This action will permanently wipe all entered input records from the system:
-            </p>
-
-            <ul className="text-xs space-y-1.5 text-slate-700 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                <span>All Invoices & Transactions (Air ticket, visa, digital)</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                <span>All Customer profiles, dues & payment ledgers</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                <span>All Vendor profiles, payables & payment ledgers</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                <span>All Expenses, Fund Transfers & Opening balances (৳0)</span>
-              </li>
-            </ul>
-
-            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-800">
-              <strong>Safe:</strong> Your business settings, logo, invoice templates, service categories, and admin login credentials will NOT be touched.
-            </div>
-
-            <div className="pt-2 flex items-center justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => setShowClearConfirm(false)}
-                className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleClearAll}
-                className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-lg shadow-sm cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Yes, Clear All Data</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </header>
   );
 };
