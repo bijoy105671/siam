@@ -138,7 +138,7 @@ interface AppContextType {
   // Actions
   createOneEntry: (input: OneEntryInput) => Transaction;
   createOneEntryAsync: (input: OneEntryInput) => Promise<Transaction>;
-  updateTransaction: (id: string, updates: Partial<Transaction>, changeReason?: string) => void;
+  updateTransaction: (id: string, updates: Partial<Transaction>, changeReason?: string) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   updateFlightStatus: (txId: string, status: TicketStatus, note?: string) => Promise<void>;
 
@@ -823,22 +823,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const result = await createServerOneEntry(input as unknown as Record<string, any>);
     const tx = result.transaction as Transaction;
 
-    // Keep the local UI cache coherent after a successful server commit.
-    setData((prev: any) => ({
-      ...prev,
-      transactions: [tx, ...prev.transactions.filter((t: Transaction) => t.id !== tx.id)],
-    }));
+    // Refresh the complete server-backed UI state after a successful commit.
+    // This keeps New Entry, customer/vendor ledgers, balances, dashboard and reminders in sync
+    // without requiring the user to manually refresh the browser.
+    await hydrateServerSession();
 
     return tx;
   };
 
-  const updateTransaction = (id: string, updates: Partial<Transaction>, changeReason?: string) => {
+  const updateTransaction = async (id: string, updates: Partial<Transaction>, changeReason?: string): Promise<void> => {
     if (USE_SERVER_API) {
-      void api.updateTransaction(id, {
+      await api.updateTransaction(id, {
         ...updates,
         flightStatus: updates.flightDetails?.ticketStatus,
         note: changeReason,
-      }).then(() => hydrateServerSession()).catch((error) => console.error('Server transaction update failed:', error));
+      });
+      await hydrateServerSession();
       return;
     }
     let oldTx: Transaction | undefined;
