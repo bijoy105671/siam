@@ -78,27 +78,17 @@ app.get('/api/users', adminOnly, async (_req, res) => {
   const { rows } = await pool.query('SELECT id,username,full_name,role,phone,permissions,is_active,created_at FROM users ORDER BY created_at DESC');
   res.json(rows);
 });
-
 app.post('/api/users', adminOnly, async (req, res) => {
-  const username = String(req.body?.username || '').trim();
-  const password = String(req.body?.password || '');
-  const fullName = String(req.body?.fullName || '').trim();
-  const role = String(req.body?.role || 'staff').toLowerCase();
-  const phone = String(req.body?.phone || '').trim() || null;
-  const permissions = req.body?.permissions && typeof req.body.permissions === 'object' ? req.body.permissions : {};
-  if (!username || password.length < 8 || !fullName || !['admin','staff'].includes(role)) return res.status(400).json({ error: 'Username, full name, valid role and password of at least 8 characters are required' });
-  try {
-    const hash = await bcrypt.hash(password, 12);
-    const { rows } = await pool.query('INSERT INTO users (username,password_hash,full_name,role,phone,permissions) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,username,full_name,role,phone,permissions,is_active,created_at', [username,hash,fullName,role,phone,JSON.stringify(permissions)]);
-    res.status(201).json({ user: rows[0] });
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : 'User creation failed' });
-  }
+  const username=String(req.body?.username||'').trim(), password=String(req.body?.password||''), fullName=String(req.body?.fullName||'').trim();
+  const role=String(req.body?.role||'staff').toLowerCase(), phone=String(req.body?.phone||'').trim()||null;
+  const permissions=req.body?.permissions&&typeof req.body.permissions==='object'?req.body.permissions:{};
+  if(!username||password.length<8||!fullName||!['admin','staff'].includes(role)) return res.status(400).json({error:'Username, full name, valid role and password of at least 8 characters are required'});
+  try{const hash=await bcrypt.hash(password,12);const {rows}=await pool.query('INSERT INTO users (username,password_hash,full_name,role,phone,permissions) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,username,full_name,role,phone,permissions,is_active,created_at',[username,hash,fullName,role,phone,JSON.stringify(permissions)]);res.status(201).json({user:rows[0]});}
+  catch(e){res.status(400).json({error:e instanceof Error?e.message:'User creation failed'});}
 });
-
-app.patch('/api/users/:id', adminOnly, async (req, res) => {
-  const fields:string[]=[]; const values:any[]=[]; let n=1;
-  if (req.body?.fullName !== undefined) { fields.push('full_name=
+app.patch('/api/users/:id', adminOnly, async (req,res)=>{
+  const fields:string[]=[],values:any[]=[];let n=1;
+  if(req.body?.fullName!==undefined){fields.push('full_name=, auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
@@ -473,8 +463,8 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
-+n++); values.push(String(req.body.fullName).trim()); }
-  if (req.body?.role !== undefined && ['admin','staff'].includes(String(req.body.role).toLowerCase())) { fields.push('role=
++n++);values.push(String(req.body.fullName).trim());}
+  if(req.body?.username!==undefined){fields.push('username=, auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
@@ -849,8 +839,8 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
-+n++); values.push(String(req.body.role).toLowerCase()); }
-  if (req.body?.phone !== undefined) { fields.push('phone=
++n++);values.push(String(req.body.username).trim());}
+  if(req.body?.role!==undefined&&['admin','staff'].includes(String(req.body.role).toLowerCase())){fields.push('role=, auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
@@ -1225,8 +1215,8 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
-+n++); values.push(String(req.body.phone || '').trim() || null); }
-  if (req.body?.permissions !== undefined) { fields.push('permissions=
++n++);values.push(String(req.body.role).toLowerCase());}
+  if(req.body?.phone!==undefined){fields.push('phone=, auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
@@ -1601,8 +1591,8 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
-+n++); values.push(JSON.stringify(req.body.permissions || {})); }
-  if (req.body?.isActive !== undefined) { fields.push('is_active=
++n++);values.push(String(req.body.phone).trim()||null);}
+  if(req.body?.permissions!==undefined&&typeof req.body.permissions==='object'){fields.push('permissions=, auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
@@ -1977,11 +1967,8 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
-+n++); values.push(Boolean(req.body.isActive)); }
-  if (req.body?.password !== undefined) {
-    const password=String(req.body.password);
-    if (password.length<8) return res.status(400).json({error:'Password must be at least 8 characters'});
-    fields.push('password_hash=
++n++);values.push(JSON.stringify(req.body.permissions));}
+  if(req.body?.password){fields.push('password_hash=, auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
@@ -2356,12 +2343,9 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
-+n++); values.push(await bcrypt.hash(password,12));
-  }
-  if (!fields.length) return res.status(400).json({error:'No changes supplied'});
-  values.push(req.params.id);
-  try {
-    const { rows } = await pool.query('UPDATE users SET '+fields.join(', ')+' WHERE id=
++n++);values.push(await bcrypt.hash(String(req.body.password),12));}
+  if(!fields.length)return res.status(400).json({error:'No user fields to update'});values.push(req.params.id);
+  try{const client=await pool.connect();try{await client.query('BEGIN');const old=(await client.query('SELECT id,username,full_name,role,phone,permissions,is_active,created_at FROM users WHERE id=$1 FOR UPDATE',[req.params.id])).rows[0];if(!old)throw new Error('User not found');const row=(await client.query('UPDATE users SET '+fields.join(',')+' WHERE id=, auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
@@ -2736,38 +2720,15 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
-+n+' RETURNING id,username,full_name,role,phone,permissions,is_active,created_at', values);
-    if (!rows[0]) return res.status(404).json({error:'User not found'});
-    res.json({user:rows[0]});
-  } catch(e) { res.status(400).json({error:e instanceof Error?e.message:'User update failed'}); }
++n+' RETURNING id,username,full_name,role,phone,permissions,is_active,created_at',values)).rows[0];await audit(client,req.session.userId!,'USER_UPDATED','User',req.params.id,old,row);await client.query('COMMIT');res.json({user:row});}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}}catch(e){res.status(400).json({error:e instanceof Error?e.message:'User update failed'});}
 });
-
-app.delete('/api/users/:id', adminOnly, async (req, res) => {
-  if (req.params.id === req.session.userId) return res.status(400).json({error:'You cannot deactivate your own account'});
-  const { rows } = await pool.query('UPDATE users SET is_active=false WHERE id=$1 RETURNING id', [req.params.id]);
-  if (!rows[0]) return res.status(404).json({error:'User not found'});
-  res.json({ok:true});
+app.delete('/api/users/:id', adminOnly, async (req,res)=>{
+  if(req.params.id===req.session.userId)return res.status(400).json({error:'You cannot deactivate your own account'});
+  const client=await pool.connect();try{await client.query('BEGIN');const old=(await client.query('SELECT id,username,full_name,role,phone,permissions,is_active,created_at FROM users WHERE id=$1 FOR UPDATE',[req.params.id])).rows[0];if(!old)throw new Error('User not found');await client.query('UPDATE users SET is_active=false WHERE id=$1',[req.params.id]);await audit(client,req.session.userId!,'USER_DEACTIVATED','User',req.params.id,old,{...old,is_active:false});await client.query('COMMIT');res.json({ok:true});}catch(e){await client.query('ROLLBACK');res.status(400).json({error:e instanceof Error?e.message:'User deactivation failed'});}finally{client.release();}
 });
-
-app.get('/api/services', auth, async (_req, res) => {
-  const { rows } = await pool.query('SELECT * FROM services ORDER BY sort_order,name');
-  res.json(rows);
-});
-
-app.post('/api/services', adminOnly, async (req, res) => {
-  const name=String(req.body?.name||'').trim();
-  const category=String(req.body?.category||'Other Service').trim() || 'Other Service';
-  const sortOrder=Number(req.body?.sortOrder||0);
-  if(!name) return res.status(400).json({error:'Service name is required'});
-  try {
-    const {rows}=await pool.query('INSERT INTO services (name,category,sort_order) VALUES ($1,$2,$3) RETURNING *',[name,category,Number.isFinite(sortOrder)?sortOrder:0]);
-    res.status(201).json({service:rows[0]});
-  } catch(e){res.status(400).json({error:e instanceof Error?e.message:'Service creation failed'});}
-});
-
-app.patch('/api/services/:id', adminOnly, async (req, res) => {
-  const fields:string[]=[]; const values:any[]=[]; let n=1;
-  if(req.body?.name!==undefined){fields.push('name=
+app.get('/api/services', auth, async (_req,res)=>{const {rows}=await pool.query('SELECT id,name,category,enabled,sort_order FROM services ORDER BY sort_order,name');res.json(rows);});
+app.post('/api/services', adminOnly, async (req,res)=>{const name=String(req.body?.name||'').trim(),category=String(req.body?.category||'Other').trim()||'Other',sortOrder=Number(req.body?.sortOrder||0);if(!name)return res.status(400).json({error:'Service name is required'});try{const {rows}=await pool.query('INSERT INTO services (name,category,enabled,sort_order) VALUES ($1,$2,$3,$4) RETURNING id,name,category,enabled,sort_order',[name,category,req.body?.enabled!==false,Number.isFinite(sortOrder)?sortOrder:0]);res.status(201).json({service:rows[0]});}catch(e){res.status(400).json({error:e instanceof Error?e.message:'Service creation failed'});}});
+app.patch('/api/services/:id', adminOnly, async (req,res)=>{const fields:string[]=[],values:any[]=[];let n=1;if(req.body?.name!==undefined){fields.push('name=, auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
@@ -3142,8 +3103,7 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
-+n++);values.push(String(req.body.name).trim());}
-  if(req.body?.category!==undefined){fields.push('category=
++n++);values.push(String(req.body.name).trim());}if(req.body?.category!==undefined){fields.push('category=, auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
@@ -3518,8 +3478,7 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
-+n++);values.push(String(req.body.category).trim()||'Other Service');}
-  if(req.body?.enabled!==undefined){fields.push('enabled=
++n++);values.push(String(req.body.category).trim());}if(req.body?.enabled!==undefined){fields.push('enabled=, auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
@@ -3894,8 +3853,7 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
-+n++);values.push(Boolean(req.body.enabled));}
-  if(req.body?.sortOrder!==undefined){fields.push('sort_order=
++n++);values.push(Boolean(req.body.enabled));}if(req.body?.sortOrder!==undefined){fields.push('sort_order=, auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
@@ -4270,10 +4228,7 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
-+n++);values.push(Number(req.body.sortOrder)||0);}
-  if(!fields.length)return res.status(400).json({error:'No changes supplied'});
-  values.push(req.params.id);
-  try{const {rows}=await pool.query('UPDATE services SET '+fields.join(', ')+' WHERE id=
++n++);values.push(Number(req.body.sortOrder)||0);}if(!fields.length)return res.status(400).json({error:'No service fields to update'});values.push(req.params.id);try{const {rows}=await pool.query('UPDATE services SET '+fields.join(',')+' WHERE id=, auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
@@ -4648,16 +4603,8 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
-+n+' RETURNING *',values);if(!rows[0])return res.status(404).json({error:'Service not found'});res.json({service:rows[0]});}
-  catch(e){res.status(400).json({error:e instanceof Error?e.message:'Service update failed'});}
-});
-
-app.delete('/api/services/:id', adminOnly, async (req, res) => {
-  const {rows}=await pool.query('UPDATE services SET enabled=false WHERE id=$1 RETURNING id',[req.params.id]);
-  if(!rows[0])return res.status(404).json({error:'Service not found'});
-  res.json({ok:true});
-});
-
++n+' RETURNING id,name,category,enabled,sort_order',values);if(!rows[0])return res.status(404).json({error:'Service not found'});res.json({service:rows[0]});}catch(e){res.status(400).json({error:e instanceof Error?e.message:'Service update failed'});}});
+app.delete('/api/services/:id', adminOnly, async (req,res)=>{try{const {rows}=await pool.query('UPDATE services SET enabled=false WHERE id=$1 RETURNING id',[req.params.id]);if(!rows[0])return res.status(404).json({error:'Service not found'});res.json({ok:true});}catch(e){res.status(400).json({error:e instanceof Error?e.message:'Service disable failed'});}});
 app.get('/api/dashboard', auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
