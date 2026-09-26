@@ -187,6 +187,17 @@ app.get('/api/vendors', auth, async (req, res) => {
   res.json(rows);
 });
 
+app.patch('/api/customers/:id', auth, async (req,res) => {
+  try {
+    const { rows } = await pool.query(
+      'UPDATE customers SET name=COALESCE($1,name), mobile=COALESCE($2,mobile), email=COALESCE($3,email), address=COALESCE($4,address), whatsapp=COALESCE($5,whatsapp), nid=COALESCE($6,nid), passport_number=COALESCE($7,passport_number), passport_expiry=COALESCE($8,passport_expiry), notes=COALESCE($9,notes), opening_due=COALESCE($10,opening_due), updated_at=now() WHERE id=$11 RETURNING *',
+      [req.body?.name,req.body?.mobile,req.body?.email,req.body?.address,req.body?.whatsapp,req.body?.nid,req.body?.passportNumber,req.body?.passportExpiry,req.body?.notes,req.body?.openingDue,req.params.id]
+    );
+    if(!rows[0]) return res.status(404).json({error:'Customer not found'});
+    res.json({customer:rows[0]});
+  } catch(e) { res.status(400).json({error:e instanceof Error?e.message:'Customer update failed'}); }
+});
+
 app.get('/api/vendors/:id/ledger', auth, async (req, res) => {
   const vendorId = req.params.id;
   const vendor = (await pool.query('SELECT * FROM vendors WHERE id=$1', [vendorId])).rows[0];
@@ -196,6 +207,17 @@ app.get('/api/vendors/:id/ledger', auth, async (req, res) => {
   const totalCost = transactions.filter((t:any) => t.status !== 'CANCELLED').reduce((s:number,t:any)=>s+Number(t.vendor_cost),0);
   const totalPaid = payments.reduce((s:number,p:any)=>s+Number(p.amount),0);
   res.json({ vendor, totalCost, totalPaid, currentPayable: Number(vendor.opening_payable || 0) + totalCost - totalPaid, transactions, payments });
+});
+
+app.patch('/api/vendors/:id', auth, async (req,res) => {
+  try {
+    const { rows } = await pool.query(
+      'UPDATE vendors SET name=COALESCE($1,name), company=COALESCE($2,company), mobile=COALESCE($3,mobile), whatsapp=COALESCE($4,whatsapp), email=COALESCE($5,email), address=COALESCE($6,address), account_info=COALESCE($7,account_info), opening_payable=COALESCE($8,opening_payable), updated_at=now() WHERE id=$9 RETURNING *',
+      [req.body?.name,req.body?.company,req.body?.mobile,req.body?.whatsapp,req.body?.email,req.body?.address,req.body?.accountInfo,req.body?.openingPayable,req.params.id]
+    );
+    if(!rows[0]) return res.status(404).json({error:'Vendor not found'});
+    res.json({vendor:rows[0]});
+  } catch(e) { res.status(400).json({error:e instanceof Error?e.message:'Vendor update failed'}); }
 });
 
 app.delete('/api/transactions/:id', adminOnly, async (req, res) => {
