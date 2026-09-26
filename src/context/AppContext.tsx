@@ -571,13 +571,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCustomer = (id: string, cust: Partial<Customer>) => {
+    if (USE_SERVER_API) {
+      void api.updateCustomer(id, {
+        name: cust.name, mobile: cust.mobile, email: cust.email, address: cust.address,
+        whatsapp: cust.whatsapp, nid: cust.nid, passportNumber: cust.passportNumber,
+        passportExpiry: cust.passportExpiry, notes: cust.notes, openingDue: cust.openingDue,
+      }).then(() => hydrateServerSession()).catch((error) => console.error('Server customer update failed:', error));
+      return;
+    }
     let oldCust: Customer | undefined;
     setData((prev: any) => {
       oldCust = prev.customers.find((c: Customer) => c.id === id);
-      return {
-        ...prev,
-        customers: prev.customers.map((c: Customer) => (c.id === id ? { ...c, ...cust } : c)),
-      };
+      return { ...prev, customers: prev.customers.map((c: Customer) => (c.id === id ? { ...c, ...cust } : c)) };
     });
     recordAudit('Updated Customer', 'Customer', id, JSON.stringify(oldCust), JSON.stringify(cust));
   };
@@ -598,13 +603,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateVendor = (id: string, vend: Partial<Vendor>) => {
+    if (USE_SERVER_API) {
+      void api.updateVendor(id, {
+        name: vend.name, company: vend.company, mobile: vend.mobile, whatsapp: vend.whatsapp,
+        email: vend.email, address: vend.address, accountInfo: vend.accountInfo, openingPayable: vend.openingPayable,
+      }).then(() => hydrateServerSession()).catch((error) => console.error('Server vendor update failed:', error));
+      return;
+    }
     let oldVend: Vendor | undefined;
     setData((prev: any) => {
       oldVend = prev.vendors.find((v: Vendor) => v.id === id);
-      return {
-        ...prev,
-        vendors: prev.vendors.map((v: Vendor) => (v.id === id ? { ...v, ...vend } : v)),
-      };
+      return { ...prev, vendors: prev.vendors.map((v: Vendor) => (v.id === id ? { ...v, ...vend } : v)) };
     });
     recordAudit('Updated Vendor', 'Vendor', id, JSON.stringify(oldVend), JSON.stringify(vend));
   };
