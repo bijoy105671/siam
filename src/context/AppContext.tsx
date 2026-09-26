@@ -1221,7 +1221,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }).then(async () => {
         commitLocalPayment();
         try {
-          const rows = await api.transactions(500);
+          const [rows, balances, dashboard] = await Promise.all([
+            api.transactions(500),
+            api.accountBalances(),
+            api.dashboard(),
+          ]);
+          const rawBalances = balances.balances || {};
+          setServerAccountBalances({
+            Cash: Number(rawBalances.cash || 0),
+            bKash: Number(rawBalances.bkash || 0),
+            Nagad: Number(rawBalances.nagad || 0),
+            Rocket: Number(rawBalances.rocket || 0),
+            Bank: Number(rawBalances.bank || 0),
+            Card: Number(rawBalances.card || 0),
+            Other: Number(rawBalances.other || 0),
+          });
+          const t = dashboard.today || {};
+          setServerTodaySummary({
+            totalSales: Number(t.total_sales || 0),
+            totalReceived: Number(t.total_received || 0),
+            totalExpense: Number(t.total_expense || 0),
+            totalVendorPayment: Number(t.total_vendor_payment || 0),
+            grossProfit: Number(t.gross_profit || 0),
+            loss: Number(t.loss || 0),
+            netProfit: Number(t.net_profit || 0),
+          });
           const mapped = (rows as any[]).map((row) => ({
             ...row,
             id: String(row.id),
