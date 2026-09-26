@@ -84,6 +84,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ username, otp, newPassword }),
     }),
+  publicSettings: () => apiRequest<{ settings: { name?: string; tagline?: string; logoUrl?: string; address?: string; mobile?: string; whatsapp?: string; email?: string; website?: string } }>('/api/public-settings'),
   settings: () => apiRequest<{ settings: Record<string, any> }>('/api/settings'),
   updateSettings: (settings: Record<string, any>) =>
     apiRequest<{ settings: Record<string, any> }>('/api/settings', {
