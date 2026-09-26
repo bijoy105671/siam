@@ -255,6 +255,19 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
                             <span>Statement</span>
                           </button>
 
+                          {hasDue && ledger.transactions.find(tx => tx.customerDue > 0) && onOpenPayment && (
+                            <button
+                              onClick={() => {
+                                const tx = ledger.transactions.find(item => item.customerDue > 0);
+                                if (tx) onOpenPayment(tx, 'customer');
+                              }}
+                              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <DollarSign className="w-3.5 h-3.5" />
+                              <span>PAY</span>
+                            </button>
+                          )}
+
                           {cust.mobile && (
                             <a
                               href={`tel:${cust.mobile}`}
