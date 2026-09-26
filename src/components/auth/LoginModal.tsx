@@ -88,13 +88,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
         {USE_SERVER_API && (
           <button type="button" onClick={() => { setShowForgot(true); setError(''); setResetStep('request'); }} className="w-full text-xs font-semibold text-blue-600 hover:text-blue-700">
             Forgot Admin Password?
           </button>
         )}
 
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
         {showForgot && USE_SERVER_API && (
           <div className="fixed inset-0 z-[60] bg-slate-900/70 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200">
