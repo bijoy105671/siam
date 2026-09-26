@@ -100,7 +100,9 @@ CREATE TABLE IF NOT EXISTS payments (
   paid_at timestamptz NOT NULL DEFAULT now(),
   recorded_by uuid REFERENCES users(id),
   note text,
-  reference text
+  reference text,
+  reversed_at timestamptz,
+  reversed_by uuid REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS expenses (
@@ -153,7 +155,17 @@ CREATE TABLE IF NOT EXISTS app_settings (
 CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1001;
 CREATE INDEX IF NOT EXISTS idx_transactions_customer ON transactions(customer_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS reversed_at timestamptz;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS reversed_by uuid REFERENCES users(id);
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS reversed_by uuid REFERENCES users(id);
+ALTER TABLE fund_transfers ADD COLUMN IF NOT EXISTS reversed_by uuid REFERENCES users(id);
+ALTER TABLE account_entries ADD COLUMN IF NOT EXISTS payment_id uuid REFERENCES payments(id);
+ALTER TABLE account_entries ADD COLUMN IF NOT EXISTS expense_id uuid REFERENCES expenses(id);
+ALTER TABLE account_entries ADD COLUMN IF NOT EXISTS fund_transfer_id uuid REFERENCES fund_transfers(id);
 CREATE INDEX IF NOT EXISTS idx_payments_entity ON payments(entity_id);
+CREATE INDEX IF NOT EXISTS idx_account_entries_payment ON account_entries(payment_id);
+CREATE INDEX IF NOT EXISTS idx_account_entries_expense ON account_entries(expense_id);
+CREATE INDEX IF NOT EXISTS idx_account_entries_fund_transfer ON account_entries(fund_transfer_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_logs(created_at);
 
 CREATE TABLE IF NOT EXISTS account_entries (
