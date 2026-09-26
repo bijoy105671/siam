@@ -331,7 +331,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       }
 
-      const [dashboardResult, transactionResult, customerResult, vendorResult, balanceResult, serviceResult, categoryResult] =
+      const [dashboardResult, transactionResult, customerResult, vendorResult, balanceResult, serviceResult, categoryResult, settingsResult] =
         await Promise.all([
           api.dashboard(),
           api.transactions(500),
