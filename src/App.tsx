@@ -11,6 +11,7 @@ import { CustomerLedgerModal } from './components/customers/CustomerLedgerModal'
 import { VendorList } from './components/vendors/VendorList';
 import { VendorLedgerModal } from './components/vendors/VendorLedgerModal';
 import { ExpenseManager } from './components/expenses/ExpenseManager';
+import { LoanAdvanceManager } from './components/loans/LoanAdvanceManager';
 import { FundTransferModal } from './components/transfers/FundTransferModal';
 import { ReminderManager } from './components/reminders/ReminderManager';
 import { ReportsView } from './components/reports/ReportsView';
@@ -19,14 +20,10 @@ import { InvoiceModal } from './components/transactions/InvoiceModal';
 import { PaymentModal } from './components/common/PaymentModal';
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { LoginModal } from './components/auth/LoginModal';
-import { SecurityOtpModal } from './components/auth/SecurityOtpModal';
-import { TransactionRecycleBin } from './components/admin/TransactionRecycleBin';
 import { InvoiceVerificationPage } from './components/verification/InvoiceVerificationPage';
 import { Customer, Transaction, Vendor } from './types';
-import { USE_SERVER_API } from './services/apiClient';
 
 const MainLayout: React.FC = () => {
-  const { currentUser } = useApp();
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -124,16 +121,6 @@ const MainLayout: React.FC = () => {
     setInspectVendorId(vend.id);
   };
 
-  if (USE_SERVER_API && !currentUser) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <LoginModal isOpen={true} onClose={() => undefined} />
-        </div>
-      </div>
-    );
-  }
-
   // If direct QR code scan URL parameter is detected, show the public verification page directly
   if (verificationParams) {
     return (
@@ -221,6 +208,8 @@ const MainLayout: React.FC = () => {
 
           {currentView === 'expenses' && <ExpenseManager />}
 
+          {currentView === 'loans' && <LoanAdvanceManager />}
+
           {currentView === 'transfers' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -256,7 +245,7 @@ const MainLayout: React.FC = () => {
 
           {currentView === 'audit' && <AdminSettings defaultTab="audit" />}
 
-          {currentView === 'backup' && <AdminSettings defaultTab="backup" />}\n\n          {currentView === 'recycle_bin' && <TransactionRecycleBin />}
+          {currentView === 'backup' && <AdminSettings defaultTab="backup" />}
 
           {currentView === 'verify_portal' && (
             <InvoiceVerificationPage onBackToApp={() => setCurrentView('dashboard')} />
@@ -330,10 +319,7 @@ const MainLayout: React.FC = () => {
         />
       )}
 
-      {/* 7. Admin security OTP modal — stays visible while the original action waits */}
-      <SecurityOtpModal />
-
-      {/* 8. Login / Switch Account Modal */}
+      {/* 7. Login / Switch Account Modal */}
       <LoginModal
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
