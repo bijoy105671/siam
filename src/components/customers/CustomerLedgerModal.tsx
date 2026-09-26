@@ -56,6 +56,18 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
               </a>
             )}
 
+            {onOpenPayment && ledger.currentDue > 0 && ledger.transactions.some(tx => tx.customerDue > 0) && (
+              <button
+                onClick={() => {
+                  const tx = ledger.transactions.find(item => item.customerDue > 0);
+                  if (tx) onOpenPayment(tx);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg"
+              >
+                <DollarSign className="w-3.5 h-3.5" />
+                <span>Pay Due {formatCurrency(ledger.currentDue)}</span>
+              </button>
+            )}
             <button
               onClick={handlePrint}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-900 bg-white hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
@@ -113,6 +125,8 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
               <div className="text-slate-600">Opening Due: {formatCurrency(customer.openingDue || 0)}</div>
               <div className="text-slate-600">Total Billed: {formatCurrency(ledger.totalSales)}</div>
               <div className="text-emerald-700 font-semibold">Total Paid: {formatCurrency(ledger.totalPaid)}</div>
+              <div className="text-amber-700 font-semibold">Loan / Advance Credit: {formatCurrency(ledger.availableAdvance)}</div>
+              <div className="text-slate-700 font-semibold">Invoice Due: {formatCurrency(ledger.invoiceDue)}</div>
               <div className="text-sm font-bold text-rose-600 mt-1">
                 Net Balance Due: {formatCurrency(ledger.currentDue)}
               </div>
