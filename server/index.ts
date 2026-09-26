@@ -4,6 +4,7 @@ import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
 import bcrypt from 'bcryptjs';
 import { Pool, PoolClient } from 'pg';
+import { fileURLToPath } from 'node:url';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -593,6 +594,10 @@ app.get('/api/accounts/:account/ledger', auth, async (req, res) => {
   const { rows } = await pool.query('SELECT id,amount,source_type,source_id,occurred_at,note FROM account_entries WHERE lower(account_name)=lower($1) AND reversed_at IS NULL ORDER BY occurred_at DESC LIMIT 500',[account]);
   res.json({ account, rows });
 });
+
+const distPath = fileURLToPath(new URL('../dist', import.meta.url));
+app.use(express.static(distPath));
+app.get('*', (_req, res) => res.sendFile('index.html', { root: distPath }));
 
 const start = async () => {
   await pool.query('SELECT 1');
