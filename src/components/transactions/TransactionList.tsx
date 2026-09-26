@@ -27,7 +27,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   onOpenNewEntry,
   onOpenPayment,
 }) => {
-  const { transactions, services, deleteTransaction, currentUser } = useApp();
+  const { transactions, services, deleteTransaction, updateTransaction, currentUser } = useApp();
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -424,6 +424,32 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                           >
                             <Eye className="w-4 h-4" />
                           </button>
+
+                          {currentUser?.role === 'admin' && (
+                            <button
+                              onClick={async () => {
+                                const nextStatus = tx.flightDetails
+                                  ? window.prompt('Enter new flight status (Confirmed, Schedule Changed, Reissued, Refund, Void, Cancelled, Completed, Other):', tx.flightDetails.ticketStatus)
+                                  : null;
+                                const reminderDate = window.prompt('Reminder date (YYYY-MM-DD), leave blank to keep current:', tx.reminderDate || '');
+                                const reminderTime = window.prompt('Reminder time (HH:MM), leave blank to keep current:', tx.reminderTime || '');
+                                try {
+                                  const updates: Record<string, any> = {
+                                    reminderDate: reminderDate || tx.reminderDate || null,
+                                    reminderTime: reminderTime || tx.reminderTime || null,
+                                  };
+                                  if (tx.flightDetails && nextStatus) updates.flightStatus = nextStatus;
+                                  await updateTransaction(tx.id, updates, 'Admin transaction edit');
+                                } catch (error) {
+                                  alert(error instanceof Error ? error.message : 'Transaction could not be updated.');
+                                }
+                              }}
+                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                              title="Edit Transaction (Admin + OTP)"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                          )}
 
                           {currentUser?.permissions.canDeleteTransaction && (
                             <button
