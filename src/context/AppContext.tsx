@@ -523,13 +523,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = () => {
-    if (USE_SERVER_API) void api.logout().catch((error) => console.error('Server logout failed:', error));
-    if (currentUser) {
-      recordAudit('User Logout', 'User', currentUser.id, undefined, `${currentUser.fullName} logged out`);
+    const loggedOutUser = currentUser;
+    if (USE_SERVER_API) {
+      void api.logout()
+        .catch((error) => console.error('Server logout failed:', error))
+        .finally(() => {
+          setData((prev: any) => ({ ...prev, currentUserId: '' }));
+        });
+    } else {
+      setData((prev: any) => ({ ...prev, currentUserId: '' }));
     }
-    // Switch to first staff or guest
-    const otherUser = data.users.find((u: User) => u.id !== data.currentUserId) || data.users[0];
-    setData((prev: any) => ({ ...prev, currentUserId: otherUser?.id }));
+    if (loggedOutUser) {
+      recordAudit('User Logout', 'User', loggedOutUser.id, undefined, `${loggedOutUser.fullName} logged out`);
+    }
   };
 
   const addUser = (user: Omit<User, 'id' | 'createdAt'>) => {
@@ -1068,6 +1074,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prev,
       settings: { ...prev.settings, ...settings },
     }));
+    if (USE_SERVER_API) {
+      void api.updateSettings(settings).catch((error) => {
+        console.error('Server settings update failed:', error);
+      });
+    }
     recordAudit('Updated Settings', 'Settings', 'business', undefined, `Updated business settings`);
   };
 
