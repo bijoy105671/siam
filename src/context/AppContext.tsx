@@ -1072,16 +1072,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     recordAudit('Updated Opening Balance', 'Settings', method, undefined, `Set opening balance for ${method} to ৳${amount}`);
   };
 
-  const updateSettings = (settings: Partial<BusinessSettings>) => {
+  const updateSettings = async (settings: Partial<BusinessSettings>): Promise<void> => {
+    if (USE_SERVER_API) {
+      const result = await api.updateSettings(settings);
+      setData((prev: any) => ({
+        ...prev,
+        settings: { ...prev.settings, ...(result.settings || settings) },
+      }));
+      await hydrateServerSession();
+      return;
+    }
     setData((prev: any) => ({
       ...prev,
       settings: { ...prev.settings, ...settings },
     }));
-    if (USE_SERVER_API) {
-      void api.updateSettings(settings).catch((error) => {
-        console.error('Server settings update failed:', error);
-      });
-    }
     recordAudit('Updated Settings', 'Settings', 'business', undefined, `Updated business settings`);
   };
 
