@@ -2164,6 +2164,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         users: data.users,
         login,
+        loginAsync,
         logout,
         addUser,
         updateUser,
