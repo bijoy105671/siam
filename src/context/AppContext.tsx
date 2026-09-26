@@ -324,18 +324,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const hydrateServerSession = async () => {
     if (!USE_SERVER_API) return;
     try {
-      const [sessionResult, dashboardResult, transactionResult, customerResult, vendorResult, balanceResult, userResult, serviceResult] =
+      const sessionResult = await api.me();
+      const serverUser = sessionResult.user as Partial<User> | null;
+      if (!serverUser?.username) {
+        setData((prev: any) => ({ ...prev, currentUserId: '' }));
+        return;
+      }
+
+      const [dashboardResult, transactionResult, customerResult, vendorResult, balanceResult, serviceResult] =
         await Promise.all([
-          api.me(),
           api.dashboard(),
           api.transactions(500),
           api.customers(),
           api.vendors(),
           api.accountBalances(),
-          api.users(),
           api.services(),
         ]);
-
+      const userResult = serverUser.role === 'admin' ? await api.users() : [];
       const serverUser = sessionResult.user as Partial<User> | null;
       if (!serverUser?.username) {
         setData((prev: any) => ({ ...prev, currentUserId: '' }));
