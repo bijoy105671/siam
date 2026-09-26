@@ -1114,8 +1114,20 @@ app.get('/api/accounts/:account/ledger', auth, async (req, res) => {
 });
 
 const distPath = fileURLToPath(new URL('../dist', import.meta.url));
-app.use(express.static(distPath));
-app.get('*', (_req, res) => res.sendFile('index.html', { root: distPath }));
+app.use('/assets', express.static(new URL('../dist/assets', import.meta.url), { immutable: true, maxAge: '1y' }));
+app.use(express.static(distPath, { index: false, setHeaders: (res, filePath) => {
+  if (filePath.endsWith('index.html')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+} }));
+app.get('*', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.sendFile('index.html', { root: distPath });
+});
 
 const start = async () => {
   await initializeDatabase();
