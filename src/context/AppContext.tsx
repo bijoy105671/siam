@@ -1812,19 +1812,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return Object.values(accountBalances).reduce((sum, val) => sum + val, 0);
   }, [accountBalances]);
 
-  // Customer Receivable: Sum of opening due + unpaid dues across all transactions
+  // Customer Receivable: unpaid invoices/opening dues, reduced by unapplied customer advances.
   const totalCustomerReceivable = useMemo(() => {
-    const openingTotal = data.customers.reduce((sum: number, c: Customer) => sum + (c.openingDue || 0), 0);
-    const txDueTotal = data.transactions.reduce((sum: number, t: Transaction) => sum + (t.customerDue || 0), 0);
-    return openingTotal + txDueTotal;
-  }, [data.customers, data.transactions]);
+    const openingTotal = data.customers.reduce((sum: number, c: Customer) => sum + Number(c.openingDue || 0), 0);
+    const txDueTotal = data.transactions.reduce((sum: number, t: Transaction) => sum + Number(t.customerDue || 0), 0);
+    const customerAdvances = (data.loanAdvances || [])
+      .filter((r: LoanAdvanceRecord) => r.partyType === 'customer' && r.direction === 'received')
+      .reduce((sum: number, r: LoanAdvanceRecord) => sum + Number(r.amount || 0), 0);
+    const customerAdvanceApplied = (data.loanAdvanceAdjustments || [])
+      .filter((a: LoanAdvanceAdjustment) => a.partyType === 'customer')
+      .reduce((sum: number, a: LoanAdvanceAdjustment) => sum + Number(a.amount || 0), 0);
+    return Math.max(0, openingTotal + txDueTotal - Math.max(0, customerAdvances - customerAdvanceApplied));
+  }, [data.customers, data.transactions, data.loanAdvances, data.loanAdvanceAdjustments]);
 
-  // Vendor Payable: Sum of opening payable + unpaid vendor dues across all transactions
+  // Vendor Payable: unpaid vendor invoices/opening payable, reduced by unapplied vendor advances.
   const totalVendorPayable = useMemo(() => {
-    const openingTotal = data.vendors.reduce((sum: number, v: Vendor) => sum + (v.openingPayable || 0), 0);
-    const txDueTotal = data.transactions.reduce((sum: number, t: Transaction) => sum + (t.vendorDue || 0), 0);
-    return openingTotal + txDueTotal;
-  }, [data.vendors, data.transactions]);
+    const openingTotal = data.vendors.reduce((sum: number, v: Vendor) => sum + Number(v.openingPayable || 0), 0);
+    const txDueTotal = data.transactions.reduce((sum: number, t: Transaction) => sum + Number(t.vendorDue || 0), 0);
+    const vendorAdvances = (data.loanAdvances || [])
+      .filter((r: LoanAdvanceRecord) => r.partyType === 'vendor' && r.direction === 'given')
+      .reduce((sum: number, r: LoanAdvanceRecord) => sum + Number(r.amount || 0), 0);
+    const vendorAdvanceApplied = (data.loanAdvanceAdjustments || [])
+      .filter((a: LoanAdvanceAdjustment) => a.partyType === 'vendor')
+      .reduce((sum: number, a: LoanAdvanceAdjustment) => sum + Number(a.amount || 0), 0);
+    return Math.max(0, openingTotal + txDueTotal - Math.max(0, vendorAdvances - vendorAdvanceApplied));
+  }, [data.vendors, data.transactions, data.loanAdvances, data.loanAdvanceAdjustments]);
 
   // Today's summary stats. PostgreSQL is authoritative in production mode.
   const todaySummary = useMemo(() => {
