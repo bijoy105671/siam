@@ -539,7 +539,12 @@ app.delete('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
     if (tx.deleted_at) throw new Error('Transaction is already deleted');
     const activeAdjustments = (await client.query('SELECT COUNT(*)::int AS count FROM loan_advance_adjustments WHERE transaction_id=$1 AND reversed_at IS NULL', [tx.id])).rows[0]?.count || 0;
     if (Number(activeAdjustments) > 0) throw new Error('Reverse active loan/advance adjustment before deleting this transaction.');
-    await client.query(`UPDATE account_entries SET reversed_at=now() WHERE source_id=$1 AND reversed_at IS NULL`, [tx.id]);
+    const deletedAt = new Date();
+    await client.query('UPDATE transactions SET deleted_at=$1, deleted_by=$2, updated_at=now() WHERE id=$3', [deletedAt, req.session.userId, tx.id]);
+    // Mark the deletion timestamp on entries/payments so restore does not resurrect
+    // an accounting record that had already been manually reversed.
+    await client.query(`UPDATE account_entries SET reversed_at=$1 WHERE source_id=$2 AND reversed_at IS NULL`, [deletedAt, tx.id]);
+    await client.query('UPDATE payments SET reversed_at=$1, reversed_by=$2 WHERE transaction_id=$3 AND reversed_at IS NULL', [deletedAt, req.session.userId, tx.id]);
     await client.query('UPDATE payments SET reversed_at=now(), reversed_by=$1 WHERE transaction_id=$2 AND reversed_at IS NULL', [req.session.userId, tx.id]);
     await client.query('UPDATE transactions SET deleted_at=now(), deleted_by=$1, updated_at=now() WHERE id=$2', [req.session.userId, tx.id]);
     await audit(client, req.session.userId!, 'TRANSACTION_SOFT_DELETED', 'Transaction', tx.id, tx, { deletedAt: new Date().toISOString(), invoiceNumber: tx.invoice_number });
@@ -636,8 +641,9 @@ app.post('/api/admin/recycle-bin/:id/restore', criticalAdminOnly, async (req, re
       'UPDATE transactions SET deleted_at=NULL, deleted_by=NULL, updated_at=now() WHERE id=$1',
       [tx.id]
     );
-    await client.query('UPDATE payments SET reversed_at=NULL, reversed_by=NULL WHERE transaction_id=$1', [tx.id]);
-    await client.query('UPDATE account_entries SET reversed_at=NULL WHERE source_id=$1', [tx.id]);
+    // Restore only accounting records reversed as part of this deletion.
+    await client.query('UPDATE payments SET reversed_at=NULL, reversed_by=NULL WHERE transaction_id=$1 AND reversed_at >= $2', [tx.id, tx.deleted_at]);
+    await client.query('UPDATE account_entries SET reversed_at=NULL WHERE source_id=$1 AND reversed_at >= $2', [tx.id, tx.deleted_at]);
     await audit(
       client,
       req.session.userId!,
