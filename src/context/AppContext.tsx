@@ -164,7 +164,7 @@ interface AppContextType {
 
   addFundTransfer: (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => Promise<void>;
 
-  updateOpeningBalance: (method: PaymentMethod, amount: number) => void;
+  updateOpeningBalance: (method: PaymentMethod, amount: number) => Promise<void>;
   updateSettings: (settings: Partial<BusinessSettings>) => void;
   updateServices: (services: ServiceItem[]) => void;
 
@@ -1007,7 +1007,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     recordAudit('Fund Transfer', 'Transfer', newTrf.id, undefined, `Transfer ৳${newTrf.amount} from ${newTrf.fromAccount} to ${newTrf.toAccount} (Reason: ${newTrf.reason})`);
   };
 
-  const updateOpeningBalance = (method: PaymentMethod, amount: number) => {
+  const updateOpeningBalance = async (method: PaymentMethod, amount: number) => {
+    if (USE_SERVER_API) {
+      await api.updateOpeningBalance(String(method).toLowerCase(), amount);
+      await hydrateServerSession();
+      return;
+    }
     setData((prev: any) => ({
       ...prev,
       openingBalances: {
