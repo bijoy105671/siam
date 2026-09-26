@@ -84,9 +84,9 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
     reader.readAsDataURL(file);
   };
 
-  const handleSaveBusiness = (e: React.FormEvent) => {
+  const handleSaveBusiness = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings({
+    await updateSettings({
       name: bizName,
       tagline: bizTagline,
       address: bizAddress,
