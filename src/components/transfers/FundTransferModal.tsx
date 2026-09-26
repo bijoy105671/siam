@@ -17,10 +17,12 @@ export const FundTransferModal: React.FC<FundTransferModalProps> = ({ onClose })
   const [reason, setReason] = useState('Bank Deposit');
   const [note, setNote] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const availableInFrom = accountBalances[fromAccount] || 0;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const numAmount = Number(amount) || 0;
     if (numAmount <= 0) {
@@ -32,21 +34,29 @@ export const FundTransferModal: React.FC<FundTransferModalProps> = ({ onClose })
       return;
     }
 
+    setIsSubmitting(true);
+    setSubmitError(null);
+
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
     const timeStr = now.toTimeString().split(' ')[0].substring(0, 5);
 
-    addFundTransfer({
+    try {
+      await addFundTransfer({
       fromAccount,
       toAccount,
       amount: numAmount,
       date: todayStr,
       time: timeStr,
       reason,
-      note: note.trim(),
-    });
-
-    setIsSuccess(true);
+        note: note.trim(),
+      });
+      setIsSuccess(true);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Transfer could not be recorded. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -223,11 +233,15 @@ export const FundTransferModal: React.FC<FundTransferModalProps> = ({ onClose })
                 >
                   Cancel
                 </button>
+                {submitError && (
+                  <div className="text-[11px] text-rose-600 font-medium max-w-[220px]">{submitError}</div>
+                )}
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs cursor-pointer"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed rounded-lg shadow-xs cursor-pointer"
                 >
-                  Execute Transfer
+                  {isSubmitting ? 'Executing…' : 'Execute Transfer'}
                 </button>
               </div>
             </div>
