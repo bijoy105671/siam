@@ -118,6 +118,8 @@ export const api = {
     apiRequest<{ ok: boolean }>(`/api/fund-transfers/${encodeURIComponent(id)}/reverse`, { method: 'POST' }),
   accountBalances: () =>
     apiRequest<{ balances: Record<string, number>; total: number }>('/api/accounts/balances'),
+  dashboard: () =>
+    apiRequest<{ today: { total_sales: number; total_received: number; total_vendor_payment: number; total_expense: number; gross_profit: number; loss: number; net_profit: number } }>('/api/dashboard'),
   loanAdvances: () => apiRequest<unknown[]>('/api/loan-advances'),
   loanAdvanceAdjustments: () => apiRequest<unknown[]>('/api/loan-advances/adjustments'),
   createLoanAdvance: (input: Record<string, any>) =>
