@@ -31,7 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { todayReminders, overdueReminders, upcomingFlights } = useApp();
+  const { todayReminders, overdueReminders, upcomingFlights, currentUser } = useApp();
 
   const totalDuesAlert = todayReminders.length + overdueReminders.length;
 
@@ -118,6 +118,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: 'AES-256',
       badgeColor: 'bg-blue-100 text-blue-700',
     },
+    ...(currentUser?.role === 'admin' ? [{
+      id: 'recycle_bin',
+      label: 'Transaction Recycle Bin',
+      icon: Trash2,
+      badge: '30D',
+      badgeColor: 'bg-amber-100 text-amber-800',
+    }] : []),
     {
       id: 'verify_portal',
       label: 'Verify Invoice',
