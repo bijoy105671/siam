@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, CheckCircle2, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, CheckCircle2, Pencil, Plus, Trash2, X, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { LoanAdvanceDirection, LoanAdvanceKind, LoanAdvancePartyType, PaymentMethod } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
 
 export const LoanAdvanceManager: React.FC = () => {
-  const { customers, vendors, loanAdvances, addLoanAdvance, updateLoanAdvance, deleteLoanAdvance } = useApp();
+  const { customers, vendors, loanAdvances, loanAdvanceAdjustments, transactions, addLoanAdvance, updateLoanAdvance, deleteLoanAdvance, adjustLoanAdvance, deleteLoanAdvanceAdjustment } = useApp();
   const [partyType, setPartyType] = useState<LoanAdvancePartyType>('customer');
   const [partyId, setPartyId] = useState('');
   const [kind, setKind] = useState<LoanAdvanceKind>('advance');
@@ -60,6 +60,15 @@ export const LoanAdvanceManager: React.FC = () => {
     return map;
   }, [loanAdvances]);
 
+  const adjustedAmount = (id: string) => (loanAdvanceAdjustments || [])
+    .filter(a => a.loanAdvanceId === id)
+    .reduce((sum, a) => sum + a.amount, 0);
+
+  const getAvailable = (id: string) => {
+    const r = loanAdvances.find(x => x.id === id);
+    return r ? Math.max(0, r.amount - adjustedAmount(id)) : 0;
+  };
+
   const totals = useMemo(() => {
     const received = loanAdvances.filter(r => r.direction === 'received').reduce((s, r) => s + r.amount, 0);
     const given = loanAdvances.filter(r => r.direction === 'given').reduce((s, r) => s + r.amount, 0);
@@ -100,7 +109,7 @@ export const LoanAdvanceManager: React.FC = () => {
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
         <div className="p-4 border-b border-slate-100 font-bold text-sm">Loan & Advance History</div>
         <div className="overflow-x-auto"><table className="w-full text-xs">
-          <thead className="bg-slate-50"><tr><th className="text-left p-3">Date</th><th className="text-left p-3">Party</th><th className="text-left p-3">Type</th><th className="text-left p-3">Direction</th><th className="text-right p-3">Amount</th><th className="text-left p-3">Method</th><th className="text-right p-3">Action</th></tr></thead>
+          <thead className="bg-slate-50"><tr><th className="text-left p-3">Date</th><th className="text-left p-3">Party</th><th className="text-left p-3">Type</th><th className="text-left p-3">Direction</th><th className="text-right p-3">Amount</th><th className="text-left p-3">Method</th><th className="text-right p-3">Available</th><th className="text-right p-3">Action</th></tr></thead>
           <tbody>{loanAdvances.map(r => (
             <tr key={r.id} className="border-t border-slate-100">
               <td className="p-3 whitespace-nowrap">{r.date}<div className="text-[10px] text-slate-400">{r.time}</div></td>
@@ -108,9 +117,29 @@ export const LoanAdvanceManager: React.FC = () => {
               <td className="p-3">{r.kind === 'advance' ? 'Advance' : 'Loan'}</td>
               <td className="p-3">{r.direction === 'received' ? <span className="text-emerald-600 flex items-center gap-1"><ArrowDownLeft className="w-3.5 h-3.5"/>Received</span> : <span className="text-rose-600 flex items-center gap-1"><ArrowUpRight className="w-3.5 h-3.5"/>Given</span>}</td>
               <td className="p-3 text-right font-bold">{formatCurrency(r.amount)}</td><td className="p-3">{r.paymentMethod}</td>
-              <td className="p-3 text-right whitespace-nowrap"><button onClick={() => startEdit(r.id)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"><Pencil className="w-3.5 h-3.5"/></button><button onClick={() => {if(confirm('Delete this loan/advance entry?')) deleteLoanAdvance(r.id)}} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5"/></button></td>
+              <td className="p-3 text-right font-bold text-blue-600">{formatCurrency(getAvailable(r.id))}</td>
+              <td className="p-3 text-right whitespace-nowrap"><button onClick={() => handleAdjust(r.id)} title="Adjust / Settle against due" className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded"><SlidersHorizontal className="w-3.5 h-3.5"/></button><button onClick={() => startEdit(r.id)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"><Pencil className="w-3.5 h-3.5"/></button><button onClick={() => {if(confirm('Delete this loan/advance entry?')) deleteLoanAdvance(r.id)}} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5"/></button></td>
             </tr>
-          ))}{!loanAdvances.length && <tr><td colSpan={7} className="p-10 text-center text-slate-400">No loan or advance records yet.</td></tr>}</tbody>
+          ))}{!loanAdvances.length && <tr><td colSpan={8} className="p-10 text-center text-slate-400">No loan or advance records yet.</td></tr>}</tbody>
+        </table></div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <div className="p-4 border-b border-slate-100 font-bold text-sm">Adjustment / Settlement History</div>
+        <div className="overflow-x-auto"><table className="w-full text-xs">
+          <thead className="bg-slate-50"><tr><th className="text-left p-3">Date</th><th className="text-left p-3">Party</th><th className="text-left p-3">Invoice</th><th className="text-right p-3">Adjusted</th><th className="text-left p-3">Note</th><th className="text-right p-3">Action</th></tr></thead>
+          <tbody>{adjustmentRows.map(a => {
+            const tx = transactions.find(t => t.id === a.transactionId);
+            const party = a.partyType === 'customer' ? customers.find(p => p.id === a.partyId) : vendors.find(p => p.id === a.partyId);
+            return <tr key={a.id} className="border-t border-slate-100">
+              <td className="p-3 whitespace-nowrap">{a.date}<div className="text-[10px] text-slate-400">{a.time}</div></td>
+              <td className="p-3 font-semibold">{party?.name || a.partyId}</td>
+              <td className="p-3">{tx?.invoiceNumber || a.transactionId}</td>
+              <td className="p-3 text-right font-bold text-emerald-600">{formatCurrency(a.amount)}</td>
+              <td className="p-3 text-slate-500">{a.note || '—'}</td>
+              <td className="p-3 text-right"><button onClick={() => { if (confirm('Reverse this adjustment? No cash will be moved.')) deleteLoanAdvanceAdjustment(a.id); }} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded" title="Reverse adjustment"><RotateCcw className="w-3.5 h-3.5"/></button></td>
+            </tr>;
+          })}{!adjustmentRows.length && <tr><td colSpan={6} className="p-8 text-center text-slate-400">No adjustments yet.</td></tr>}</tbody>
         </table></div>
       </div>
 
