@@ -70,6 +70,70 @@ export const LoanAdvanceManager: React.FC = () => {
     return r ? Math.max(0, r.amount - adjustedAmount(id)) : 0;
   };
 
+  const adjustmentRows = useMemo(() => [...(loanAdvanceAdjustments || [])].sort((a, b) => {
+    const aa = a.date + ' ' + a.time;
+    const bb = b.date + ' ' + b.time;
+    return bb.localeCompare(aa);
+  }), [loanAdvanceAdjustments]);
+
+  const handleAdjust = (loanAdvanceId: string) => {
+    const record = loanAdvances.find((r) => r.id === loanAdvanceId);
+    if (!record) return;
+    const available = getAvailable(loanAdvanceId);
+    if (available <= 0) {
+      alert('This loan/advance has no remaining amount available for adjustment.');
+      return;
+    }
+
+    const candidates = transactions.filter((t) =>
+      record.partyType === 'customer'
+        ? t.customerId === record.partyId && t.customerDue > 0
+        : t.vendorId === record.partyId && t.vendorDue > 0
+    );
+    if (!candidates.length) {
+      alert('No unpaid transaction/due was found for this party.');
+      return;
+    }
+
+    const list = candidates.map((t, i) => {
+      const due = record.partyType === 'customer' ? t.customerDue : t.vendorDue;
+      return (i + 1) + '. ' + t.invoiceNumber + ' — Due ৳' + due;
+    }).join('\n');
+
+    const selected = window.prompt(
+      'Select invoice number to adjust against:\n\n' + list +
+      '\n\nEnter 1-' + candidates.length + ':',
+      '1'
+    );
+    if (selected === null) return;
+
+    const index = Number(selected) - 1;
+    if (!Number.isInteger(index) || index < 0 || index >= candidates.length) {
+      alert('Invalid invoice selection.');
+      return;
+    }
+
+    const tx = candidates[index];
+    const due = record.partyType === 'customer' ? tx.customerDue : tx.vendorDue;
+    const rawAmount = window.prompt(
+      'Available from this ' + record.kind + ': ৳' + available +
+      '\nInvoice due: ৳' + due + '\n\nEnter adjustment amount:',
+      String(Math.min(available, due))
+    );
+    if (rawAmount === null) return;
+
+    const value = Number(rawAmount);
+    if (!Number.isFinite(value) || value <= 0) {
+      alert('Enter a valid adjustment amount.');
+      return;
+    }
+
+    const noteValue = window.prompt('Adjustment note (optional):', '') || undefined;
+    const ok = adjustLoanAdvance(loanAdvanceId, tx.id, value, noteValue);
+    alert(ok ? 'Loan / Advance adjusted successfully.' :
+      'Adjustment could not be completed. Please check the available amount and due.');
+  };
+
   const totals = useMemo(() => {
     const received = loanAdvances.filter(r => r.direction === 'received').reduce((s, r) => s + r.amount, 0);
     const given = loanAdvances.filter(r => r.direction === 'given').reduce((s, r) => s + r.amount, 0);
