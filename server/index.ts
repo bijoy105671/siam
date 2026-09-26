@@ -24,23 +24,24 @@ const initializeDatabase = async () => {
   console.log('SIAM AIR database schema initialized');
 };
 
-const sendPasswordResetOtp = async (otp: string) => {
+const sendSecurityOtp = async (otp: string, action: string) => {
   const apiKey = process.env.RESEND_API_KEY;
   const from = 'onboarding@resend.dev';
-  if (!apiKey) throw new Error('Password reset email is not configured. Add RESEND_API_KEY in Render.');
+  if (!apiKey) throw new Error('Security OTP email is not configured. Add RESEND_API_KEY in Render.');
+  const safeAction = action || 'a protected administrator action';
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       from,
       to: [PASSWORD_RESET_EMAIL],
-      subject: 'SIAM AIR & DIGITAL SERVICE — Admin Password Reset OTP',
-      html: '<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:14px"><h2 style="margin:0 0 8px">Admin Password Reset</h2><p>Your one-time verification code is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#f1f5f9;border-radius:10px">' + otp + '</div><p style="color:#64748b">This OTP expires in 10 minutes. If you did not request this, ignore this email.</p><p style="margin-bottom:0"><b>SIAM AIR & DIGITAL SERVICE</b></p></div>'
+      subject: 'SIAM AIR & DIGITAL SERVICE — Security OTP: ' + safeAction,
+      html: '<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:14px"><h2 style="margin:0 0 8px">Security Verification Required</h2><p>You are trying to perform the following protected action:</p><div style="font-weight:800;font-size:17px;padding:12px 14px;background:#f8fafc;border-radius:10px;border-left:4px solid #0f766e">' + safeAction + '</div><p>Your one-time security verification code is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#f1f5f9;border-radius:10px">' + otp + '</div><p style="color:#64748b">This security OTP expires in 10 minutes. If you did not request this action, do not share the code.</p><p style="margin-bottom:0"><b>SIAM AIR & DIGITAL SERVICE</b></p></div>'
     })
   });
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    throw new Error('Email provider rejected the request: ' + body.slice(0, 300));
+    throw new Error('Email provider rejected the security OTP request: ' + body.slice(0, 300));
   }
 };
 
@@ -68,6 +69,25 @@ const auth = (req: express.Request, res: express.Response, next: express.NextFun
   next();
 };
 
+const getSecurityAction = (req: express.Request) => {
+  const headerAction = String(req.header('x-security-action') || '').trim();
+  if (headerAction) return headerAction;
+  const path = req.path;
+  if (path === '/api/settings') return 'Update Company & Agency Identity Settings';
+  if (path === '/api/opening-balances' || path.startsWith('/api/opening-balances/')) return 'Change Account Opening Balance';
+  if (path === '/api/admin/clear-all-data') return 'Clear All Business Data';
+  if (path.startsWith('/api/users')) return 'User & Permission Management';
+  if (path.startsWith('/api/transactions/')) return 'Edit or Delete Transaction';
+  if (path.startsWith('/api/payments/')) return 'Reverse Payment';
+  if (path.startsWith('/api/expenses/')) return 'Reverse Expense';
+  if (path.startsWith('/api/fund-transfers/')) return 'Reverse Fund Transfer';
+  if (path.startsWith('/api/loan-advances')) return 'Loan / Advance Management';
+  if (path.startsWith('/api/admin/recycle-bin')) return 'Transaction Recycle Bin Management';
+  if (path.startsWith('/api/customers/')) return 'Customer Record Management';
+  if (path.startsWith('/api/vendors/')) return 'Vendor Record Management';
+  return 'Protected Administrator Action';
+};
+
 const criticalAdminOnly = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Authentication required' });
   try {
@@ -77,11 +97,12 @@ const criticalAdminOnly = async (req: express.Request, res: express.Response, ne
     const verifiedUntil = Number((req.session as any).securityVerifiedUntil || 0);
     if (verifiedUntil <= Date.now()) {
       const otp = String(randomInt(100000, 1000000));
+      const action = getSecurityAction(req);
       await pool.query('CREATE TABLE IF NOT EXISTS security_otps (id UUID PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, otp_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now())');
       await pool.query('UPDATE security_otps SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [req.session.userId]);
       await pool.query("INSERT INTO security_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval '10 minutes')", [randomUUID(), req.session.userId, hashOtp(otp)]);
-      await sendPasswordResetOtp(otp);
-      return res.status(428).json({ error: 'SECURITY_OTP_REQUIRED', message: 'A security OTP was sent to the recovery email. Enter it to continue this important change.' });
+      await sendSecurityOtp(otp, action);
+      return res.status(428).json({ error: 'SECURITY_OTP_REQUIRED', message: 'Security verification required for: ' + action + '. A 6-digit OTP was sent to your registered recovery email.' });
     }
     next();
   } catch (e) {
