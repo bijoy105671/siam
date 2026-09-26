@@ -28,16 +28,6 @@ const MainLayout: React.FC = () => {
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  if (USE_SERVER_API && !currentUser) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <LoginModal isOpen={true} onClose={() => undefined} />
-        </div>
-      </div>
-    );
-  }
-
   // URL QR Scan Verification State
   const [verificationParams, setVerificationParams] = useState<{
     invoiceNumber?: string;
@@ -131,6 +121,16 @@ const MainLayout: React.FC = () => {
   const handleSelectVendorFromSearch = (vend: Vendor) => {
     setInspectVendorId(vend.id);
   };
+
+  if (USE_SERVER_API && !currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <LoginModal isOpen={true} onClose={() => undefined} />
+        </div>
+      </div>
+    );
+  }
 
   // If direct QR code scan URL parameter is detected, show the public verification page directly
   if (verificationParams) {
