@@ -12,7 +12,8 @@
     "server": "tsx server/index.ts",
     "dev:full": "concurrently -n WEB,API -c blue,green \"npm run dev\" \"npm run server\"",
     "db:migrate": "tsx server/migrate.ts",
-    "db:bootstrap-admin": "tsx server/bootstrap-admin.ts"
+    "db:bootstrap-admin": "tsx server/bootstrap-admin.ts",
+    "start": "tsx server/index.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
