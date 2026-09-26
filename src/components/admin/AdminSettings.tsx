@@ -86,20 +86,27 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
 
   const handleSaveBusiness = async (e: React.FormEvent) => {
     e.preventDefault();
-    await updateSettings({
-      name: bizName,
-      tagline: bizTagline,
-      address: bizAddress,
-      mobile: bizMobile,
-      whatsapp: bizWhatsapp,
-      email: bizEmail,
-      invoicePrefix,
-      invoiceTerms,
-      signatureLabel,
-      logoUrl,
-    });
-    setSaveMessage('Business information saved successfully!');
-    setTimeout(() => setSaveMessage(''), 3000);
+    setSaveMessage('');
+    try {
+      await updateSettings({
+        name: bizName,
+        tagline: bizTagline,
+        address: bizAddress,
+        mobile: bizMobile,
+        whatsapp: bizWhatsapp,
+        email: bizEmail,
+        invoicePrefix,
+        invoiceTerms,
+        signatureLabel,
+        logoUrl,
+      });
+      setSaveMessage('Business information saved successfully!');
+      setTimeout(() => setSaveMessage(''), 3000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Business information could not be saved.';
+      setSaveMessage('Save failed: ' + message);
+      alert(message);
+    }
   };
 
   const handleSaveTemplates = (e: React.FormEvent) => {
