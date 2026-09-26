@@ -9,18 +9,20 @@ import {
   DollarSign,
   Building,
   X,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Transaction, Vendor } from '../../types';
 import { formatCurrency, sanitizePhoneForWhatsapp } from '../../utils/formatters';
 import { VendorLedgerModal } from './VendorLedgerModal';
+import { api } from '../../services/apiClient';
 
 interface VendorListProps {
   onSelectTransaction: (tx: Transaction) => void;
 }
 
 export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction }) => {
-  const { vendors, addVendor, updateVendor, getVendorLedger, settings } = useApp();
+  const { vendors, addVendor, updateVendor, getVendorLedger, settings, currentUser } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
 
