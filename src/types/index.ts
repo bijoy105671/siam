@@ -198,6 +198,19 @@ export interface LoanAdvanceRecord {
   createdBy: string;
 }
 
+export interface LoanAdvanceAdjustment {
+  id: string;
+  loanAdvanceId: string;
+  transactionId: string;
+  partyType: LoanAdvancePartyType;
+  partyId: string;
+  amount: number;
+  date: string;
+  time: string;
+  note?: string;
+  createdBy: string;
+}
+
 export interface FundTransfer {
   id: string;
   fromAccount: PaymentMethod;
