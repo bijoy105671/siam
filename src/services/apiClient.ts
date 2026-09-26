@@ -38,6 +38,8 @@ export const api = {
     apiRequest<unknown[]>(`/api/customers${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   vendors: (q = '') =>
     apiRequest<unknown[]>(`/api/vendors${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  updateCustomer: (id: string, input: Record<string, any>) => apiRequest<{ customer: unknown }>(`/api/customers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  updateVendor: (id: string, input: Record<string, any>) => apiRequest<{ vendor: unknown }>(`/api/vendors/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   transactions: (limit = 100) =>
     apiRequest<unknown[]>(`/api/transactions?limit=${limit}`),
   deleteTransaction: (id: string) =>
