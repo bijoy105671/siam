@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, CheckCircle2, Pencil, Plus, Trash2, X, SlidersHorizontal, RotateCcw, Search } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { LoanAdvanceDirection, LoanAdvanceKind, LoanAdvancePartyType, PaymentMethod } from '../../types';
+import { LoanAdvanceDirection, LoanAdvanceKind, LoanAdvancePartyType, PaymentMethod, Transaction } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
 
-export const LoanAdvanceManager: React.FC = () => {
+interface LoanAdvanceManagerProps { onOpenPayment?: (tx: Transaction, type: 'customer' | 'vendor') => void; }
+
+export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPayment }) => {
   const { customers, vendors, loanAdvances, loanAdvanceAdjustments, transactions, addLoanAdvance, addLoanAdvanceAsync, updateLoanAdvance, updateLoanAdvanceAsync, deleteLoanAdvance, deleteLoanAdvanceAsync, adjustLoanAdvance, adjustLoanAdvanceAsync, deleteLoanAdvanceAdjustment, deleteLoanAdvanceAdjustmentAsync, addCustomerAsync, addVendorAsync } = useApp();
   const [partyType, setPartyType] = useState<LoanAdvancePartyType>('customer');
   const [partyId, setPartyId] = useState('');
@@ -211,7 +213,7 @@ export const LoanAdvanceManager: React.FC = () => {
       <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
         <div>
           <div className="font-bold text-sm text-slate-900">Loan / Advance Account Search</div>
-          <div className="text-[11px] text-slate-500">Search a customer/vendor and use the account directly for payment or settlement.</div>
+          <div className="text-[11px] text-slate-500">Search a customer/vendor and pay an outstanding invoice or settle an advance directly from the linked account.</div>
         </div>
         <div className="relative"><Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400"/><input value={partySearch} onChange={e=>setPartySearch(e.target.value)} placeholder="Search customer or vendor..." className="w-full pl-9 pr-3 py-2 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/></div>
         <div className="divide-y border rounded-xl overflow-hidden">
@@ -219,7 +221,11 @@ export const LoanAdvanceManager: React.FC = () => {
             const net = r.received - r.given;
             return <div key={r.partyType+':'+r.partyId} className="p-3 flex items-center justify-between gap-3">
               <div><div className="font-semibold text-xs">{r.name}</div><div className="text-[10px] text-slate-400">{r.partyType} · Received {formatCurrency(r.received)} · Given {formatCurrency(r.given)}</div></div>
-              <div className="flex items-center gap-2"><span className="text-xs font-bold text-blue-700">{formatCurrency(Math.abs(net))} {net >= 0 ? 'credit' : 'due'}</span><button type="button" onClick={()=>{setPartyType(r.partyType);setPartyId(r.partyId);window.scrollTo({top:0,behavior:'smooth'});}} className="px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 rounded-lg">Payment</button><button type="button" disabled={!loanAdvances.some(x=>x.partyType===r.partyType&&x.partyId===r.partyId&&getAvailable(x.id)>0)} onClick={()=>{const source=[...loanAdvances].reverse().find(x=>x.partyType===r.partyType&&x.partyId===r.partyId&&getAvailable(x.id)>0); if(source) handleAdjust(source.id);}} className="px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">Settle Balance</button></div>
+              <div className="flex items-center gap-2"><span className="text-xs font-bold text-blue-700">{formatCurrency(Math.abs(net))} {net >= 0 ? 'credit' : 'due'}</span><button type="button" onClick={() => {
+                const dueTx = transactions.find(t => r.partyType === 'customer' ? t.customerId === r.partyId && t.customerDue > 0 : t.vendorId === r.partyId && t.vendorDue > 0);
+                if (dueTx && onOpenPayment) onOpenPayment(dueTx, r.partyType);
+                else alert('No outstanding invoice due found for this party.');
+              }} disabled={!onOpenPayment || !transactions.some(t => r.partyType === 'customer' ? t.customerId === r.partyId && t.customerDue > 0 : t.vendorId === r.partyId && t.vendorDue > 0)} className="px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">Pay Due</button><button type="button" disabled={!loanAdvances.some(x=>x.partyType===r.partyType&&x.partyId===r.partyId&&getAvailable(x.id)>0)} onClick={()=>{const source=[...loanAdvances].reverse().find(x=>x.partyType===r.partyType&&x.partyId===r.partyId&&getAvailable(x.id)>0); if(source) handleAdjust(source.id);}} className="px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">Settle Balance</button></div>
             </div>;
           })}
           {!partyAccountRows.length && <div className="p-6 text-center text-slate-400 text-xs">No loan/advance account found.</div>}
