@@ -433,7 +433,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                     `Are you sure you want to delete Invoice ${tx.invoiceNumber}? This will be recorded permanently in the Audit History.`
                                   )
                                 ) {
-                                  deleteTransaction(tx.id);
+                                  void deleteTransaction(tx.id).catch((error) => {
+                                    alert(error instanceof Error ? error.message : 'Transaction could not be deleted.');
+                                  });
                                 }
                               }}
                               className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
