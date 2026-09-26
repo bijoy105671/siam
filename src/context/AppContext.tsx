@@ -158,11 +158,11 @@ interface AppContextType {
   addVendor: (vend: Omit<Vendor, 'id' | 'createdAt'>) => Vendor;
   updateVendor: (id: string, vend: Partial<Vendor>) => void;
 
-  addExpense: (expense: Omit<Expense, 'id' | 'createdBy'>) => void;
+  addExpense: (expense: Omit<Expense, 'id' | 'createdBy'>) => Promise<void>;
   deleteExpense: (id: string) => void;
   updateExpenseCategories: (cats: ExpenseCategory[]) => void;
 
-  addFundTransfer: (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => void;
+  addFundTransfer: (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => Promise<void>;
 
   updateOpeningBalance: (method: PaymentMethod, amount: number) => void;
   updateSettings: (settings: Partial<BusinessSettings>) => void;
