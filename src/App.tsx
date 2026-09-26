@@ -23,8 +23,10 @@ import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { LoginModal } from './components/auth/LoginModal';
 import { InvoiceVerificationPage } from './components/verification/InvoiceVerificationPage';
 import { Customer, Transaction, Vendor } from './types';
+import { USE_SERVER_API } from './services/apiClient';
 
 const MainLayout: React.FC = () => {
+  const { currentUser } = useApp();
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -121,6 +123,18 @@ const MainLayout: React.FC = () => {
   const handleSelectVendorFromSearch = (vend: Vendor) => {
     setInspectVendorId(vend.id);
   };
+
+  // Production mode requires an authenticated server session before showing business data.
+  // Keep public invoice verification accessible from a QR link.
+  if (!verificationParams && USE_SERVER_API && !currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <LoginModal isOpen={true} onClose={() => undefined} />
+        </div>
+      </div>
+    );
+  }
 
   // If direct QR code scan URL parameter is detected, show the public verification page directly
   if (verificationParams) {
