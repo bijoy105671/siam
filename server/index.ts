@@ -100,6 +100,19 @@ app.post('/api/auth/login', async (req, res) => {
   res.json({ user: { id: user.id, username: user.username, fullName: user.full_name, role: user.role, permissions: user.permissions } });
 });
 
+app.post('/api/auth/change-password', auth, async (req, res) => {
+  const currentPassword = String(req.body?.currentPassword || '');
+  const newPassword = String(req.body?.newPassword || '');
+  if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  const { rows } = await pool.query('SELECT password_hash FROM users WHERE id=$1 AND is_active=true', [req.session.userId]);
+  if (!rows[0] || !(await bcrypt.compare(currentPassword, rows[0].password_hash))) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+  const hash = await bcrypt.hash(newPassword, 12);
+  await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, req.session.userId]);
+  res.json({ ok: true });
+});
+
 app.post('/api/auth/logout', (req, res) => req.session.destroy(() => res.json({ ok: true })));
 
 app.get('/api/auth/me', async (req, res) => {
