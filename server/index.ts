@@ -5,7 +5,7 @@ import connectPgSimple from 'connect-pg-simple';
 import bcrypt from 'bcryptjs';
 import { Pool, PoolClient } from 'pg';
 import { fileURLToPath } from 'node:url';
-import { createHash, randomInt } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -71,7 +71,7 @@ const criticalAdminOnly = async (req: express.Request, res: express.Response, ne
       const otp = String(randomInt(100000, 1000000));
       await pool.query('CREATE TABLE IF NOT EXISTS security_otps (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, otp_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now())');
       await pool.query('UPDATE security_otps SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [req.session.userId]);
-      await pool.query("INSERT INTO security_otps (user_id,otp_hash,expires_at) VALUES ($1,$2,now()+interval '10 minutes')", [req.session.userId, hashOtp(otp)]);
+      await pool.query("INSERT INTO security_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval '10 minutes')", [randomUUID(), req.session.userId, hashOtp(otp)]);
       await sendPasswordResetOtp(otp);
       return res.status(428).json({ error: 'SECURITY_OTP_REQUIRED', message: 'A security OTP was sent to the recovery email. Enter it to continue this important change.' });
     }
@@ -175,7 +175,7 @@ app.post('/api/auth/request-password-reset', async (req, res) => {
     await pool.query('UPDATE password_reset_otps SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [rows[0].id]);
     await pool.query(
       'INSERT INTO password_reset_otps (user_id,otp_hash,expires_at) VALUES ($1,$2,now()+interval \'10 minutes\')',
-      [rows[0].id, otpHash]
+      [randomUUID(), rows[0].id, otpHash]
     );
     await sendPasswordResetOtp(otp);
     res.json({ ok: true, message: 'OTP sent to the registered recovery email.' });
