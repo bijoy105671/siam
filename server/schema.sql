@@ -26,8 +26,11 @@ CREATE TABLE IF NOT EXISTS customers (
   notes text,
   opening_due numeric(14,2) NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (mobile)
 );
+
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
 CREATE TABLE IF NOT EXISTS vendors (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -39,8 +42,11 @@ CREATE TABLE IF NOT EXISTS vendors (
   address text,
   account_info text,
   opening_payable numeric(14,2) NOT NULL DEFAULT 0,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
 CREATE TABLE IF NOT EXISTS services (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -143,7 +149,6 @@ CREATE INDEX IF NOT EXISTS idx_transactions_customer ON transactions(customer_id
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_payments_entity ON payments(entity_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_logs(created_at);
-
 
 CREATE TABLE IF NOT EXISTS account_entries (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
