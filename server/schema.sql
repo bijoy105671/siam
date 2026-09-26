@@ -160,9 +160,6 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS reversed_by uuid REFERENCES users(
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS reversed_by uuid REFERENCES users(id);
 ALTER TABLE fund_transfers ADD COLUMN IF NOT EXISTS reversed_by uuid REFERENCES users(id);
 CREATE INDEX IF NOT EXISTS idx_payments_entity ON payments(entity_id);
-CREATE INDEX IF NOT EXISTS idx_account_entries_payment ON account_entries(payment_id);
-CREATE INDEX IF NOT EXISTS idx_account_entries_expense ON account_entries(expense_id);
-CREATE INDEX IF NOT EXISTS idx_account_entries_fund_transfer ON account_entries(fund_transfer_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_logs(created_at);
 
 CREATE TABLE IF NOT EXISTS account_entries (
