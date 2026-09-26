@@ -758,6 +758,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         transactions: prev.transactions.filter((t: Transaction) => t.id !== id),
         partialPayments: prev.partialPayments.filter((p: PartialPayment) => p.transactionId !== id),
+        // Remove invoice-linked loan/advance adjustments when the invoice is deleted.
+        // This prevents orphaned adjustments from reducing the advance's available balance.
+        loanAdvanceAdjustments: (prev.loanAdvanceAdjustments || []).filter(
+          (a: LoanAdvanceAdjustment) => a.transactionId !== id
+        ),
       };
     });
     recordAudit(
