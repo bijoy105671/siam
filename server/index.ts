@@ -533,6 +533,8 @@ app.delete('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
     const tx = (await client.query('SELECT * FROM transactions WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
     if (!tx) throw new Error('Transaction not found');
     if (tx.deleted_at) throw new Error('Transaction is already deleted');
+    const activeAdjustments = (await client.query('SELECT COUNT(*)::int AS count FROM loan_advance_adjustments WHERE transaction_id=$1 AND reversed_at IS NULL', [tx.id])).rows[0]?.count || 0;
+    if (Number(activeAdjustments) > 0) throw new Error('Reverse active loan/advance adjustment before deleting this transaction.');
     await client.query(`UPDATE account_entries SET reversed_at=now() WHERE source_id=$1 AND reversed_at IS NULL`, [tx.id]);
     await client.query('UPDATE payments SET reversed_at=now(), reversed_by=$1 WHERE transaction_id=$2 AND reversed_at IS NULL', [req.session.userId, tx.id]);
     await client.query('UPDATE transactions SET deleted_at=now(), deleted_by=$1, updated_at=now() WHERE id=$2', [req.session.userId, tx.id]);
@@ -1135,3 +1137,4 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
+
