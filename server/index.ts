@@ -56,6 +56,40 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
+app.get('/api/settings', auth, async (_req, res) => {
+  const { rows } = await pool.query('SELECT value FROM app_settings WHERE key=$1', ['business_settings']);
+  const value = rows[0]?.value;
+  res.json({ settings: value && typeof value === 'object' ? value : {} });
+});
+
+app.patch('/api/settings', adminOnly, async (req, res) => {
+  const incoming = req.body && typeof req.body === 'object' ? req.body : {};
+  const allowed = [
+    'name','tagline','logoUrl','address','mobile','whatsapp','email','website',
+    'invoicePrefix','invoiceStartNumber','currencySymbol','currencyName',
+    'defaultReminderDays','invoiceTerms','signatureLabel','templates'
+  ];
+  const { rows: existingRows } = await pool.query('SELECT value FROM app_settings WHERE key=$1', ['business_settings']);
+  const existing = existingRows[0]?.value && typeof existingRows[0].value === 'object' ? existingRows[0].value : {};
+  const patch: Record<string, unknown> = {};
+  for (const key of allowed) if (Object.prototype.hasOwnProperty.call(incoming, key)) patch[key] = incoming[key];
+  const merged = { ...existing, ...patch };
+  if (typeof merged.logoUrl === 'string' && merged.logoUrl.length > 1800000) {
+    return res.status(413).json({ error: 'Logo is too large. Please use an image under about 1.3 MB.' });
+  }
+  await pool.query(
+    'INSERT INTO app_settings (key,value) VALUES ($1,$2::jsonb) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()',
+    ['business_settings', JSON.stringify(merged)]
+  );
+  const client = await pool.connect();
+  try {
+    await audit(client, req.session.userId!, 'BUSINESS_SETTINGS_UPDATED', 'Settings', 'business', existing, merged);
+  } finally {
+    client.release();
+  }
+  res.json({ settings: merged });
+});
+
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body ?? {};
   if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
