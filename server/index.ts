@@ -5,12 +5,37 @@ import connectPgSimple from 'connect-pg-simple';
 import bcrypt from 'bcryptjs';
 import { Pool, PoolClient } from 'pg';
 import { fileURLToPath } from 'node:url';
+import { createHash, randomInt } from 'node:crypto';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) throw new Error('SESSION_SECRET must be set and at least 32 characters');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, options: '-c timezone=Asia/Dhaka', ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined });
+
+const PASSWORD_RESET_EMAIL = 'bijoy105671@gmail.com';
+const hashOtp = (otp: string) => createHash('sha256').update(otp).digest('hex');
+
+const sendPasswordResetOtp = async (otp: string) => {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM_EMAIL;
+  if (!apiKey || !from) throw new Error('Password reset email is not configured');
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from,
+      to: [PASSWORD_RESET_EMAIL],
+      subject: 'SIAM AIR & DIGITAL SERVICE — Admin Password Reset OTP',
+      html: '<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:14px"><h2 style="margin:0 0 8px">Admin Password Reset</h2><p>Your one-time verification code is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#f1f5f9;border-radius:10px">' + otp + '</div><p style="color:#64748b">This OTP expires in 10 minutes. If you did not request this, ignore this email.</p><p style="margin-bottom:0"><b>SIAM AIR & DIGITAL SERVICE</b></p></div>'
+    })
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error('Email provider rejected the request: ' + body.slice(0, 300));
+  }
+};
+
 const PgSession = connectPgSimple(session);
 
 app.set('trust proxy', 1);
@@ -100,25 +125,76 @@ app.post('/api/auth/login', async (req, res) => {
   res.json({ user: { id: user.id, username: user.username, fullName: user.full_name, role: user.role, permissions: user.permissions } });
 });
 
-app.post('/api/auth/recovery-reset', async (req, res) => {
-  const recoveryKey = String(req.body?.recoveryKey || '');
+app.post('/api/auth/request-password-reset', async (req, res) => {
   const username = String(req.body?.username || '').trim();
+  if (!username) return res.status(400).json({ error: 'Username is required' });
+
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, role, is_active FROM users WHERE lower(username)=lower($1)',
+      [username]
+    );
+    if (!rows[0]?.is_active || rows[0].role !== 'admin') {
+      return res.json({ ok: true, message: 'If the administrator account exists, an OTP has been sent to the registered recovery email.' });
+    }
+
+    const otp = String(randomInt(100000, 1000000));
+    const otpHash = hashOtp(otp);
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS password_reset_otps (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        otp_hash TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        used_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )`
+    );
+    await pool.query('UPDATE password_reset_otps SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [rows[0].id]);
+    await pool.query(
+      'INSERT INTO password_reset_otps (user_id,otp_hash,expires_at) VALUES ($1,$2,now()+interval \'10 minutes\')',
+      [rows[0].id, otpHash]
+    );
+    await sendPasswordResetOtp(otp);
+    res.json({ ok: true, message: 'OTP sent to the registered recovery email.' });
+  } catch (e) {
+    res.status(503).json({ error: e instanceof Error ? e.message : 'Unable to send reset OTP' });
+  }
+});
+
+app.post('/api/auth/verify-password-reset', async (req, res) => {
+  const username = String(req.body?.username || '').trim();
+  const otp = String(req.body?.otp || '').trim();
   const newPassword = String(req.body?.newPassword || '');
-  if (!process.env.ADMIN_RECOVERY_KEY || process.env.ADMIN_RECOVERY_KEY.length < 24) {
-    return res.status(503).json({ error: 'Admin recovery is not configured. Set ADMIN_RECOVERY_KEY in the server environment.' });
+  if (!username || !/^\\d{6}$/.test(otp) || newPassword.length < 8) {
+    return res.status(400).json({ error: 'Username, 6-digit OTP and new password (8+ characters) are required' });
   }
-  if (!recoveryKey || recoveryKey !== process.env.ADMIN_RECOVERY_KEY) {
-    return res.status(401).json({ error: 'Invalid recovery key' });
+
+  const { rows: users } = await pool.query(
+    'SELECT id, role, is_active FROM users WHERE lower(username)=lower($1)',
+    [username]
+  );
+  const user = users[0];
+  if (!user?.is_active || user.role !== 'admin') return res.status(400).json({ error: 'Invalid or expired OTP' });
+
+  const { rows } = await pool.query(
+    'SELECT id, otp_hash, expires_at, attempts FROM password_reset_otps WHERE user_id=$1 AND used_at IS NULL ORDER BY created_at DESC LIMIT 1',
+    [user.id]
+  );
+  const reset = rows[0];
+  if (!reset || new Date(reset.expires_at).getTime() <= Date.now() || Number(reset.attempts) >= 5) {
+    return res.status(400).json({ error: 'Invalid or expired OTP' });
   }
-  if (!username || newPassword.length < 8) {
-    return res.status(400).json({ error: 'Username and new password (8+ characters) are required' });
+  if (hashOtp(otp) !== reset.otp_hash) {
+    await pool.query('UPDATE password_reset_otps SET attempts=attempts+1 WHERE id=$1', [reset.id]);
+    return res.status(400).json({ error: 'Invalid or expired OTP' });
   }
-  const { rows } = await pool.query('SELECT id, role FROM users WHERE lower(username)=lower($1) AND is_active=true', [username]);
-  if (!rows[0]) return res.status(404).json({ error: 'Active user not found' });
-  if (rows[0].role !== 'admin') return res.status(403).json({ error: 'Recovery reset is restricted to administrator accounts' });
+
   const hash = await bcrypt.hash(newPassword, 12);
-  await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, rows[0].id]);
-  await pool.query('DELETE FROM user_sessions WHERE sess::jsonb->>' + "'userId'" + ' = $1', [rows[0].id]).catch(() => {});
+  await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, user.id]);
+  await pool.query('UPDATE password_reset_otps SET used_at=now() WHERE id=$1', [reset.id]);
+  await pool.query('DELETE FROM user_sessions WHERE sess::jsonb->>' + "'userId'" + ' = $1', [user.id]).catch(() => {});
   res.json({ ok: true, message: 'Administrator password reset successfully' });
 });
 
