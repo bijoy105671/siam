@@ -2,26 +2,34 @@ export type ApiError = { error?: string; [key: string]: unknown };
 
 export const USE_SERVER_API = import.meta.env.VITE_USE_SERVER_API === 'true';
 
-export async function apiRequest<T>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
-  const response = await fetch(path, {
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
-
-  const payload = (await response.json().catch(() => ({}))) as T & ApiError;
-  if (!response.ok) {
-    const error = new Error(payload?.error || `Request failed (${response.status})`);
-    Object.assign(error, payload);
-    throw error;
-  }
-  return payload;
+export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const request = async (retry = false): Promise<T> => {
+    const response = await fetch(path, {
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      ...options,
+    });
+    const payload = (await response.json().catch(() => ({}))) as T & ApiError & { message?: string };
+    if (response.status === 428 && payload?.error === 'SECURITY_OTP_REQUIRED' && !retry) {
+      const otp = window.prompt((payload.message || 'Security OTP required') + '\n\nEnter the 6-digit OTP sent to bijoy105671@gmail.com:');
+      if (!otp) throw new Error('Security OTP verification cancelled.');
+      const verify = await fetch('/api/auth/verify-security-otp', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otp: otp.trim() }),
+      });
+      const verifyPayload = await verify.json().catch(() => ({}));
+      if (!verify.ok) throw new Error(verifyPayload?.error || 'Security OTP verification failed.');
+      return request(true);
+    }
+    if (!response.ok) {
+      const error = new Error(payload?.error || `Request failed (${response.status})`);
+      Object.assign(error, payload);
+      throw error;
+    }
+    return payload;
+  };
+  return request(false);
 }
 
 export const api = {
