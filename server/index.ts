@@ -762,6 +762,190 @@ app.put('/api/opening-balances/:account', criticalAdminOnly, async (req, res) =>
   finally { client.release(); }
 });
 
+
+const mapLoanAdvance = (row: any) => ({
+  id: String(row.id),
+  partyType: row.party_type,
+  partyId: String(row.party_id),
+  partyName: row.party_name,
+  kind: row.kind,
+  direction: row.direction,
+  amount: Number(row.amount || 0),
+  paymentMethod: String(row.payment_method || 'cash'),
+  date: new Date(row.occurred_at).toISOString().slice(0,10),
+  time: new Date(row.occurred_at).toTimeString().slice(0,5),
+  note: row.note || undefined,
+  reference: row.reference || undefined,
+  createdBy: row.created_by_name || row.created_by || 'Staff',
+});
+
+const mapLoanAdjustment = (row: any) => ({
+  id: String(row.id),
+  loanAdvanceId: String(row.loan_advance_id),
+  transactionId: String(row.transaction_id),
+  partyType: row.party_type,
+  partyId: String(row.party_id),
+  amount: Number(row.amount || 0),
+  date: new Date(row.occurred_at).toISOString().slice(0,10),
+  time: new Date(row.occurred_at).toTimeString().slice(0,5),
+  note: row.note || undefined,
+  createdBy: row.created_by_name || row.created_by || 'Staff',
+});
+
+app.get('/api/loan-advances', auth, async (_req, res) => {
+  const { rows } = await pool.query(`
+    SELECT la.*, u.full_name AS created_by_name
+    FROM loan_advances la LEFT JOIN users u ON u.id=la.created_by
+    WHERE la.reversed_at IS NULL ORDER BY la.occurred_at DESC
+  `);
+  res.json(rows.map(mapLoanAdvance));
+});
+
+app.get('/api/loan-advances/adjustments', auth, async (_req, res) => {
+  const { rows } = await pool.query(`
+    SELECT laa.*, u.full_name AS created_by_name
+    FROM loan_advance_adjustments laa LEFT JOIN users u ON u.id=laa.created_by
+    WHERE laa.reversed_at IS NULL ORDER BY laa.occurred_at DESC
+  `);
+  res.json(rows.map(mapLoanAdjustment));
+});
+
+app.post('/api/loan-advances', auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const body = req.body || {};
+    const partyType = String(body.partyType || '').toLowerCase();
+    const partyId = String(body.partyId || '');
+    const kind = String(body.kind || '').toLowerCase();
+    const direction = String(body.direction || '').toLowerCase();
+    const amount = Number(body.amount);
+    const method = String(body.paymentMethod || '').toLowerCase();
+    if (!['customer','vendor'].includes(partyType) || !partyId) throw new Error('Valid customer/vendor is required');
+    if (!['advance','loan'].includes(kind) || !['received','given'].includes(direction)) throw new Error('Invalid loan/advance type or direction');
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be positive');
+    if (!ACCOUNT_METHODS.has(method)) throw new Error('Invalid payment method');
+    const partyTable = partyType === 'customer' ? 'customers' : 'vendors';
+    const party = (await client.query(`SELECT id,name FROM ${partyTable} WHERE id=$1`, [partyId])).rows[0];
+    if (!party) throw new Error('Party not found');
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [method]);
+    if (direction === 'given') {
+      const balance = await accountBalance(client, method);
+      if (amount > balance) throw new Error('Insufficient balance for loan/advance given');
+    }
+    const row = (await client.query(`
+      INSERT INTO loan_advances (party_type,party_id,party_name,kind,direction,amount,payment_method,occurred_at,note,reference,created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::timestamptz,now()),$9,$10,$11) RETURNING *
+    `, [partyType, partyId, party.name, kind, direction, amount, method, body.occurredAt || null, body.note || null, body.reference || null, req.session.userId])).rows[0];
+    await addAccountEntry(client, method, direction === 'received' ? amount : -amount, 'loan_advance', row.id, req.session.userId!, row.note);
+    await audit(client, req.session.userId!, 'LOAN_ADVANCE_CREATED', 'LoanAdvance', row.id, null, row);
+    await client.query('COMMIT');
+    res.status(201).json({ loanAdvance: mapLoanAdvance(row) });
+  } catch (e) { await client.query('ROLLBACK').catch(()=>{}); res.status(400).json({ error: e instanceof Error ? e.message : 'Loan/advance creation failed' }); }
+  finally { client.release(); }
+});
+
+app.patch('/api/loan-advances/:id', auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const old = (await client.query('SELECT * FROM loan_advances WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!old || old.reversed_at) throw new Error('Loan/advance not found');
+    const used = Number((await client.query('SELECT COALESCE(SUM(amount),0) total FROM loan_advance_adjustments WHERE loan_advance_id=$1 AND reversed_at IS NULL',[old.id])).rows[0].total || 0);
+    if (used > 0) throw new Error('Reverse settlement adjustments before editing this entry');
+    const amount = req.body.amount === undefined ? Number(old.amount) : Number(req.body.amount);
+    const method = String(req.body.paymentMethod || old.payment_method).toLowerCase();
+    const direction = String(req.body.direction || old.direction).toLowerCase();
+    const kind = String(req.body.kind || old.kind).toLowerCase();
+    if (!Number.isFinite(amount) || amount <= 0 || !ACCOUNT_METHODS.has(method) || !['received','given'].includes(direction) || !['advance','loan'].includes(kind)) throw new Error('Invalid loan/advance update');
+    const oldMethod = String(old.payment_method).toLowerCase();
+    const oldDelta = old.direction === 'received' ? Number(old.amount) : -Number(old.amount);
+    const newDelta = direction === 'received' ? amount : -amount;
+    if (oldMethod !== method || oldDelta !== newDelta) {
+      const locks = [...new Set([oldMethod,method])].sort();
+      for (const account of locks) await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[account]);
+      const oldBalance = await accountBalance(client, oldMethod);
+      if (oldDelta < 0 && oldBalance + oldDelta < 0) throw new Error('Invalid source balance for reversal');
+      const newBalance = await accountBalance(client, method);
+      if (newDelta < 0 && newBalance + (oldMethod === method ? 0 : 0) < amount) throw new Error('Insufficient balance for updated loan/advance');
+      await client.query('UPDATE account_entries SET reversed_at=now() WHERE source_type=$1 AND source_id=$2 AND reversed_at IS NULL',['loan_advance',old.id]);
+      if (oldMethod !== method) await addAccountEntry(client, oldMethod, -oldDelta, 'loan_advance_edit', old.id, req.session.userId!, 'Reversal of original loan/advance');
+      else await addAccountEntry(client, oldMethod, -oldDelta, 'loan_advance_edit', old.id, req.session.userId!, 'Reversal of original loan/advance');
+      await addAccountEntry(client, method, newDelta, 'loan_advance_edit', old.id, req.session.userId!, 'Updated loan/advance');
+    }
+    const updated=(await client.query(`UPDATE loan_advances SET party_name=COALESCE($1,party_name), kind=$2,direction=$3,amount=$4,payment_method=$5,note=$6,reference=$7 WHERE id=$8 RETURNING *`,[req.body.partyName || null,kind,direction,amount,method,req.body.note || null,req.body.reference || null,old.id])).rows[0];
+    await audit(client, req.session.userId!, 'LOAN_ADVANCE_UPDATED','LoanAdvance',old.id,old,updated);
+    await client.query('COMMIT'); res.json({ loanAdvance: mapLoanAdvance(updated) });
+  } catch(e){ await client.query('ROLLBACK').catch(()=>{}); res.status(400).json({error:e instanceof Error?e.message:'Loan/advance update failed'}); }
+  finally{client.release();}
+});
+
+app.delete('/api/loan-advances/:id', criticalAdminOnly, async (req,res)=>{
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const row=(await client.query('SELECT * FROM loan_advances WHERE id=$1 FOR UPDATE',[req.params.id])).rows[0];
+    if(!row || row.reversed_at) throw new Error('Loan/advance not found');
+    const used=Number((await client.query('SELECT COALESCE(SUM(amount),0) total FROM loan_advance_adjustments WHERE loan_advance_id=$1 AND reversed_at IS NULL',[row.id])).rows[0].total||0);
+    if(used>0) throw new Error('Reverse settlement adjustments before deleting this entry');
+    await client.query('UPDATE account_entries SET reversed_at=now() WHERE source_type=$1 AND source_id=$2 AND reversed_at IS NULL',['loan_advance',row.id]);
+    await client.query('UPDATE loan_advances SET reversed_at=now(),reversed_by=$1 WHERE id=$2',[req.session.userId,row.id]);
+    await audit(client,req.session.userId!,'LOAN_ADVANCE_REVERSED','LoanAdvance',row.id,row,{reversedAt:new Date().toISOString()});
+    await client.query('COMMIT'); res.json({ok:true});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(400).json({error:e instanceof Error?e.message:'Loan/advance delete failed'});}
+  finally{client.release();}
+});
+
+app.post('/api/loan-advances/:id/adjust', auth, async (req,res)=>{
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const la=(await client.query('SELECT * FROM loan_advances WHERE id=$1 FOR UPDATE',[req.params.id])).rows[0];
+    if(!la || la.reversed_at) throw new Error('Loan/advance not found');
+    const tx=(await client.query('SELECT * FROM transactions WHERE id=$1 FOR UPDATE',[req.body.transactionId])).rows[0];
+    if(!tx || tx.deleted_at) throw new Error('Transaction not found');
+    if(la.party_type==='customer' && String(tx.customer_id)!==String(la.party_id)) throw new Error('Party mismatch');
+    if(la.party_type==='vendor' && String(tx.vendor_id)!==String(la.party_id)) throw new Error('Party mismatch');
+    const used=Number((await client.query('SELECT COALESCE(SUM(amount),0) total FROM loan_advance_adjustments WHERE loan_advance_id=$1 AND reversed_at IS NULL',[la.id])).rows[0].total||0);
+    const available=Math.max(0,Number(la.amount)-used);
+    const due=la.party_type==='customer'?Math.max(0,Number(tx.customer_due)):Math.max(0,Number(tx.vendor_due));
+    const value=Number(req.body.amount);
+    if(!Number.isFinite(value)||value<=0||value>available||value>due) throw new Error('Adjustment exceeds available amount or invoice due');
+    const adj=(await client.query(`INSERT INTO loan_advance_adjustments (loan_advance_id,transaction_id,party_type,party_id,amount,occurred_at,note,created_by) VALUES ($1,$2,$3,$4,$5,COALESCE($6::timestamptz,now()),$7,$8) RETURNING *`,[la.id,tx.id,la.party_type,la.party_id,value,req.body.occurredAt||null,req.body.note||null,req.session.userId])).rows[0];
+    if(la.party_type==='customer'){
+      await client.query('UPDATE transactions SET customer_paid=customer_paid+$1,customer_due=GREATEST(0,selling_price-(customer_paid+$1)),status=CASE WHEN selling_price-(customer_paid+$1)<=0 THEN \'PAID\' WHEN customer_paid+$1>0 THEN \'PARTIAL\' ELSE \'DUE\' END,updated_at=now() WHERE id=$2',[value,tx.id]);
+    } else {
+      await client.query('UPDATE transactions SET vendor_paid=vendor_paid+$1,vendor_due=GREATEST(0,vendor_cost-(vendor_paid+$1)),updated_at=now() WHERE id=$2',[value,tx.id]);
+    }
+    await audit(client,req.session.userId!,'LOAN_ADVANCE_ADJUSTED','LoanAdvance',adj.id,null,adj);
+    await client.query('COMMIT');
+    const updatedTx=(await pool.query('SELECT * FROM transactions WHERE id=$1',[tx.id])).rows[0];
+    res.status(201).json({adjustment:mapLoanAdjustment(adj),transaction:updatedTx});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(400).json({error:e instanceof Error?e.message:'Adjustment failed'});}
+  finally{client.release();}
+});
+
+app.post('/api/loan-advance-adjustments/:id/reverse', criticalAdminOnly, async (req,res)=>{
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const adj=(await client.query('SELECT * FROM loan_advance_adjustments WHERE id=$1 FOR UPDATE',[req.params.id])).rows[0];
+    if(!adj || adj.reversed_at) throw new Error('Adjustment not found');
+    const tx=(await client.query('SELECT * FROM transactions WHERE id=$1 FOR UPDATE',[adj.transaction_id])).rows[0];
+    if(!tx) throw new Error('Transaction not found');
+    if(adj.party_type==='customer'){
+      await client.query('UPDATE transactions SET customer_paid=GREATEST(0,customer_paid-$1),customer_due=GREATEST(0,selling_price-(customer_paid-$1)),status=CASE WHEN selling_price-(customer_paid-$1)<=0 THEN \'PAID\' WHEN customer_paid-$1>0 THEN \'PARTIAL\' ELSE \'DUE\' END,updated_at=now() WHERE id=$2',[Number(adj.amount),tx.id]);
+    } else {
+      await client.query('UPDATE transactions SET vendor_paid=GREATEST(0,vendor_paid-$1),vendor_due=GREATEST(0,vendor_cost-(vendor_paid-$1)),updated_at=now() WHERE id=$2',[Number(adj.amount),tx.id]);
+    }
+    await client.query('UPDATE loan_advance_adjustments SET reversed_at=now(),reversed_by=$1 WHERE id=$2',[req.session.userId,adj.id]);
+    await audit(client,req.session.userId!,'LOAN_ADVANCE_ADJUSTMENT_REVERSED','LoanAdvance',adj.id,adj,{reversedAt:new Date().toISOString()});
+    await client.query('COMMIT'); res.json({ok:true});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(400).json({error:e instanceof Error?e.message:'Adjustment reversal failed'});}
+  finally{client.release();}
+});
+
+
 app.get('/api/accounts/balances', auth, async (_req, res) => {
   const accounts = ['cash','bkash','nagad','rocket','bank','card','other'];
   const balances: Record<string, number> = {};
