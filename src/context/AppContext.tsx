@@ -1345,9 +1345,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       recordAudit('Added Expense', 'Expense', newExp.id, undefined, `Expense: ${newExp.category} - ৳${amount} (${newExp.description}) paid via ${newExp.paymentMethod}`);
     };
     if (USE_SERVER_API) {
-      void api.createExpense(expense).then((result: any) => {
+      void api.createExpense(expense).then(async (result: any) => {
         const id = result?.expense?.id || `exp_${Date.now()}`;
         saveLocal(id);
+        const [balances, dashboard] = await Promise.all([api.accountBalances(), api.dashboard()]);
+        const raw = balances.balances || {};
+        setServerAccountBalances({
+          Cash: Number(raw.cash || 0), bKash: Number(raw.bkash || 0), Nagad: Number(raw.nagad || 0),
+          Rocket: Number(raw.rocket || 0), Bank: Number(raw.bank || 0), Card: Number(raw.card || 0), Other: Number(raw.other || 0),
+        });
+        const t = dashboard.today || {} as any;
+        setServerTodaySummary({
+          totalSales: Number(t.total_sales || 0), totalReceived: Number(t.total_received || 0),
+          totalExpense: Number(t.total_expense || 0), totalVendorPayment: Number(t.total_vendor_payment || 0),
+          grossProfit: Number(t.gross_profit || 0), loss: Number(t.loss || 0), netProfit: Number(t.net_profit || 0),
+        });
       }).catch((error) => {
         console.error('Server expense failed:', error);
         window.alert(error instanceof Error ? error.message : 'Expense could not be saved.');
@@ -1358,13 +1370,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteExpense = (id: string) => {
+    if (USE_SERVER_API) {
+      void api.reverseExpense(id).then(async () => {
+        setData((prev: any) => ({ ...prev, expenses: prev.expenses.filter((e: Expense) => e.id !== id) }));
+        const [balances, dashboard] = await Promise.all([api.accountBalances(), api.dashboard()]);
+        const raw = balances.balances || {};
+        setServerAccountBalances({
+          Cash: Number(raw.cash || 0), bKash: Number(raw.bkash || 0), Nagad: Number(raw.nagad || 0),
+          Rocket: Number(raw.rocket || 0), Bank: Number(raw.bank || 0), Card: Number(raw.card || 0), Other: Number(raw.other || 0),
+        });
+        const t = dashboard.today || {} as any;
+        setServerTodaySummary({
+          totalSales: Number(t.total_sales || 0), totalReceived: Number(t.total_received || 0),
+          totalExpense: Number(t.total_expense || 0), totalVendorPayment: Number(t.total_vendor_payment || 0),
+          grossProfit: Number(t.gross_profit || 0), loss: Number(t.loss || 0), netProfit: Number(t.net_profit || 0),
+        });
+      }).catch((error) => window.alert(error instanceof Error ? error.message : 'Expense reversal failed.'));
+      return;
+    }
     let deletedExp: Expense | undefined;
     setData((prev: any) => {
       deletedExp = prev.expenses.find((e: Expense) => e.id === id);
-      return {
-        ...prev,
-        expenses: prev.expenses.filter((e: Expense) => e.id !== id),
-      };
+      return { ...prev, expenses: prev.expenses.filter((e: Expense) => e.id !== id) };
     });
     recordAudit('Deleted Expense', 'Expense', id, JSON.stringify(deletedExp), `Deleted expense ৳${deletedExp?.amount}`);
   };
