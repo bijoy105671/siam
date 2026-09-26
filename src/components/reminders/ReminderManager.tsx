@@ -29,7 +29,7 @@ export const ReminderManager: React.FC<ReminderManagerProps> = ({
   const [activeWhatsAppTx, setActiveWhatsAppTx] = useState<Transaction | null>(null);
 
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka' }).format(now);
 
   const overdueList: (Transaction & { overdueDays: number })[] = [];
   const todayList: Transaction[] = [];
