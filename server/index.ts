@@ -80,16 +80,16 @@ app.get('/api/dashboard', auth, async (_req, res) => {
                        COALESCE(SUM(customer_paid),0) total_received,
                        COALESCE(SUM(CASE WHEN gross_profit > 0 THEN gross_profit ELSE 0 END),0) gross_profit,
                        COALESCE(SUM(CASE WHEN gross_profit < 0 THEN ABS(gross_profit) ELSE 0 END),0) loss
-                FROM transactions WHERE status <> $1`, ['CANCELLED']),
+                FROM transactions WHERE deleted_at IS NULL AND status <> $1`, ['CANCELLED']),
     pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL'),
     pool.query('SELECT COALESCE(SUM(customer_due),0) + COALESCE((SELECT SUM(opening_due) FROM customers),0) customer_receivable FROM transactions WHERE deleted_at IS NULL AND status <> $1', ['CANCELLED']),
-    pool.query('SELECT COALESCE(SUM(vendor_due),0) + COALESCE((SELECT SUM(opening_payable) FROM vendors),0) vendor_payable FROM transactions WHERE deleted_at IS NULL WHERE status <> $1', ['CANCELLED']),
+    pool.query('SELECT COALESCE(SUM(vendor_due),0) + COALESCE((SELECT SUM(opening_payable) FROM vendors),0) vendor_payable FROM transactions WHERE deleted_at IS NULL AND status <> $1', ['CANCELLED']),
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(CASE WHEN gross_profit > 0 THEN gross_profit ELSE 0 END),0) gross_profit,
                        COALESCE(SUM(CASE WHEN gross_profit < 0 THEN ABS(gross_profit) ELSE 0 END),0) loss
                 FROM transactions WHERE status <> $1 AND date = CURRENT_DATE`, ['CANCELLED']),
-    pool.query("SELECT COALESCE(SUM(amount),0) total_received FROM payments WHERE payment_type='customer' AND paid_at::date = CURRENT_DATE"),
-    pool.query("SELECT COALESCE(SUM(amount),0) total_vendor_payment FROM payments WHERE payment_type='vendor' AND paid_at::date = CURRENT_DATE"),
+    pool.query("SELECT COALESCE(SUM(amount),0) total_received FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND payment_type='customer' AND paid_at::date = CURRENT_DATE"),
+    pool.query("SELECT COALESCE(SUM(amount),0) total_vendor_payment FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND payment_type='vendor' AND paid_at::date = CURRENT_DATE"),
     pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL AND occurred_at::date = CURRENT_DATE')
   ]);
   const todayGrossProfit = Number(todaySales.rows[0].gross_profit || 0);
@@ -126,7 +126,7 @@ app.get('/api/customers/:id/ledger', auth, async (req, res) => {
   const customer = (await pool.query('SELECT * FROM customers WHERE id=$1', [customerId])).rows[0];
   if (!customer) return res.status(404).json({ error: 'Customer not found' });
   const transactions = (await pool.query('SELECT * FROM transactions WHERE customer_id=$1 AND deleted_at IS NULL ORDER BY date DESC, time DESC, created_at DESC', [customerId])).rows;
-  const payments = (await pool.query("SELECT * FROM payments WHERE entity_id=$1 AND payment_type='customer' ORDER BY paid_at DESC", [customerId])).rows;
+  const payments = (await pool.query("SELECT p.* FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE p.entity_id=$1 AND p.payment_type='customer' AND t.deleted_at IS NULL ORDER BY p.paid_at DESC", [customerId])).rows;
   const totalSales = transactions.filter((t:any) => t.status !== 'CANCELLED').reduce((s:number,t:any)=>s+Number(t.selling_price),0);
   const totalPaid = payments.reduce((s:number,p:any)=>s+Number(p.amount),0);
   res.json({ customer, totalSales, totalPaid, currentDue: Number(customer.opening_due || 0) + totalSales - totalPaid, transactions, payments });
@@ -143,7 +143,7 @@ app.get('/api/vendors/:id/ledger', auth, async (req, res) => {
   const vendor = (await pool.query('SELECT * FROM vendors WHERE id=$1', [vendorId])).rows[0];
   if (!vendor) return res.status(404).json({ error: 'Vendor not found' });
   const transactions = (await pool.query('SELECT * FROM transactions WHERE vendor_id=$1 AND deleted_at IS NULL ORDER BY date DESC, time DESC, created_at DESC', [vendorId])).rows;
-  const payments = (await pool.query("SELECT * FROM payments WHERE entity_id=$1 AND payment_type='vendor' ORDER BY paid_at DESC", [vendorId])).rows;
+  const payments = (await pool.query("SELECT p.* FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE p.entity_id=$1 AND p.payment_type='vendor' AND t.deleted_at IS NULL ORDER BY p.paid_at DESC", [vendorId])).rows;
   const totalCost = transactions.filter((t:any) => t.status !== 'CANCELLED').reduce((s:number,t:any)=>s+Number(t.vendor_cost),0);
   const totalPaid = payments.reduce((s:number,p:any)=>s+Number(p.amount),0);
   res.json({ vendor, totalCost, totalPaid, currentPayable: Number(vendor.opening_payable || 0) + totalCost - totalPaid, transactions, payments });
