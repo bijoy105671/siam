@@ -100,22 +100,28 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200">
               <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
                 <span className="font-bold text-sm">Admin Password Recovery</span>
-                <button type="button" onClick={() => setShowForgot(false)}><X className="w-5 h-5" /></button>
+                <button type="button" onClick={() => { setShowForgot(false); setError(''); }}><X className="w-5 h-5" /></button>
               </div>
-              <form onSubmit={resetStep === 'request' ? requestResetOtp : verifyReset} className="p-5 space-y-4">
-                {resetStep === 'request' ? <>
-                  <p className="text-xs text-slate-600">Enter Admin username. A 6-digit OTP will be sent to the registered recovery email.</p>
-                  <input value={resetUsername} onChange={e => setResetUsername(e.target.value)} placeholder="Admin username" required className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg" />
-                  <button disabled={isSubmitting} className="w-full py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg">{isSubmitting ? 'Sending OTP...' : 'Send OTP'}</button>
-                </> : <>
-                  <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">OTP sent to <b>bijoy105671@gmail.com</b>. Expires in 10 minutes.</div>
-                  <input value={resetOtp} onChange={e => setResetOtp(e.target.value.replace(/\D/g,'').slice(0,6))} inputMode="numeric" maxLength={6} required placeholder="6-digit OTP" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg text-center tracking-[0.5em] font-bold" />
-                  <input type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} minLength={8} required placeholder="New password" className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg" />
-                  <input type="password" value={resetConfirm} onChange={e => setResetConfirm(e.target.value)} minLength={8} required placeholder="Confirm password" className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg" />
-                  <button disabled={isSubmitting} className="w-full py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg">{isSubmitting ? 'Resetting...' : 'Reset Admin Password'}</button>
-                  <button type="button" onClick={() => setResetStep('request')} className="w-full text-xs text-slate-500">Use another username</button>
-                </>}
-              </form>
+              <div className="p-5 space-y-4">
+                {resetStep === 'request' ? (
+                  <form onSubmit={requestResetOtp} className="space-y-4">
+                    <p className="text-xs text-slate-600">Enter your Admin username. The 6-digit OTP will be sent to <b>bijoy105671@gmail.com</b>.</p>
+                    <input value={resetUsername} onChange={e => setResetUsername(e.target.value)} placeholder="Admin username" required autoComplete="username" className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg" />
+                    {error && <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700">{error}</div>}
+                    <button type="submit" disabled={isSubmitting} className="w-full py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg">{isSubmitting ? 'Sending OTP...' : 'Send OTP to Email'}</button>
+                  </form>
+                ) : (
+                  <form onSubmit={verifyReset} className="space-y-4">
+                    <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">OTP sent to <b>bijoy105671@gmail.com</b>. It expires in 10 minutes.</div>
+                    <input value={resetOtp} onChange={e => setResetOtp(e.target.value.replace(/\D/g,'').slice(0,6))} inputMode="numeric" maxLength={6} required autoComplete="one-time-code" placeholder="6-digit OTP" className="w-full px-3 py-3 text-lg border border-slate-300 rounded-lg text-center tracking-[0.5em] font-bold" />
+                    <input type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} minLength={8} required autoComplete="new-password" placeholder="New password (8+ characters)" className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg" />
+                    <input type="password" value={resetConfirm} onChange={e => setResetConfirm(e.target.value)} minLength={8} required autoComplete="new-password" placeholder="Confirm new password" className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg" />
+                    {error && <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700">{error}</div>}
+                    <button type="submit" disabled={isSubmitting} className="w-full py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg">{isSubmitting ? 'Resetting Password...' : 'Verify OTP & Reset Password'}</button>
+                    <button type="button" onClick={() => { setResetStep('request'); setResetOtp(''); setError(''); }} className="w-full text-xs text-slate-500">Resend OTP / Use another username</button>
+                  </form>
+                )}
+              </div>
             </div>
           </div>
         )}
