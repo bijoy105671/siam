@@ -676,9 +676,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!USE_SERVER_API) return createOneEntry(input);
     const result = await (await import('../services/apiClient')).createServerOneEntry(input);
     const tx = result.transaction as Transaction;
+    // Refresh the complete server-backed collections after One Entry.
+    // This keeps customer/vendor profiles, their transactions, ledgers, and All Transactions in sync.
+    const [customerRows, vendorRows, transactionRows] = await Promise.all([
+      api.customers(),
+      api.vendors(),
+      api.transactions(500),
+    ]);
+    const mappedTransactions = (transactionRows as any[]).map((row: any) => ({
+      ...row,
+      id: String(row.id),
+      customerId: String(row.customer_id ?? row.customerId ?? ''),
+      customerName: String(row.customer_name ?? row.customerName ?? ''),
+      customerMobile: String(row.customer_mobile ?? row.customerMobile ?? ''),
+      vendorId: row.vendor_id ? String(row.vendor_id) : undefined,
+      vendorName: row.vendor_name ?? row.vendorName ?? undefined,
+      serviceId: row.service_id ? String(row.service_id) : undefined,
+      serviceName: String(row.service_name ?? row.serviceName ?? ''),
+      invoiceNumber: row.invoice_number ?? row.invoiceNumber,
+      createdAt: row.created_at ?? row.createdAt,
+      updatedAt: row.updated_at ?? row.updatedAt,
+      createdBy: row.created_by ?? row.createdBy,
+      sellingPrice: Number(row.selling_price ?? row.sellingPrice ?? 0),
+      customerPaid: Number(row.customer_paid ?? row.customerPaid ?? 0),
+      customerDue: Number(row.customer_due ?? row.customerDue ?? 0),
+      vendorCost: Number(row.vendor_cost ?? row.vendorCost ?? 0),
+      vendorPaid: Number(row.vendor_paid ?? row.vendorPaid ?? 0),
+      vendorDue: Number(row.vendor_due ?? row.vendorDue ?? 0),
+      grossProfit: Number(row.gross_profit ?? row.grossProfit ?? 0),
+      flightDetails: row.flight_details
+        ? (typeof row.flight_details === 'string' ? JSON.parse(row.flight_details) : row.flight_details)
+        : row.flightDetails,
+      reminderDate: row.reminder_date ?? row.reminderDate,
+      reminderTime: row.reminder_time ?? row.reminderTime,
+      reminderStatus: row.reminder_status ?? row.reminderStatus,
+      reminderNote: row.reminder_note ?? row.reminderNote,
+    } as Transaction));
+    const mappedCustomers = (customerRows as any[]).map((row: any) => ({
+      id: String(row.id), name: String(row.name || ''), mobile: String(row.mobile || ''),
+      whatsapp: row.whatsapp || undefined, email: row.email || undefined, address: row.address || undefined,
+      nid: row.nid || undefined, passportNumber: row.passport_number ?? row.passportNumber ?? undefined,
+      passportExpiry: row.passport_expiry ?? row.passportExpiry ?? undefined, photo: row.photo || undefined,
+      notes: row.notes || undefined, openingDue: Number(row.opening_due || 0),
+      createdAt: row.created_at || new Date().toISOString(),
+    } as Customer));
+    const mappedVendors = (vendorRows as any[]).map((row: any) => ({
+      id: String(row.id), name: String(row.name || ''), company: row.company || undefined,
+      mobile: row.mobile || '', whatsapp: row.whatsapp || undefined, email: row.email || undefined,
+      address: row.address || undefined, accountInfo: row.account_info ?? row.accountInfo ?? undefined,
+      openingPayable: Number(row.opening_payable || 0), createdAt: row.created_at || new Date().toISOString(),
+    } as Vendor));
     setData((prev: any) => ({
       ...prev,
-      transactions: [tx, ...prev.transactions.filter((x: Transaction) => x.id !== tx.id)],
+      transactions: mappedTransactions,
+      customers: mappedCustomers,
+      vendors: mappedVendors,
     }));
     return tx;
   };
