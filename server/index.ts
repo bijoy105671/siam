@@ -559,6 +559,57 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
   } finally { client.release(); }
 });
 
+app.get('/api/admin/recycle-bin', criticalAdminOnly, async (_req, res) => {
+  const { rows } = await pool.query(
+    `SELECT t.*, c.name customer_name, c.mobile customer_mobile, s.name service_name, v.name vendor_name
+     FROM transactions t
+     JOIN customers c ON c.id=t.customer_id
+     LEFT JOIN services s ON s.id=t.service_id
+     LEFT JOIN vendors v ON v.id=t.vendor_id
+     WHERE t.deleted_at IS NOT NULL
+       AND t.deleted_at >= now() - interval '30 days'
+     ORDER BY t.deleted_at DESC`
+  );
+  res.json(rows);
+});
+
+app.post('/api/admin/recycle-bin/:id/restore', criticalAdminOnly, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const tx = (await client.query(
+      'SELECT * FROM transactions WHERE id=$1 AND deleted_at IS NOT NULL FOR UPDATE',
+      [req.params.id]
+    )).rows[0];
+    if (!tx) throw new Error('Deleted transaction not found');
+    if (new Date(tx.deleted_at).getTime() < Date.now() - 30 * 24 * 60 * 60 * 1000) {
+      throw new Error('This transaction is older than 30 days and can no longer be restored.');
+    }
+    await client.query(
+      'UPDATE transactions SET deleted_at=NULL, deleted_by=NULL, updated_at=now() WHERE id=$1',
+      [tx.id]
+    );
+    await client.query('UPDATE payments SET reversed_at=NULL, reversed_by=NULL WHERE transaction_id=$1', [tx.id]);
+    await client.query('UPDATE account_entries SET reversed_at=NULL WHERE source_id=$1', [tx.id]);
+    await audit(
+      client,
+      req.session.userId!,
+      'TRANSACTION_RESTORED',
+      'Transaction',
+      tx.id,
+      { deletedAt: tx.deleted_at, invoiceNumber: tx.invoice_number },
+      { restoredAt: new Date().toISOString(), invoiceNumber: tx.invoice_number }
+    );
+    await client.query('COMMIT');
+    res.json({ ok: true, transaction: tx });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Transaction restore failed' });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/api/transactions', auth, async (req, res) => {
   const limit = Math.min(Number(req.query.limit || 100), 500);
   const { rows } = await pool.query('SELECT t.*, c.name customer_name, c.mobile customer_mobile, s.name service_name, v.name vendor_name FROM transactions t JOIN customers c ON c.id=t.customer_id LEFT JOIN services s ON s.id=t.service_id LEFT JOIN vendors v ON v.id=t.vendor_id WHERE t.deleted_at IS NULL ORDER BY t.date DESC, t.time DESC LIMIT $1', [limit]);
