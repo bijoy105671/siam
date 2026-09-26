@@ -100,6 +100,28 @@ app.post('/api/auth/login', async (req, res) => {
   res.json({ user: { id: user.id, username: user.username, fullName: user.full_name, role: user.role, permissions: user.permissions } });
 });
 
+app.post('/api/auth/recovery-reset', async (req, res) => {
+  const recoveryKey = String(req.body?.recoveryKey || '');
+  const username = String(req.body?.username || '').trim();
+  const newPassword = String(req.body?.newPassword || '');
+  if (!process.env.ADMIN_RECOVERY_KEY || process.env.ADMIN_RECOVERY_KEY.length < 24) {
+    return res.status(503).json({ error: 'Admin recovery is not configured. Set ADMIN_RECOVERY_KEY in the server environment.' });
+  }
+  if (!recoveryKey || recoveryKey !== process.env.ADMIN_RECOVERY_KEY) {
+    return res.status(401).json({ error: 'Invalid recovery key' });
+  }
+  if (!username || newPassword.length < 8) {
+    return res.status(400).json({ error: 'Username and new password (8+ characters) are required' });
+  }
+  const { rows } = await pool.query('SELECT id, role FROM users WHERE lower(username)=lower($1) AND is_active=true', [username]);
+  if (!rows[0]) return res.status(404).json({ error: 'Active user not found' });
+  if (rows[0].role !== 'admin') return res.status(403).json({ error: 'Recovery reset is restricted to administrator accounts' });
+  const hash = await bcrypt.hash(newPassword, 12);
+  await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, rows[0].id]);
+  await pool.query('DELETE FROM user_sessions WHERE sess::jsonb->>' + "'userId'" + ' = $1', [rows[0].id]).catch(() => {});
+  res.json({ ok: true, message: 'Administrator password reset successfully' });
+});
+
 app.post('/api/auth/change-password', auth, async (req, res) => {
   const currentPassword = String(req.body?.currentPassword || '');
   const newPassword = String(req.body?.newPassword || '');
