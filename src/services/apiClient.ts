@@ -96,8 +96,10 @@ export const api = {
     apiRequest<unknown[]>(`/api/customers${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   vendors: (q = '') =>
     apiRequest<unknown[]>(`/api/vendors${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  createCustomer: (input: Record<string, any>) => apiRequest<{ customer: unknown }>('/api/customers', { method: 'POST', body: JSON.stringify(input) }),
   updateCustomer: (id: string, input: Record<string, any>) => apiRequest<{ customer: unknown }>(`/api/customers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   deleteCustomer: (id: string) => apiRequest<{ ok: boolean }>(`/api/customers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  createVendor: (input: Record<string, any>) => apiRequest<{ vendor: unknown }>('/api/vendors', { method: 'POST', body: JSON.stringify(input) }),
   updateVendor: (id: string, input: Record<string, any>) => apiRequest<{ vendor: unknown }>(`/api/vendors/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   deleteVendor: (id: string) => apiRequest<{ ok: boolean }>(`/api/vendors/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   transactions: (limit = 100) =>
