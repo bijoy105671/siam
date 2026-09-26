@@ -21,10 +21,22 @@ import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { LoginModal } from './components/auth/LoginModal';
 import { InvoiceVerificationPage } from './components/verification/InvoiceVerificationPage';
 import { Customer, Transaction, Vendor } from './types';
+import { USE_SERVER_API } from './services/apiClient';
 
 const MainLayout: React.FC = () => {
+  const { currentUser } = useApp();
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  if (USE_SERVER_API && !currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <LoginModal isOpen={true} onClose={() => undefined} />
+        </div>
+      </div>
+    );
+  }
 
   // URL QR Scan Verification State
   const [verificationParams, setVerificationParams] = useState<{
