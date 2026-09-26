@@ -366,6 +366,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [currentUser?.id]);
 
+  // Always hydrate business identity from PostgreSQL after login/session restore.
+  // This prevents an old localStorage copy from overwriting the saved company name,
+  // tagline, logo, phone, address, and invoice identity.
+  useEffect(() => {
+    if (!USE_SERVER_API || !currentUser) return;
+    let cancelled = false;
+    const refreshBusinessSettings = async () => {
+      try {
+        const result = await api.settings();
+        if (cancelled) return;
+        const serverSettings = (result as any)?.settings;
+        if (!serverSettings || typeof serverSettings !== 'object') return;
+        setData((prev: any) => ({
+          ...prev,
+          settings: { ...prev.settings, ...serverSettings },
+        }));
+      } catch (error) {
+        console.error('Server business settings refresh failed:', error);
+      }
+    };
+    void refreshBusinessSettings();
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
+
   // Server is the source of truth in production mode. Hydrate profiles and all transactions
   // after login so One Entry immediately appears in Customer/Vendor ledgers and All Transactions.
   useEffect(() => {
@@ -1497,7 +1521,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     recordAudit('Updated Opening Balance', 'Settings', method, undefined, `Set opening balance for ${method} to ৳${amount}`);
   };
 
-  const updateSettings = (settings: Partial<BusinessSettings>) => {
+  const updateSettings = async (settings: Partial<BusinessSettings>): Promise<void> => {
+    if (USE_SERVER_API) {
+      // PostgreSQL is the source of truth. Do not mutate local state until the
+      // server accepts the change (including the admin security OTP challenge).
+      const result = await api.updateSettings(settings as Record<string, any>);
+      const savedSettings = (result as any)?.settings;
+      if (!savedSettings || typeof savedSettings !== 'object') {
+        throw new Error('Business settings were not returned by the server.');
+      }
+      setData((prev: any) => ({
+        ...prev,
+        settings: { ...prev.settings, ...savedSettings },
+      }));
+      recordAudit('Updated Settings', 'Settings', 'business', undefined, 'Updated business settings on server');
+      return;
+    }
+
     setData((prev: any) => ({
       ...prev,
       settings: { ...prev.settings, ...settings },
