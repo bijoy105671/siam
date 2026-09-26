@@ -341,12 +341,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           api.services(),
         ]);
       const userResult = serverUser.role === 'admin' ? await api.users() : [];
-      const serverUser = sessionResult.user as Partial<User> | null;
-      if (!serverUser?.username) {
-        setData((prev: any) => ({ ...prev, currentUserId: '' }));
-        return;
-      }
-
       const mapCustomer = (row: any): Customer => ({
         id: String(row.id),
         name: String(row.name || ''),
