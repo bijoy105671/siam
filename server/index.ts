@@ -60,6 +60,27 @@ const auth = (req: express.Request, res: express.Response, next: express.NextFun
   next();
 };
 
+const criticalAdminOnly = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Authentication required' });
+  try {
+    const { rows } = await pool.query('SELECT role, is_active FROM users WHERE id=$1', [req.session.userId]);
+    if (!rows[0]?.is_active) return res.status(401).json({ error: 'Account inactive' });
+    if (rows[0].role !== 'admin') return res.status(403).json({ error: 'Administrator permission required' });
+    const verifiedUntil = Number((req.session as any).securityVerifiedUntil || 0);
+    if (verifiedUntil <= Date.now()) {
+      const otp = String(randomInt(100000, 1000000));
+      await pool.query('CREATE TABLE IF NOT EXISTS security_otps (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, otp_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now())');
+      await pool.query('UPDATE security_otps SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [req.session.userId]);
+      await pool.query("INSERT INTO security_otps (user_id,otp_hash,expires_at) VALUES ($1,$2,now()+interval '10 minutes')", [req.session.userId, hashOtp(otp)]);
+      await sendPasswordResetOtp(otp);
+      return res.status(428).json({ error: 'SECURITY_OTP_REQUIRED', message: 'A security OTP was sent to the recovery email. Enter it to continue this important change.' });
+    }
+    next();
+  } catch (e) {
+    res.status(503).json({ error: e instanceof Error ? e.message : 'Security verification unavailable' });
+  }
+};
+
 const adminOnly = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Authentication required' });
   try {
@@ -87,7 +108,7 @@ app.get('/api/settings', auth, async (_req, res) => {
   res.json({ settings: value && typeof value === 'object' ? value : {} });
 });
 
-app.patch('/api/settings', adminOnly, async (req, res) => {
+app.patch('/api/settings', criticalAdminOnly, async (req, res) => {
   const incoming = req.body && typeof req.body === 'object' ? req.body : {};
   const allowed = [
     'name','tagline','logoUrl','address','mobile','whatsapp','email','website',
@@ -198,6 +219,20 @@ app.post('/api/auth/verify-password-reset', async (req, res) => {
   res.json({ ok: true, message: 'Administrator password reset successfully' });
 });
 
+app.post('/api/auth/verify-security-otp', auth, async (req, res) => {
+  const otp=String(req.body?.otp||'').trim();
+  if (!/^\d{6}$/.test(otp)) return res.status(400).json({error:'Enter the 6-digit security OTP'});
+  try {
+    const {rows}=await pool.query('SELECT id,otp_hash,expires_at,attempts FROM security_otps WHERE user_id=$1 AND used_at IS NULL ORDER BY created_at DESC LIMIT 1',[req.session.userId]);
+    const item=rows[0];
+    if(!item || new Date(item.expires_at).getTime()<=Date.now() || Number(item.attempts)>=5) return res.status(400).json({error:'Invalid or expired security OTP'});
+    if(hashOtp(otp)!==item.otp_hash){ await pool.query('UPDATE security_otps SET attempts=attempts+1 WHERE id=$1',[item.id]); return res.status(400).json({error:'Invalid or expired security OTP'}); }
+    await pool.query('UPDATE security_otps SET used_at=now() WHERE id=$1',[item.id]);
+    (req.session as any).securityVerifiedUntil=Date.now()+10*60*1000;
+    res.json({ok:true});
+  } catch(e){ res.status(503).json({error:e instanceof Error?e.message:'Security verification failed'}); }
+});
+
 app.post('/api/auth/change-password', auth, async (req, res) => {
   const currentPassword = String(req.body?.currentPassword || '');
   const newPassword = String(req.body?.newPassword || '');
@@ -224,7 +259,7 @@ app.get('/api/users', adminOnly, async (_req,res) => {
   const {rows}=await pool.query('SELECT id,username,full_name,role,phone,permissions,is_active,created_at FROM users ORDER BY created_at DESC');
   res.json(rows);
 });
-app.post('/api/users', adminOnly, async (req,res) => {
+app.post('/api/users', criticalAdminOnly, async (req,res) => {
   const username=String(req.body?.username||'').trim(), password=String(req.body?.password||''), fullName=String(req.body?.fullName||'').trim();
   const role=String(req.body?.role||'staff').toLowerCase(), phone=String(req.body?.phone||'').trim()||null;
   const permissions=req.body?.permissions&&typeof req.body.permissions==='object'?req.body.permissions:{};
@@ -232,7 +267,7 @@ app.post('/api/users', adminOnly, async (req,res) => {
   try{const hash=await bcrypt.hash(password,12);const {rows}=await pool.query('INSERT INTO users (username,password_hash,full_name,role,phone,permissions) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,username,full_name,role,phone,permissions,is_active,created_at',[username,hash,fullName,role,phone,JSON.stringify(permissions)]);res.status(201).json({user:rows[0]});}
   catch(e){res.status(400).json({error:e instanceof Error?e.message:'User creation failed'});}
 });
-app.patch('/api/users/:id', adminOnly, async (req,res) => {
+app.patch('/api/users/:id', criticalAdminOnly, async (req,res) => {
   try{
     const id=req.params.id, fullName=req.body?.fullName!==undefined?String(req.body.fullName).trim():null, username=req.body?.username!==undefined?String(req.body.username).trim():null;
     const role=req.body?.role!==undefined?String(req.body.role).toLowerCase():null, phone=req.body?.phone!==undefined?(String(req.body.phone).trim()||null):null;
@@ -244,7 +279,7 @@ app.patch('/api/users/:id', adminOnly, async (req,res) => {
     res.json({user:rows[0]});
   }catch(e){res.status(400).json({error:e instanceof Error?e.message:'User update failed'});}
 });
-app.delete('/api/users/:id', adminOnly, async (req,res) => {
+app.delete('/api/users/:id', criticalAdminOnly, async (req,res) => {
   if(req.params.id===req.session.userId)return res.status(400).json({error:'You cannot deactivate your own account'});
   const {rows}=await pool.query('UPDATE users SET is_active=false WHERE id=$1 RETURNING id',[req.params.id]);
   if(!rows[0])return res.status(404).json({error:'User not found'});
@@ -256,7 +291,7 @@ app.get('/api/expense-categories', auth, async (_req, res) => {
   res.json(Array.isArray(value) ? value : []);
 });
 
-app.put('/api/expense-categories', adminOnly, async (req, res) => {
+app.put('/api/expense-categories', criticalAdminOnly, async (req, res) => {
   const categories = Array.isArray(req.body?.categories) ? req.body.categories : null;
   if (!categories) return res.status(400).json({ error: 'categories must be an array' });
   const normalized = categories
@@ -277,18 +312,18 @@ app.get('/api/services', auth, async (_req,res) => {
   const {rows}=await pool.query('SELECT id,name,category,enabled,sort_order FROM services ORDER BY sort_order,name');
   res.json(rows);
 });
-app.post('/api/services', adminOnly, async (req,res) => {
+app.post('/api/services', criticalAdminOnly, async (req,res) => {
   const name=String(req.body?.name||'').trim(), category=String(req.body?.category||'Other').trim()||'Other';
   if(!name)return res.status(400).json({error:'Service name is required'});
   try{const {rows}=await pool.query('INSERT INTO services (name,category,enabled,sort_order) VALUES ($1,$2,$3,$4) RETURNING id,name,category,enabled,sort_order',[name,category,req.body?.enabled!==false,Number(req.body?.sortOrder||0)]);res.status(201).json({service:rows[0]});}
   catch(e){res.status(400).json({error:e instanceof Error?e.message:'Service creation failed'});}
 });
-app.patch('/api/services/:id', adminOnly, async (req,res) => {
+app.patch('/api/services/:id', criticalAdminOnly, async (req,res) => {
   const {rows}=await pool.query('UPDATE services SET name=COALESCE($1,name), category=COALESCE($2,category), enabled=COALESCE($3,enabled), sort_order=COALESCE($4,sort_order) WHERE id=$5 RETURNING id,name,category,enabled,sort_order',
     [req.body?.name!==undefined?String(req.body.name).trim():null,req.body?.category!==undefined?String(req.body.category).trim():null,req.body?.enabled!==undefined?Boolean(req.body.enabled):null,req.body?.sortOrder!==undefined?Number(req.body.sortOrder):null,req.params.id]);
   if(!rows[0])return res.status(404).json({error:'Service not found'});res.json({service:rows[0]});
 });
-app.delete('/api/services/:id', adminOnly, async (req,res) => {
+app.delete('/api/services/:id', criticalAdminOnly, async (req,res) => {
   const {rows}=await pool.query('UPDATE services SET enabled=false WHERE id=$1 RETURNING id',[req.params.id]);
   if(!rows[0])return res.status(404).json({error:'Service not found'});res.json({ok:true});
 });
@@ -389,7 +424,7 @@ app.patch('/api/vendors/:id', auth, async (req,res) => {
   } catch(e) { res.status(400).json({error:e instanceof Error?e.message:'Vendor update failed'}); }
 });
 
-app.delete('/api/transactions/:id', adminOnly, async (req, res) => {
+app.delete('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -522,7 +557,7 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
   } finally { client.release(); }
 });
 
-app.post('/api/payments/:id/reverse', adminOnly, async (req, res) => {
+app.post('/api/payments/:id/reverse', criticalAdminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -559,7 +594,7 @@ app.get('/api/opening-balances', adminOnly, async (_req, res) => {
   res.json(rows);
 });
 
-app.put('/api/opening-balances/:account', adminOnly, async (req, res) => {
+app.put('/api/opening-balances/:account', criticalAdminOnly, async (req, res) => {
   const account = String(req.params.account || '').toLowerCase();
   const amount = Number(req.body?.amount);
   if (!ACCOUNT_METHODS.has(account) || !Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: 'Invalid account or opening balance' });
@@ -669,7 +704,7 @@ app.post('/api/expenses', auth, async (req, res) => {
   finally { client.release(); }
 });
 
-app.post('/api/expenses/:id/reverse', adminOnly, async (req, res) => {
+app.post('/api/expenses/:id/reverse', criticalAdminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -711,7 +746,7 @@ app.post('/api/fund-transfers', auth, async (req, res) => {
   finally { client.release(); }
 });
 
-app.post('/api/fund-transfers/:id/reverse', adminOnly, async (req, res) => {
+app.post('/api/fund-transfers/:id/reverse', criticalAdminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
