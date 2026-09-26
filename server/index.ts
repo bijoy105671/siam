@@ -333,7 +333,9 @@ app.post('/api/fund-transfers', auth, async (req, res) => {
     if (!ACCOUNT_METHODS.has(from) || !ACCOUNT_METHODS.has(to)) return res.status(400).json({ error: 'Invalid account' });
     if (from === to || !Number.isFinite(amount) || amount <= 0 || !reason) return res.status(400).json({ error: 'Different accounts, positive amount and reason are required' });
     await client.query('BEGIN');
-    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [from]);
+    const [firstLock, secondLock] = [from, to].sort();
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [firstLock]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [secondLock]);
     const balance = await accountBalance(client, from);
     if (amount > balance) throw new Error('Insufficient balance for fund transfer');
     const transfer = (await client.query('INSERT INTO fund_transfers (from_account,to_account,amount,reason,created_by,note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',[from,to,amount,reason,req.session.userId,req.body?.note || null])).rows[0];
