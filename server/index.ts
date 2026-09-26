@@ -163,7 +163,7 @@ app.post('/api/auth/request-password-reset', async (req, res) => {
     const otpHash = hashOtp(otp);
     await pool.query(
       `CREATE TABLE IF NOT EXISTS password_reset_otps (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        id UUID PRIMARY KEY,
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         otp_hash TEXT NOT NULL,
         expires_at TIMESTAMPTZ NOT NULL,
@@ -188,7 +188,7 @@ app.post('/api/auth/verify-password-reset', async (req, res) => {
   const username = String(req.body?.username || '').trim();
   const otp = String(req.body?.otp || '').trim();
   const newPassword = String(req.body?.newPassword || '');
-  if (!username || !/^\\d{6}$/.test(otp) || newPassword.length < 8) {
+  if (!username || !/^\d{6}$/.test(otp) || newPassword.length < 8) {
     return res.status(400).json({ error: 'Username, 6-digit OTP and new password (8+ characters) are required' });
   }
 
