@@ -26,6 +26,7 @@
     "qrcode": "^1.5.4",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "recharts": "^2.15.4",
     "vite": "^8.3.0",
     "pg": "^8.16.3",
     "express-session": "^1.18.2",
