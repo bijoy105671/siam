@@ -18,6 +18,7 @@ import { ReportsView } from './components/reports/ReportsView';
 import { AdminSettings } from './components/admin/AdminSettings';
 import { InvoiceModal } from './components/transactions/InvoiceModal';
 import { PaymentModal } from './components/common/PaymentModal';
+import { DuePaymentManager } from './components/payments/DuePaymentManager';
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { LoginModal } from './components/auth/LoginModal';
 import { InvoiceVerificationPage } from './components/verification/InvoiceVerificationPage';
@@ -43,7 +44,6 @@ const MainLayout: React.FC = () => {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const [paymentFocus, setPaymentFocus] = useState<'customer' | 'vendor' | null>(null);
 
   // Direct modal ledgers
   const [inspectCustomerId, setInspectCustomerId] = useState<string | null>(null);
@@ -164,10 +164,8 @@ const MainLayout: React.FC = () => {
             <Dashboard
               onOpenNewEntry={() => setCurrentView('new_entry')}
               onOpenTransfer={() => setIsTransferModalOpen(true)}
-              onOpenCustomerDue={() => { setPaymentFocus('customer'); setCurrentView('transactions'); }}
-              onOpenVendorDue={() => { setPaymentFocus('vendor'); setCurrentView('transactions'); }}
-              onOpenCustomerProfiles={() => setCurrentView('customers')}
-              onOpenVendorProfiles={() => setCurrentView('vendors')}
+              onOpenCustomerDue={() => setCurrentView('customer_due')}
+              onOpenVendorDue={() => setCurrentView('vendor_due')}
               onOpenExpense={() => setCurrentView('expenses')}
               onViewAllTransactions={() => setCurrentView('transactions')}
               onViewAllFlights={() => setCurrentView('flights')}
@@ -188,7 +186,6 @@ const MainLayout: React.FC = () => {
             <TransactionList
               onSelectTransaction={(tx) => setActiveInvoiceTx(tx)}
               onOpenNewEntry={() => setCurrentView('new_entry')}
-              paymentFocus={paymentFocus}
               onOpenPayment={handleOpenPayment}
             />
           )}
@@ -198,6 +195,14 @@ const MainLayout: React.FC = () => {
               onSelectFlight={(tx) => setActiveInvoiceTx(tx)}
               onOpenPayment={handleOpenPayment}
             />
+          )}
+
+          {currentView === 'customer_due' && (
+            <DuePaymentManager type="customer" onOpenPayment={handleOpenPayment} onSelectTransaction={(tx) => setActiveInvoiceTx(tx)} />
+          )}
+
+          {currentView === 'vendor_due' && (
+            <DuePaymentManager type="vendor" onOpenPayment={handleOpenPayment} onSelectTransaction={(tx) => setActiveInvoiceTx(tx)} />
           )}
 
           {currentView === 'customers' && (
