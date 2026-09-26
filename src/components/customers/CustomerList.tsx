@@ -10,18 +10,20 @@ import {
   DollarSign,
   AlertCircle,
   X,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Customer, Transaction } from '../../types';
 import { formatCurrency, sanitizePhoneForWhatsapp } from '../../utils/formatters';
 import { CustomerLedgerModal } from './CustomerLedgerModal';
+import { api } from '../../services/apiClient';
 
 interface CustomerListProps {
   onSelectTransaction: (tx: Transaction) => void;
 }
 
 export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction }) => {
-  const { customers, addCustomer, updateCustomer, getCustomerLedger, settings } = useApp();
+  const { customers, addCustomer, updateCustomer, getCustomerLedger, settings, currentUser } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
@@ -269,6 +271,19 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction 
                           >
                             <Edit className="w-3.5 h-3.5" />
                           </button>
+                          {currentUser?.role === 'admin' && (
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`Delete customer ${cust.name}? This is an admin-only action and requires security OTP.`)) return;
+                                try { await api.deleteCustomer(cust.id); window.location.reload(); }
+                                catch (error) { alert(error instanceof Error ? error.message : 'Customer could not be deleted.'); }
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                              title="Delete Customer (Admin + OTP)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
