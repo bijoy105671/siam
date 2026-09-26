@@ -245,8 +245,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        const savedServices = Array.isArray(parsed.services) ? parsed.services : [];
+        const savedExpenseCategories = Array.isArray(parsed.expenseCategories) ? parsed.expenseCategories : [];
+        const serviceIds = new Set(savedServices.map((s: ServiceItem) => s.id));
+        const expenseIds = new Set(savedExpenseCategories.map((c: ExpenseCategory) => c.id));
         return {
           ...parsed,
+          // Preserve existing custom items while automatically adding newly released defaults.
+          services: [...savedServices, ...INITIAL_SERVICES.filter(s => !serviceIds.has(s.id))],
+          expenseCategories: [...savedExpenseCategories, ...INITIAL_EXPENSE_CATEGORIES.filter(c => !expenseIds.has(c.id))],
           backupSchedule: parsed.backupSchedule || INITIAL_BACKUP_SCHEDULE,
           backupLogs: parsed.backupLogs || INITIAL_BACKUP_LOGS,
           loanAdvances: parsed.loanAdvances || [],
