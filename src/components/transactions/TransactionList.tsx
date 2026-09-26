@@ -22,12 +22,14 @@ import { formatCurrency, formatDate, formatTime, getTransactionStatusColor } fro
 interface TransactionListProps {
   onSelectTransaction: (tx: Transaction) => void;
   onOpenNewEntry: () => void;
+  paymentFocus?: 'customer' | 'vendor' | null;
   onOpenPayment: (tx: Transaction, type: 'customer' | 'vendor') => void;
 }
 
 export const TransactionList: React.FC<TransactionListProps> = ({
   onSelectTransaction,
   onOpenNewEntry,
+  paymentFocus = null,
   onOpenPayment,
 }) => {
   const { transactions, services, deleteTransaction, updateTransaction, currentUser } = useApp();
@@ -339,6 +341,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                 filteredTransactions.map((tx) => {
                   const statusStyle = getTransactionStatusColor(tx.status);
                   const hasDue = tx.customerDue > 0;
+                  const vendorHasDue = tx.vendorDue > 0;
 
                   return (
                     <tr
@@ -422,7 +425,15 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                               onClick={() => onOpenPayment(tx, 'customer')}
                               className="px-2 py-1 text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded transition-colors cursor-pointer"
                             >
-                              Pay
+                              Customer Pay
+                            </button>
+                          )}
+                          {vendorHasDue && (
+                            <button
+                              onClick={() => onOpenPayment(tx, 'vendor')}
+                              className="px-2 py-1 text-[11px] font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded transition-colors cursor-pointer"
+                            >
+                              Vendor Pay
                             </button>
                           )}
 
