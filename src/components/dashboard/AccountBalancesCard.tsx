@@ -18,6 +18,7 @@ export const AccountBalancesCard: React.FC<AccountBalancesCardProps> = ({ onOpen
     { name: 'Rocket', label: 'Rocket (DBBL)', icon: Smartphone, color: 'text-purple-600 bg-purple-50' },
     { name: 'Bank', label: 'Bank (City/Islami)', icon: Landmark, color: 'text-blue-600 bg-blue-50' },
     { name: 'Card', label: 'Card / Other', icon: Wallet, color: 'text-slate-600 bg-slate-100' },
+    { name: 'Other', label: 'Other Account', icon: Wallet, color: 'text-cyan-600 bg-cyan-50' },
   ];
 
   return (
@@ -25,13 +26,13 @@ export const AccountBalancesCard: React.FC<AccountBalancesCardProps> = ({ onOpen
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
         <div>
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Liquid Liquidity & Bank Balances
+            CURRENT BALANCE — ALL ACCOUNTS
           </div>
           <div className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight mt-0.5">
             {formatCurrency(totalAvailableMoney)}
           </div>
           <div className="text-[11px] text-slate-500 mt-0.5">
-            Actual available money (Receivables & Payables kept strictly separate)
+            Real-time balance from all transactions, expenses, transfers and Loan/Advance payments
           </div>
         </div>
 
@@ -45,7 +46,7 @@ export const AccountBalancesCard: React.FC<AccountBalancesCardProps> = ({ onOpen
       </div>
 
       {/* Grid of actual accounts */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 pt-4">
         {accounts.map((acc) => {
           const Icon = acc.icon;
           const balance = accountBalances[acc.name] || 0;
