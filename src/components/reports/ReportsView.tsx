@@ -29,9 +29,9 @@ export const ReportsView: React.FC = () => {
   const [timeframe, setTimeframe] = useState<'all' | 'today' | 'this_month' | 'this_year'>('this_month');
 
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-  const firstOfYear = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka' }).format(now);
+  const firstOfMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const firstOfYear = `${now.getFullYear()}-01-01`;
 
   // Filter transactions according to timeframe
   const filteredTxs = transactions.filter((t) => {
