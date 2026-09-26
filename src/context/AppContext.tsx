@@ -824,6 +824,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateTransaction = (id: string, updates: Partial<Transaction>, changeReason?: string) => {
+    if (USE_SERVER_API) {
+      void api.updateTransaction(id, {
+        ...updates,
+        flightStatus: updates.flightDetails?.ticketStatus,
+        note: changeReason,
+      }).then(() => hydrateServerSession()).catch((error) => console.error('Server transaction update failed:', error));
+      return;
+    }
     let oldTx: Transaction | undefined;
     setData((prev: any) => {
       oldTx = prev.transactions.find((t: Transaction) => t.id === id);
@@ -1068,7 +1076,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     recordAudit('Updated Services', 'Service', 'all', undefined, `Updated services catalog`);
   };
 
-  const completeReminder = (txId: string) => {
+  const completeReminder = async (txId: string): Promise<void> => {
+    if (USE_SERVER_API) {
+      await api.updateTransaction(txId, { reminderStatus: 'completed' });
+      await hydrateServerSession();
+      return;
+    }
     setData((prev: any) => ({
       ...prev,
       transactions: prev.transactions.map((t: Transaction) =>
@@ -1077,13 +1090,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const snoozeReminder = (txId: string, days: number) => {
+  const snoozeReminder = async (txId: string, days: number): Promise<void> => {
     const target = data.transactions.find((t: Transaction) => t.id === txId);
     if (!target) return;
     const baseDate = target.reminderDate ? new Date(target.reminderDate) : new Date();
     baseDate.setDate(baseDate.getDate() + days);
     const newDateStr = baseDate.toISOString().split('T')[0];
-
+    if (USE_SERVER_API) {
+      await api.updateTransaction(txId, { reminderDate: newDateStr, reminderStatus: 'pending' });
+      await hydrateServerSession();
+      return;
+    }
     setData((prev: any) => ({
       ...prev,
       transactions: prev.transactions.map((t: Transaction) =>
