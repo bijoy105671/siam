@@ -42,8 +42,9 @@ import {
   Transaction,
   User,
   Vendor,
+  LoanAdvanceRecord,
+  LoanAdvanceAdjustment,
 } from '../types';
-import { api, createServerOneEntry, USE_SERVER_API } from '../services/apiClient';
 import {
   decryptDatabasePayload,
   encryptDatabasePayload,
@@ -98,7 +99,6 @@ interface AppContextType {
   currentUser: User | null;
   users: User[];
   login: (username: string, password: string) => boolean;
-  loginAsync: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   addUser: (user: Omit<User, 'id' | 'createdAt'>) => void;
   updateUser: (id: string, updates: Partial<User>) => void;
@@ -113,6 +113,8 @@ interface AppContextType {
   partialPayments: PartialPayment[];
   expenses: Expense[];
   transfers: FundTransfer[];
+  loanAdvances: LoanAdvanceRecord[];
+  loanAdvanceAdjustments: LoanAdvanceAdjustment[];
   auditLogs: AuditLog[];
   settings: BusinessSettings;
   openingBalances: Record<PaymentMethod, number>;
@@ -137,10 +139,9 @@ interface AppContextType {
 
   // Actions
   createOneEntry: (input: OneEntryInput) => Transaction;
-  createOneEntryAsync: (input: OneEntryInput) => Promise<Transaction>;
-  updateTransaction: (id: string, updates: Partial<Transaction>, changeReason?: string) => Promise<void>;
-  deleteTransaction: (id: string) => Promise<void>;
-  updateFlightStatus: (txId: string, status: TicketStatus, note?: string) => Promise<void>;
+  updateTransaction: (id: string, updates: Partial<Transaction>, changeReason?: string) => void;
+  deleteTransaction: (id: string) => void;
+  updateFlightStatus: (txId: string, status: TicketStatus, note?: string) => void;
 
   addPartialPayment: (params: {
     transactionId: string;
@@ -151,25 +152,30 @@ interface AppContextType {
     time: string;
     note?: string;
     reference?: string;
-  }) => Promise<void>;
+  }) => void;
 
   addCustomer: (cust: Omit<Customer, 'id' | 'createdAt'>) => Customer;
   updateCustomer: (id: string, cust: Partial<Customer>) => void;
   addVendor: (vend: Omit<Vendor, 'id' | 'createdAt'>) => Vendor;
   updateVendor: (id: string, vend: Partial<Vendor>) => void;
 
-  addExpense: (expense: Omit<Expense, 'id' | 'createdBy'>) => Promise<void>;
-  deleteExpense: (id: string) => Promise<void>;
-  updateExpenseCategories: (cats: ExpenseCategory[]) => Promise<void>;
+  addExpense: (expense: Omit<Expense, 'id' | 'createdBy'>) => void;
+  deleteExpense: (id: string) => void;
+  updateExpenseCategories: (cats: ExpenseCategory[]) => void;
 
-  addFundTransfer: (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => Promise<void>;
+  addFundTransfer: (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => void;
+  addLoanAdvance: (record: Omit<LoanAdvanceRecord, 'id' | 'createdBy'>) => void;
+  updateLoanAdvance: (id: string, updates: Partial<LoanAdvanceRecord>) => void;
+  deleteLoanAdvance: (id: string) => void;
+  adjustLoanAdvance: (loanAdvanceId: string, transactionId: string, amount: number, note?: string) => boolean;
+  deleteLoanAdvanceAdjustment: (id: string) => boolean;
 
-  updateOpeningBalance: (method: PaymentMethod, amount: number) => Promise<void>;
-  updateSettings: (settings: Partial<BusinessSettings>) => Promise<void>;
+  updateOpeningBalance: (method: PaymentMethod, amount: number) => void;
+  updateSettings: (settings: Partial<BusinessSettings>) => void;
   updateServices: (services: ServiceItem[]) => void;
 
-  completeReminder: (txId: string) => Promise<void>;
-  snoozeReminder: (txId: string, days: number) => Promise<void>;
+  completeReminder: (txId: string) => void;
+  snoozeReminder: (txId: string, days: number) => void;
 
   // Backup & Restore & Automated Scheduling
   backupSchedule: AutomatedBackupSchedule;
@@ -226,20 +232,6 @@ const STORAGE_KEY = 'siam_air_business_data_v3_clean';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load state from localStorage or initial clean data
-  const [serverDashboard, setServerDashboard] = useState<{
-    totalSales: number;
-    totalReceived: number;
-    totalExpense: number;
-    totalVendorPayment: number;
-    grossProfit: number;
-    loss: number;
-    netProfit: number;
-    customerReceivable: number;
-    vendorPayable: number;
-    balances: AccountBalances;
-    totalAvailableMoney: number;
-  } | null>(null);
-
   const [data, setData] = useState(() => {
     // Purge previous version sample storage keys if present
     try {
@@ -257,6 +249,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...parsed,
           backupSchedule: parsed.backupSchedule || INITIAL_BACKUP_SCHEDULE,
           backupLogs: parsed.backupLogs || INITIAL_BACKUP_LOGS,
+          loanAdvances: parsed.loanAdvances || [],
+          loanAdvanceAdjustments: parsed.loanAdvanceAdjustments || [],
         };
       } catch (e) {
         console.error('Failed to parse stored business data:', e);
@@ -274,190 +268,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       partialPayments: INITIAL_PARTIAL_PAYMENTS,
       expenses: INITIAL_EXPENSES,
       transfers: INITIAL_TRANSFERS,
+      loanAdvances: [],
+      loanAdvanceAdjustments: [],
       auditLogs: INITIAL_AUDIT_LOGS,
       openingBalances: INITIAL_OPENING_BALANCES,
       backupSchedule: INITIAL_BACKUP_SCHEDULE,
       backupLogs: INITIAL_BACKUP_LOGS,
     };
   });
-
-  const createServerTransactionForContext = (row: any): Transaction => {
-    const raw = row?.transaction || row;
-    const flightDetails = raw.flight_details
-      ? (typeof raw.flight_details === 'string' ? JSON.parse(raw.flight_details) : raw.flight_details)
-      : undefined;
-    return {
-      id: String(raw.id),
-      invoiceNumber: String(raw.invoice_number || raw.invoiceNumber || ''),
-      date: String(raw.date || ''),
-      time: String(raw.time || ''),
-      createdBy: String(raw.created_by || raw.createdBy || ''),
-      customerId: String(raw.customer_id || raw.customerId || ''),
-      customerName: String(raw.customer_name || raw.customerName || ''),
-      customerMobile: String(raw.customer_mobile || raw.customerMobile || ''),
-      serviceId: String(raw.service_id || raw.serviceId || ''),
-      serviceName: String(raw.service_name || raw.serviceName || ''),
-      description: raw.description || undefined,
-      flightDetails,
-      sellingPrice: Number(raw.selling_price || raw.sellingPrice || 0),
-      customerPaid: Number(raw.customer_paid || raw.customerPaid || 0),
-      customerDue: Number(raw.customer_due || raw.customerDue || 0),
-      customerPaymentMethod: String(raw.customer_payment_method || raw.customerPaymentMethod || 'Cash') as PaymentMethod,
-      vendorId: raw.vendor_id || raw.vendorId || undefined,
-      vendorName: raw.vendor_name || raw.vendorName || undefined,
-      vendorCost: Number(raw.vendor_cost || raw.vendorCost || 0),
-      vendorPaid: Number(raw.vendor_paid || raw.vendorPaid || 0),
-      vendorDue: Number(raw.vendor_due || raw.vendorDue || 0),
-      vendorPaymentMethod: raw.vendor_payment_method || raw.vendorPaymentMethod || undefined,
-      grossProfit: Number(raw.gross_profit || raw.grossProfit || 0),
-      reminderDate: raw.reminder_date || raw.reminderDate || undefined,
-      reminderTime: raw.reminder_time || raw.reminderTime || undefined,
-      reminderStatus: raw.reminder_status || raw.reminderStatus || undefined,
-      reminderNote: raw.reminder_note || raw.reminderNote || undefined,
-      status: raw.status || 'DUE',
-      notes: raw.notes || undefined,
-      updatedAt: raw.updated_at || raw.updatedAt || undefined,
-      updatedBy: raw.updated_by || raw.updatedBy || undefined,
-    };
-  };
-
-  const hydrateServerSession = async () => {
-    if (!USE_SERVER_API) return;
-    try {
-      const sessionResult = await api.me();
-      const serverUser = sessionResult.user as Partial<User> | null;
-      if (!serverUser?.username) {
-        setData((prev: any) => ({ ...prev, currentUserId: '' }));
-        return;
-      }
-
-      const [dashboardResult, transactionResult, customerResult, vendorResult, balanceResult, serviceResult, categoryResult, settingsResult] =
-        await Promise.all([
-          api.dashboard(),
-          api.transactions(500),
-          api.customers(),
-          api.vendors(),
-          api.accountBalances(),
-          api.services(),
-          api.expenseCategories(),
-          api.settings(),
-        ]);
-      const userResult = serverUser.role === 'admin' ? await api.users() : [];
-      const mapCustomer = (row: any): Customer => ({
-        id: String(row.id),
-        name: String(row.name || ''),
-        mobile: String(row.mobile || ''),
-        whatsapp: row.whatsapp || undefined,
-        email: row.email || undefined,
-        address: row.address || undefined,
-        nid: row.nid || undefined,
-        passportNumber: row.passport_number ?? row.passportNumber ?? undefined,
-        passportExpiry: row.passport_expiry ?? row.passportExpiry ?? undefined,
-        photo: row.photo || undefined,
-        notes: row.notes || undefined,
-        openingDue: Number(row.opening_due || 0),
-        createdAt: row.created_at || row.createdAt || new Date().toISOString(),
-      });
-
-      const mapVendor = (row: any): Vendor => ({
-        id: String(row.id),
-        name: String(row.name || ''),
-        company: row.company || undefined,
-        mobile: String(row.mobile || ''),
-        whatsapp: row.whatsapp || undefined,
-        email: row.email || undefined,
-        address: row.address || undefined,
-        accountInfo: row.account_info ?? row.accountInfo ?? undefined,
-        openingPayable: Number(row.opening_payable || 0),
-        createdAt: row.created_at || row.createdAt || new Date().toISOString(),
-      });
-
-      const serverTransactions = (transactionResult as any[]).map((row) => createServerTransactionForContext(row));
-      const serverExpenseCategories: ExpenseCategory[] = Array.isArray(categoryResult)
-        ? (categoryResult as any[]).map((row) => ({
-            id: String(row.id),
-            name: String(row.name || ''),
-            enabled: row.enabled !== false,
-          }))
-        : [];
-      const serverSettings = (settingsResult as any)?.settings || {};
-
-      const balances: AccountBalances = {
-        Cash: Number(balanceResult.balances.cash || 0),
-        bKash: Number(balanceResult.balances.bkash || 0),
-        Nagad: Number(balanceResult.balances.nagad || 0),
-        Rocket: Number(balanceResult.balances.rocket || 0),
-        Bank: Number(balanceResult.balances.bank || 0),
-        Card: Number(balanceResult.balances.card || 0),
-        Other: Number(balanceResult.balances.other || 0),
-      };
-
-      setServerDashboard({
-        totalSales: Number((dashboardResult as any).today?.total_sales ?? (dashboardResult as any).sales?.total_sales ?? 0),
-        totalReceived: Number((dashboardResult as any).today?.total_received ?? (dashboardResult as any).sales?.total_received ?? 0),
-        totalExpense: Number((dashboardResult as any).today?.total_expense ?? (dashboardResult as any).expenses?.total_expense ?? 0),
-        totalVendorPayment: Number((dashboardResult as any).today?.total_vendor_payment ?? 0),
-        grossProfit: Number((dashboardResult as any).today?.gross_profit ?? 0),
-        loss: Number((dashboardResult as any).today?.loss ?? 0),
-        netProfit: Number((dashboardResult as any).today?.net_profit ?? 0),
-        customerReceivable: Number((dashboardResult as any).customerReceivable || 0),
-        vendorPayable: Number((dashboardResult as any).vendorPayable || 0),
-        balances,
-        totalAvailableMoney: Number(balanceResult.total || 0),
-      });
-
-      const serverUsers: User[] = (userResult as any[]).map((row: any) => ({
-        id: String(row.id),
-        username: String(row.username || ''),
-        fullName: String(row.full_name || row.fullName || row.username || ''),
-        role: (row.role as User['role']) || 'staff',
-        isActive: row.is_active !== false,
-        permissions: row.permissions || {},
-        createdAt: row.created_at || new Date().toISOString(),
-      }));
-      const serverServices: ServiceItem[] = (serviceResult as any[]).map((row: any) => ({
-        id: String(row.id),
-        name: String(row.name || ''),
-        category: row.category || 'Other',
-        enabled: row.enabled !== false,
-        order: Number(row.sort_order || 0),
-      }));
-
-      setData((prev: any) => {
-        const localMatch = prev.users.find((u: User) => u.username.toLowerCase() === String(serverUser.username).toLowerCase());
-        const mappedUser: User = {
-          ...(localMatch || {}),
-          id: localMatch?.id || String(serverUser.id || 'server-user'),
-          username: String(serverUser.username),
-          fullName: String(serverUser.fullName || serverUser.username),
-          role: (serverUser.role as User['role']) || 'staff',
-          isActive: true,
-          permissions: serverUser.permissions || localMatch?.permissions,
-          createdAt: localMatch?.createdAt || new Date().toISOString(),
-        };
-        return {
-          ...prev,
-          users: serverUsers.length ? serverUsers : (localMatch
-            ? prev.users.map((u: User) => u.id === localMatch.id ? mappedUser : u)
-            : [mappedUser, ...prev.users]),
-          settings: { ...prev.settings, ...serverSettings },
-          services: serverServices.length ? serverServices : prev.services,
-          expenseCategories: serverExpenseCategories.length ? serverExpenseCategories : prev.expenseCategories,
-          customers: (customerResult as any[]).map(mapCustomer),
-          vendors: (vendorResult as any[]).map(mapVendor),
-          transactions: serverTransactions,
-          currentUserId: mappedUser.id,
-        };
-      });
-    } catch (error) {
-      console.error('Server data hydration failed:', error);
-      // Keep the local cache available as a safe UI fallback if the API is temporarily unavailable.
-    }
-  };
-
-  useEffect(() => {
-    void hydrateServerSession();
-  }, []);
 
   // Sync to localStorage
   useEffect(() => {
@@ -470,8 +288,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Auth helper
   const currentUser = useMemo(() => {
-    if (USE_SERVER_API && !data.currentUserId) return null;
-    return data.users.find((u: User) => u.id === data.currentUserId) || (!USE_SERVER_API ? data.users[0] : null) || null;
+    return data.users.find((u: User) => u.id === data.currentUserId) || data.users[0] || null;
   }, [data.users, data.currentUserId]);
 
   const recordAudit = (
@@ -511,34 +328,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return false;
   };
 
-  const loginAsync = async (username: string, pass: string): Promise<boolean> => {
-    if (!USE_SERVER_API) return login(username, pass);
-    try {
-      const result = await api.login(username, pass);
-      const serverUser = result.user as Partial<User> | null;
-      if (!serverUser?.username) return false;
-      await hydrateServerSession();
-      return true;
-    } catch (error) {
-      console.error('Server login failed:', error);
-      return false;
-    }
-  };
-
   const logout = () => {
-    const loggedOutUser = currentUser;
-    if (USE_SERVER_API) {
-      void api.logout()
-        .catch((error) => console.error('Server logout failed:', error))
-        .finally(() => {
-          setData((prev: any) => ({ ...prev, currentUserId: '' }));
-        });
-    } else {
-      setData((prev: any) => ({ ...prev, currentUserId: '' }));
+    if (currentUser) {
+      recordAudit('User Logout', 'User', currentUser.id, undefined, `${currentUser.fullName} logged out`);
     }
-    if (loggedOutUser) {
-      recordAudit('User Logout', 'User', loggedOutUser.id, undefined, `${loggedOutUser.fullName} logged out`);
-    }
+    // Switch to first staff or guest
+    const otherUser = data.users.find((u: User) => u.id !== data.currentUserId) || data.users[0];
+    setData((prev: any) => ({ ...prev, currentUserId: otherUser?.id }));
   };
 
   const addUser = (user: Omit<User, 'id' | 'createdAt'>) => {
@@ -573,6 +369,102 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     recordAudit('Deleted User', 'User', id, undefined, `Deleted user ${id}`);
   };
 
+  const addLoanAdvance = (record: Omit<LoanAdvanceRecord, 'id' | 'createdBy'>) => {
+    const newRecord: LoanAdvanceRecord = {
+      ...record,
+      id: 'la_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      createdBy: currentUser?.fullName || 'Staff',
+    };
+    setData((prev: any) => ({ ...prev, loanAdvances: [newRecord, ...(prev.loanAdvances || [])] }));
+    recordAudit('Created Loan / Advance', 'LoanAdvance', newRecord.id, undefined,
+      newRecord.partyName + ': ' + newRecord.kind + ' ' + newRecord.direction + ' ৳' + newRecord.amount);
+  };
+
+  const updateLoanAdvance = (id: string, updates: Partial<LoanAdvanceRecord>) => {
+    setData((prev: any) => ({
+      ...prev,
+      loanAdvances: (prev.loanAdvances || []).map((r: LoanAdvanceRecord) => r.id === id ? { ...r, ...updates } : r),
+    }));
+    recordAudit('Updated Loan / Advance', 'LoanAdvance', id, undefined, JSON.stringify(updates));
+  };
+
+  const deleteLoanAdvance = (id: string) => {
+    setData((prev: any) => ({ ...prev, loanAdvances: (prev.loanAdvances || []).filter((r: LoanAdvanceRecord) => r.id !== id) }));
+    recordAudit('Deleted Loan / Advance', 'LoanAdvance', id, undefined, 'Loan / advance record deleted');
+  };
+
+  const adjustLoanAdvance = (loanAdvanceId: string, transactionId: string, amount: number, note?: string): boolean => {
+    const record = (data.loanAdvances || []).find((r: LoanAdvanceRecord) => r.id === loanAdvanceId);
+    const tx = data.transactions.find((t: Transaction) => t.id === transactionId);
+    if (!record || !tx || amount <= 0) return false;
+
+    const sameParty = record.partyType === 'customer'
+      ? tx.customerId === record.partyId
+      : tx.vendorId === record.partyId;
+    if (!sameParty) return false;
+
+    const adjusted = (data.loanAdvanceAdjustments || [])
+      .filter((a: LoanAdvanceAdjustment) => a.loanAdvanceId === loanAdvanceId)
+      .reduce((sum: number, a: LoanAdvanceAdjustment) => sum + a.amount, 0);
+    const available = Math.max(0, record.amount - adjusted);
+    const targetDue = record.partyType === 'customer' ? Math.max(0, tx.customerDue) : Math.max(0, tx.vendorDue);
+    const applied = Math.min(amount, available, targetDue);
+    if (applied <= 0) return false;
+
+    const now = new Date();
+    const adjustment: LoanAdvanceAdjustment = {
+      id: 'laa_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      loanAdvanceId,
+      transactionId,
+      partyType: record.partyType,
+      partyId: record.partyId,
+      amount: applied,
+      date: now.toISOString().split('T')[0],
+      time: now.toTimeString().split(' ')[0].substring(0, 5),
+      note: note?.trim() || undefined,
+      createdBy: currentUser?.fullName || 'Staff',
+    };
+
+    setData((prev: any) => ({
+      ...prev,
+      loanAdvanceAdjustments: [...(prev.loanAdvanceAdjustments || []), adjustment],
+      transactions: prev.transactions.map((t: Transaction) => {
+        if (t.id !== transactionId) return t;
+        if (record.partyType === 'customer') {
+          const paid = t.customerPaid + applied;
+          return { ...t, customerPaid: paid, customerDue: Math.max(0, t.sellingPrice - paid), status: t.customerDue <= applied ? 'PAID' : 'PARTIAL', updatedAt: now.toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
+        }
+        const paid = t.vendorPaid + applied;
+        return { ...t, vendorPaid: paid, vendorDue: Math.max(0, t.vendorCost - paid), updatedAt: now.toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
+      }),
+    }));
+    recordAudit('Adjusted Loan / Advance', 'LoanAdvance', adjustment.id, undefined,
+      record.partyName + ' → ' + tx.invoiceNumber + ' ৳' + applied);
+    return true;
+  };
+
+  const deleteLoanAdvanceAdjustment = (id: string): boolean => {
+    const adjustment = (data.loanAdvanceAdjustments || []).find((a: LoanAdvanceAdjustment) => a.id === id);
+    const tx = adjustment ? data.transactions.find((t: Transaction) => t.id === adjustment.transactionId) : undefined;
+    if (!adjustment || !tx) return false;
+    setData((prev: any) => ({
+      ...prev,
+      loanAdvanceAdjustments: (prev.loanAdvanceAdjustments || []).filter((a: LoanAdvanceAdjustment) => a.id !== id),
+      transactions: prev.transactions.map((t: Transaction) => {
+        if (t.id !== adjustment.transactionId) return t;
+        if (adjustment.partyType === 'customer') {
+          const paid = Math.max(0, t.customerPaid - adjustment.amount);
+          const due = Math.max(0, t.sellingPrice - paid);
+          return { ...t, customerPaid: paid, customerDue: due, status: due === 0 && t.sellingPrice > 0 ? 'PAID' : paid > 0 ? 'PARTIAL' : 'DUE', updatedAt: new Date().toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
+        }
+        const paid = Math.max(0, t.vendorPaid - adjustment.amount);
+        return { ...t, vendorPaid: paid, vendorDue: Math.max(0, t.vendorCost - paid), updatedAt: new Date().toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
+      }),
+    }));
+    recordAudit('Reversed Loan / Advance Adjustment', 'LoanAdvance', id, undefined, 'Adjustment reversed without cash movement');
+    return true;
+  };
+
   // Customers
   const addCustomer = (cust: Omit<Customer, 'id' | 'createdAt'>): Customer => {
     const newCust: Customer = {
@@ -589,18 +481,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCustomer = (id: string, cust: Partial<Customer>) => {
-    if (USE_SERVER_API) {
-      void api.updateCustomer(id, {
-        name: cust.name, mobile: cust.mobile, email: cust.email, address: cust.address,
-        whatsapp: cust.whatsapp, nid: cust.nid, passportNumber: cust.passportNumber,
-        passportExpiry: cust.passportExpiry, notes: cust.notes, openingDue: cust.openingDue,
-      }).then(() => hydrateServerSession()).catch((error) => console.error('Server customer update failed:', error));
-      return;
-    }
     let oldCust: Customer | undefined;
     setData((prev: any) => {
       oldCust = prev.customers.find((c: Customer) => c.id === id);
-      return { ...prev, customers: prev.customers.map((c: Customer) => (c.id === id ? { ...c, ...cust } : c)) };
+      return {
+        ...prev,
+        customers: prev.customers.map((c: Customer) => (c.id === id ? { ...c, ...cust } : c)),
+      };
     });
     recordAudit('Updated Customer', 'Customer', id, JSON.stringify(oldCust), JSON.stringify(cust));
   };
@@ -621,17 +508,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateVendor = (id: string, vend: Partial<Vendor>) => {
-    if (USE_SERVER_API) {
-      void api.updateVendor(id, {
-        name: vend.name, company: vend.company, mobile: vend.mobile, whatsapp: vend.whatsapp,
-        email: vend.email, address: vend.address, accountInfo: vend.accountInfo, openingPayable: vend.openingPayable,
-      }).then(() => hydrateServerSession()).catch((error) => console.error('Server vendor update failed:', error));
-      return;
-    }
     let oldVend: Vendor | undefined;
     setData((prev: any) => {
       oldVend = prev.vendors.find((v: Vendor) => v.id === id);
-      return { ...prev, vendors: prev.vendors.map((v: Vendor) => (v.id === id ? { ...v, ...vend } : v)) };
+      return {
+        ...prev,
+        vendors: prev.vendors.map((v: Vendor) => (v.id === id ? { ...v, ...vend } : v)),
+      };
     });
     recordAudit('Updated Vendor', 'Vendor', id, JSON.stringify(oldVend), JSON.stringify(vend));
   };
@@ -817,30 +700,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newTransaction;
   };
 
-  const createOneEntryAsync = async (input: OneEntryInput): Promise<Transaction> => {
-    if (!USE_SERVER_API) return createOneEntry(input);
-
-    const result = await createServerOneEntry(input as unknown as Record<string, any>);
-    const tx = result.transaction as Transaction;
-
-    // Refresh the complete server-backed UI state after a successful commit.
-    // This keeps New Entry, customer/vendor ledgers, balances, dashboard and reminders in sync
-    // without requiring the user to manually refresh the browser.
-    await hydrateServerSession();
-
-    return tx;
-  };
-
-  const updateTransaction = async (id: string, updates: Partial<Transaction>, changeReason?: string): Promise<void> => {
-    if (USE_SERVER_API) {
-      await api.updateTransaction(id, {
-        ...updates,
-        flightStatus: updates.flightDetails?.ticketStatus,
-        note: changeReason,
-      });
-      await hydrateServerSession();
-      return;
-    }
+  const updateTransaction = (id: string, updates: Partial<Transaction>, changeReason?: string) => {
     let oldTx: Transaction | undefined;
     setData((prev: any) => {
       oldTx = prev.transactions.find((t: Transaction) => t.id === id);
@@ -882,12 +742,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const deleteTransaction = async (id: string) => {
-    if (USE_SERVER_API) {
-      await api.deleteTransaction(id);
-      await hydrateServerSession();
-      return;
-    }
+  const deleteTransaction = (id: string) => {
     let deletedTx: Transaction | undefined;
     setData((prev: any) => {
       deletedTx = prev.transactions.find((t: Transaction) => t.id === id);
@@ -906,12 +761,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const updateFlightStatus = async (txId: string, status: TicketStatus, note?: string) => {
-    if (USE_SERVER_API) {
-      await api.updateTransaction(txId, { flightStatus: status, note });
-      await hydrateServerSession();
-      return;
-    }
+  const updateFlightStatus = (txId: string, status: TicketStatus, note?: string) => {
     const now = new Date();
     setData((prev: any) => ({
       ...prev,
@@ -919,16 +769,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (t.id === txId && t.flightDetails) {
           const oldStatus = t.flightDetails.ticketStatus;
           const history = t.flightDetails.statusHistory || [];
-          return { ...t, flightDetails: { ...t.flightDetails, ticketStatus: status, statusHistory: [...history, { status, changedAt: now.toISOString(), changedBy: currentUser?.fullName || 'Staff', note: note || `Status changed from ${oldStatus} to ${status}` }] } };
+          return {
+            ...t,
+            flightDetails: {
+              ...t.flightDetails,
+              ticketStatus: status,
+              statusHistory: [
+                ...history,
+                {
+                  status,
+                  changedAt: now.toISOString(),
+                  changedBy: currentUser?.fullName || 'Staff',
+                  note: note || `Status changed from ${oldStatus} to ${status}`,
+                },
+              ],
+            },
+          };
         }
         return t;
       }),
     }));
-    recordAudit('Updated Flight Status', 'Transaction', txId, undefined, `Flight ticket status changed to ${status}${note ? ` (${note})` : ''}`);
+
+    recordAudit(
+      'Updated Flight Status',
+      'Transaction',
+      txId,
+      undefined,
+      `Flight ticket status changed to ${status}${note ? ` (${note})` : ''}`
+    );
   };
 
   // Partial Payment
-  const addPartialPayment = async (params: {
+  const addPartialPayment = (params: {
     transactionId: string;
     paymentType: 'customer' | 'vendor';
     amount: number;
@@ -938,20 +810,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     note?: string;
     reference?: string;
   }) => {
-    if (USE_SERVER_API) {
-      await api.recordPayment({
-        transactionId: params.transactionId,
-        paymentType: params.paymentType,
-        amount: params.amount,
-        paymentMethod: params.paymentMethod,
-        note: params.note,
-        reference: params.reference,
-        paidAt: params.date && params.time ? `${params.date} ${params.time}:00` : undefined,
-      });
-      await hydrateServerSession();
-      return;
-    }
-
     const targetTx = data.transactions.find((t: Transaction) => t.id === params.transactionId);
     if (!targetTx) return;
 
@@ -970,21 +828,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       reference: params.reference || targetTx.invoiceNumber,
     };
 
-    setData((prev: any) => ({
-      ...prev,
-      transactions: prev.transactions.map((t: Transaction) => {
-        if (t.id !== params.transactionId) return t;
-        if (params.paymentType === 'customer') {
-          const newPaid = t.customerPaid + params.amount;
-          const newDue = Math.max(0, t.sellingPrice - newPaid);
-          return { ...t, customerPaid: newPaid, customerDue: newDue, status: newDue === 0 ? 'PAID' : 'PARTIAL' };
+    setData((prev: any) => {
+      const updatedTxs = prev.transactions.map((t: Transaction) => {
+        if (t.id === params.transactionId) {
+          if (params.paymentType === 'customer') {
+            const newPaid = t.customerPaid + params.amount;
+            const newDue = Math.max(0, t.sellingPrice - newPaid);
+            return {
+              ...t,
+              customerPaid: newPaid,
+              customerDue: newDue,
+              status: newDue === 0 ? ('PAID' as const) : ('PARTIAL' as const),
+            };
+          } else {
+            const newPaid = t.vendorPaid + params.amount;
+            const newDue = Math.max(0, t.vendorCost - newPaid);
+            return {
+              ...t,
+              vendorPaid: newPaid,
+              vendorDue: newDue,
+            };
+          }
         }
-        const newPaid = t.vendorPaid + params.amount;
-        const newDue = Math.max(0, t.vendorCost - newPaid);
-        return { ...t, vendorPaid: newPaid, vendorDue: newDue };
-      }),
-      partialPayments: [...prev.partialPayments, newPayment],
-    }));
+        return t;
+      });
+
+      return {
+        ...prev,
+        transactions: updatedTxs,
+        partialPayments: [...prev.partialPayments, newPayment],
+      };
+    });
 
     recordAudit(
       params.paymentType === 'customer' ? 'Customer Payment Received' : 'Vendor Payment Made',
@@ -996,72 +870,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Expenses
-  const addExpense = async (expense: Omit<Expense, 'id' | 'createdBy'>) => {
-    if (USE_SERVER_API) {
-      await api.createExpense({
-        category: expense.category,
-        description: expense.description,
-        amount: expense.amount,
-        paymentMethod: String(expense.paymentMethod).toLowerCase(),
-        note: (expense as any).note || null,
-        occurredAt: (expense as any).date && (expense as any).time ? `${(expense as any).date} ${(expense as any).time}:00` : undefined,
-      });
-      await hydrateServerSession();
-      return;
-    }
-    const newExp: Expense = { ...expense, id: `exp_${Date.now()}`, createdBy: currentUser?.fullName || 'Staff' };
-    setData((prev: any) => ({ ...prev, expenses: [newExp, ...prev.expenses] }));
-    recordAudit('Added Expense', 'Expense', newExp.id, undefined, `Expense: ${newExp.category} - ৳${newExp.amount} (${newExp.description}) paid via ${newExp.paymentMethod}`);
+  const addExpense = (expense: Omit<Expense, 'id' | 'createdBy'>) => {
+    const newExp: Expense = {
+      ...expense,
+      id: `exp_${Date.now()}`,
+      createdBy: currentUser?.fullName || 'Staff',
+    };
+    setData((prev: any) => ({
+      ...prev,
+      expenses: [newExp, ...prev.expenses],
+    }));
+    recordAudit(
+      'Added Expense',
+      'Expense',
+      newExp.id,
+      undefined,
+      `Expense: ${newExp.category} - ৳${newExp.amount} (${newExp.description}) paid via ${newExp.paymentMethod}`
+    );
   };
 
-  const deleteExpense = async (id: string) => {
-    if (USE_SERVER_API) {
-      await api.reverseExpense(id);
-      await hydrateServerSession();
-      return;
-    }
+  const deleteExpense = (id: string) => {
     let deletedExp: Expense | undefined;
     setData((prev: any) => {
       deletedExp = prev.expenses.find((e: Expense) => e.id === id);
-      return { ...prev, expenses: prev.expenses.filter((e: Expense) => e.id !== id) };
+      return {
+        ...prev,
+        expenses: prev.expenses.filter((e: Expense) => e.id !== id),
+      };
     });
     recordAudit('Deleted Expense', 'Expense', id, JSON.stringify(deletedExp), `Deleted expense ৳${deletedExp?.amount}`);
   };
 
-  const updateExpenseCategories = async (cats: ExpenseCategory[]) => {
-    if (USE_SERVER_API) {
-      const result = await api.updateExpenseCategories(cats);
-      setData((prev: any) => ({ ...prev, expenseCategories: (result.categories as any[]).map((c) => ({ id: String(c.id), name: String(c.name), enabled: c.enabled !== false })) }));
-      return;
-    }
+  const updateExpenseCategories = (cats: ExpenseCategory[]) => {
     setData((prev: any) => ({ ...prev, expenseCategories: cats }));
   };
 
   // Fund Transfers
-  const addFundTransfer = async (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => {
-    if (USE_SERVER_API) {
-      await api.createFundTransfer({
-        fromAccount: String(transfer.fromAccount).toLowerCase(),
-        toAccount: String(transfer.toAccount).toLowerCase(),
-        amount: transfer.amount,
-        reason: transfer.reason,
-        note: (transfer as any).note || null,
-        occurredAt: (transfer as any).date && (transfer as any).time ? `${(transfer as any).date} ${(transfer as any).time}:00` : undefined,
-      });
-      await hydrateServerSession();
-      return;
-    }
-    const newTrf: FundTransfer = { ...transfer, id: `trf_${Date.now()}`, createdBy: currentUser?.fullName || 'Staff' };
-    setData((prev: any) => ({ ...prev, transfers: [newTrf, ...prev.transfers] }));
-    recordAudit('Fund Transfer', 'Transfer', newTrf.id, undefined, `Transfer ৳${newTrf.amount} from ${newTrf.fromAccount} to ${newTrf.toAccount} (Reason: ${newTrf.reason})`);
+  const addFundTransfer = (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => {
+    const newTrf: FundTransfer = {
+      ...transfer,
+      id: `trf_${Date.now()}`,
+      createdBy: currentUser?.fullName || 'Staff',
+    };
+    setData((prev: any) => ({
+      ...prev,
+      transfers: [newTrf, ...prev.transfers],
+    }));
+    recordAudit(
+      'Fund Transfer',
+      'Transfer',
+      newTrf.id,
+      undefined,
+      `Transfer ৳${newTrf.amount} from ${newTrf.fromAccount} to ${newTrf.toAccount} (Reason: ${newTrf.reason})`
+    );
   };
 
-  const updateOpeningBalance = async (method: PaymentMethod, amount: number) => {
-    if (USE_SERVER_API) {
-      await api.updateOpeningBalance(String(method).toLowerCase(), amount);
-      await hydrateServerSession();
-      return;
-    }
+  const updateOpeningBalance = (method: PaymentMethod, amount: number) => {
     setData((prev: any) => ({
       ...prev,
       openingBalances: {
@@ -1072,16 +936,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     recordAudit('Updated Opening Balance', 'Settings', method, undefined, `Set opening balance for ${method} to ৳${amount}`);
   };
 
-  const updateSettings = async (settings: Partial<BusinessSettings>): Promise<void> => {
-    if (USE_SERVER_API) {
-      const result = await api.updateSettings(settings);
-      setData((prev: any) => ({
-        ...prev,
-        settings: { ...prev.settings, ...(result.settings || settings) },
-      }));
-      await hydrateServerSession();
-      return;
-    }
+  const updateSettings = (settings: Partial<BusinessSettings>) => {
     setData((prev: any) => ({
       ...prev,
       settings: { ...prev.settings, ...settings },
@@ -1094,12 +949,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     recordAudit('Updated Services', 'Service', 'all', undefined, `Updated services catalog`);
   };
 
-  const completeReminder = async (txId: string): Promise<void> => {
-    if (USE_SERVER_API) {
-      await api.updateTransaction(txId, { reminderStatus: 'completed' });
-      await hydrateServerSession();
-      return;
-    }
+  const completeReminder = (txId: string) => {
     setData((prev: any) => ({
       ...prev,
       transactions: prev.transactions.map((t: Transaction) =>
@@ -1108,17 +958,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const snoozeReminder = async (txId: string, days: number): Promise<void> => {
+  const snoozeReminder = (txId: string, days: number) => {
     const target = data.transactions.find((t: Transaction) => t.id === txId);
     if (!target) return;
     const baseDate = target.reminderDate ? new Date(target.reminderDate) : new Date();
     baseDate.setDate(baseDate.getDate() + days);
     const newDateStr = baseDate.toISOString().split('T')[0];
-    if (USE_SERVER_API) {
-      await api.updateTransaction(txId, { reminderDate: newDateStr, reminderStatus: 'pending' });
-      await hydrateServerSession();
-      return;
-    }
+
     setData((prev: any) => ({
       ...prev,
       transactions: prev.transactions.map((t: Transaction) =>
@@ -1435,6 +1281,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...parsed,
           backupSchedule: parsed.backupSchedule || INITIAL_BACKUP_SCHEDULE,
           backupLogs: parsed.backupLogs || INITIAL_BACKUP_LOGS,
+          loanAdvanceAdjustments: parsed.loanAdvanceAdjustments || [],
         });
         recordAudit('Restored Backup', 'Settings', 'restore', undefined, 'Restored database from backup file');
         return true;
@@ -1459,6 +1306,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       partialPayments: [],
       expenses: [],
       transfers: [],
+      loanAdvances: [],
+      loanAdvanceAdjustments: [],
       auditLogs: [],
       openingBalances: {
         Cash: 0,
@@ -1494,6 +1343,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       partialPayments: DEMO_PARTIAL_PAYMENTS,
       expenses: DEMO_EXPENSES,
       transfers: DEMO_TRANSFERS,
+      loanAdvances: [],
+      loanAdvanceAdjustments: [],
       auditLogs: DEMO_AUDIT_LOGS,
       openingBalances: DEMO_OPENING_BALANCES,
       backupSchedule: data.backupSchedule || INITIAL_BACKUP_SCHEDULE,
@@ -1510,7 +1361,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // CALCULATIONS FOR ACCOUNT BALANCES
   // Formula: Opening + Customer payments received - Vendor payments - Expenses + Transfers In - Transfers Out
   const accountBalances: AccountBalances = useMemo(() => {
-    if (USE_SERVER_API && serverDashboard?.balances) return serverDashboard.balances;
     const balances: AccountBalances = {
       Cash: data.openingBalances?.Cash || 0,
       bKash: data.openingBalances?.bKash || 0,
@@ -1538,7 +1388,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 4. Fund Transfers
+    // 4. Loan / Advance cash movement (not income or expense)
+    (data.loanAdvances || []).forEach((r: LoanAdvanceRecord) => {
+      if (balances[r.paymentMethod] !== undefined) {
+        balances[r.paymentMethod] += r.direction === 'received' ? r.amount : -r.amount;
+      }
+    });
+
+    // 5. Fund Transfers
     data.transfers.forEach((trf: FundTransfer) => {
       if (balances[trf.fromAccount] !== undefined) {
         balances[trf.fromAccount] -= trf.amount;
@@ -1549,18 +1406,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return balances;
-  }, [data.openingBalances, data.partialPayments, data.expenses, data.transfers]);
+  }, [data.openingBalances, data.partialPayments, data.expenses, data.transfers, data.loanAdvances]);
 
   // TOTAL AVAILABLE MONEY = Cash + bKash + Nagad + Rocket + Bank + Other
   // Customer due must NOT be added. Vendor payable must NOT be deducted.
   const totalAvailableMoney = useMemo(() => {
-    if (USE_SERVER_API && serverDashboard) return serverDashboard.totalAvailableMoney;
     return Object.values(accountBalances).reduce((sum, val) => sum + val, 0);
-  }, [accountBalances, serverDashboard]);
+  }, [accountBalances]);
 
   // Customer Receivable: Sum of opening due + unpaid dues across all transactions
   const totalCustomerReceivable = useMemo(() => {
-    if (USE_SERVER_API && serverDashboard) return serverDashboard.customerReceivable;
     const openingTotal = data.customers.reduce((sum: number, c: Customer) => sum + (c.openingDue || 0), 0);
     const txDueTotal = data.transactions.reduce((sum: number, t: Transaction) => sum + (t.customerDue || 0), 0);
     return openingTotal + txDueTotal;
@@ -1568,24 +1423,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Vendor Payable: Sum of opening payable + unpaid vendor dues across all transactions
   const totalVendorPayable = useMemo(() => {
-    if (USE_SERVER_API && serverDashboard) return serverDashboard.vendorPayable;
     const openingTotal = data.vendors.reduce((sum: number, v: Vendor) => sum + (v.openingPayable || 0), 0);
     const txDueTotal = data.transactions.reduce((sum: number, t: Transaction) => sum + (t.vendorDue || 0), 0);
     return openingTotal + txDueTotal;
   }, [data.vendors, data.transactions]);
 
-  // In server mode, dashboard metrics are sourced from PostgreSQL so they are device-independent.
   // Today's summary stats
   const todaySummary = useMemo(() => {
-    if (USE_SERVER_API && serverDashboard) return {
-      totalSales: serverDashboard.totalSales,
-      totalReceived: serverDashboard.totalReceived,
-      totalExpense: serverDashboard.totalExpense,
-      totalVendorPayment: serverDashboard.totalVendorPayment,
-      grossProfit: serverDashboard.grossProfit,
-      loss: serverDashboard.loss,
-      netProfit: serverDashboard.netProfit,
-    };
     const todayStr = new Date().toISOString().split('T')[0];
 
     const todayTxs = data.transactions.filter((t: Transaction) => t.date === todayStr);
@@ -1625,7 +1469,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loss,
       netProfit,
     };
-  }, [data.transactions, data.partialPayments, data.expenses, serverDashboard]);
+  }, [data.transactions, data.partialPayments, data.expenses]);
 
   // Upcoming flights (next 30 days)
   const upcomingFlights = useMemo(() => {
@@ -1718,7 +1562,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         users: data.users,
         login,
-        loginAsync,
         logout,
         addUser,
         updateUser,
@@ -1731,6 +1574,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         partialPayments: data.partialPayments,
         expenses: data.expenses,
         transfers: data.transfers,
+        loanAdvances: data.loanAdvances || [],
+        loanAdvanceAdjustments: data.loanAdvanceAdjustments || [],
         auditLogs: data.auditLogs,
         settings: data.settings,
         openingBalances: data.openingBalances,
@@ -1743,7 +1588,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         todayReminders,
         overdueReminders,
         createOneEntry,
-        createOneEntryAsync,
         updateTransaction,
         deleteTransaction,
         updateFlightStatus,
@@ -1756,6 +1600,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteExpense,
         updateExpenseCategories,
         addFundTransfer,
+        addLoanAdvance,
+        updateLoanAdvance,
+        deleteLoanAdvance,
+        adjustLoanAdvance,
+        deleteLoanAdvanceAdjustment,
         updateOpeningBalance,
         updateSettings,
         updateServices,
