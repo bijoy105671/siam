@@ -394,6 +394,16 @@ app.get('/api/dashboard', auth, async (_req, res) => {
   });
 });
 
+app.post('/api/customers', auth, async (req,res) => {
+  try {
+    const name=String(req.body?.name||'').trim(), mobile=String(req.body?.mobile||'').trim();
+    if(!name||!mobile) return res.status(400).json({error:'Customer name and mobile are required'});
+    const {rows}=await pool.query(`INSERT INTO customers (name,mobile,whatsapp,email,address,nid,passport_number,passport_expiry,notes,opening_due) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (mobile) DO UPDATE SET name=EXCLUDED.name, whatsapp=COALESCE(EXCLUDED.whatsapp,customers.whatsapp), email=COALESCE(EXCLUDED.email,customers.email), address=COALESCE(EXCLUDED.address,customers.address), nid=COALESCE(EXCLUDED.nid,customers.nid), passport_number=COALESCE(EXCLUDED.passport_number,customers.passport_number), passport_expiry=COALESCE(EXCLUDED.passport_expiry,customers.passport_expiry), notes=COALESCE(EXCLUDED.notes,customers.notes), opening_due=EXCLUDED.opening_due, updated_at=now() RETURNING *`,[name,mobile,req.body?.whatsapp||null,req.body?.email||null,req.body?.address||null,req.body?.nid||null,req.body?.passportNumber||null,req.body?.passportExpiry||null,req.body?.notes||null,Number(req.body?.openingDue||0)]);
+    await audit(pool as any, req.session.userId!, 'CUSTOMER_CREATED', 'Customer', rows[0].id, null, rows[0]);
+    res.status(201).json({customer:rows[0]});
+  } catch(e){res.status(400).json({error:e instanceof Error?e.message:'Customer creation failed'});}
+});
+ 
 app.get('/api/customers', auth, async (req, res) => {
   const q = String(req.query.q || '').trim();
   const { rows } = await pool.query(
@@ -467,6 +477,16 @@ app.get('/api/customers/:id/ledger', auth, async (req, res) => {
   res.json({ customer, totalSales, totalPaid, currentDue: Number(customer.opening_due || 0) + totalSales - totalPaid, transactions, payments });
 });
 
+app.post('/api/vendors', auth, async (req,res) => {
+  try {
+    const name=String(req.body?.name||'').trim();
+    if(!name) return res.status(400).json({error:'Vendor name is required'});
+    const {rows}=await pool.query(`INSERT INTO vendors (name,company,mobile,whatsapp,email,address,account_info,opening_payable) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,[name,req.body?.company||null,req.body?.mobile||null,req.body?.whatsapp||null,req.body?.email||null,req.body?.address||null,req.body?.accountInfo||null,Number(req.body?.openingPayable||0)]);
+    await audit(pool as any, req.session.userId!, 'VENDOR_CREATED', 'Vendor', rows[0].id, null, rows[0]);
+    res.status(201).json({vendor:rows[0]});
+  } catch(e){res.status(400).json({error:e instanceof Error?e.message:'Vendor creation failed'});}
+});
+ 
 app.get('/api/vendors', auth, async (req, res) => {
   const q = String(req.query.q || '').trim();
   const { rows } = await pool.query(q ? 'SELECT * FROM vendors WHERE name ILIKE $1 ORDER BY name LIMIT 30' : 'SELECT * FROM vendors ORDER BY name LIMIT 100', q ? [q + '%'] : []);
