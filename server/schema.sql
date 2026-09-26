@@ -181,3 +181,39 @@ ALTER TABLE account_entries ADD COLUMN IF NOT EXISTS fund_transfer_id uuid REFER
 CREATE INDEX IF NOT EXISTS idx_account_entries_payment ON account_entries(payment_id);
 CREATE INDEX IF NOT EXISTS idx_account_entries_expense ON account_entries(expense_id);
 CREATE INDEX IF NOT EXISTS idx_account_entries_fund_transfer ON account_entries(fund_transfer_id);
+
+
+CREATE TABLE IF NOT EXISTS loan_advances (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  party_type text NOT NULL CHECK (party_type IN ('customer','vendor')),
+  party_id uuid NOT NULL,
+  party_name text NOT NULL,
+  kind text NOT NULL CHECK (kind IN ('advance','loan')),
+  direction text NOT NULL CHECK (direction IN ('received','given')),
+  amount numeric(14,2) NOT NULL CHECK (amount > 0),
+  payment_method text NOT NULL,
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  note text,
+  reference text,
+  created_by uuid REFERENCES users(id),
+  reversed_at timestamptz,
+  reversed_by uuid REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_loan_advances_party ON loan_advances(party_type, party_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_loan_advances_active ON loan_advances(reversed_at, occurred_at);
+
+CREATE TABLE IF NOT EXISTS loan_advance_adjustments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  loan_advance_id uuid NOT NULL REFERENCES loan_advances(id),
+  transaction_id uuid NOT NULL REFERENCES transactions(id),
+  party_type text NOT NULL CHECK (party_type IN ('customer','vendor')),
+  party_id uuid NOT NULL,
+  amount numeric(14,2) NOT NULL CHECK (amount > 0),
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  note text,
+  created_by uuid REFERENCES users(id),
+  reversed_at timestamptz,
+  reversed_by uuid REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_loan_adjustments_loan ON loan_advance_adjustments(loan_advance_id, reversed_at);
+CREATE INDEX IF NOT EXISTS idx_loan_adjustments_tx ON loan_advance_adjustments(transaction_id, reversed_at);
