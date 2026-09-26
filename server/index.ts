@@ -82,8 +82,8 @@ app.get('/api/dashboard', auth, async (_req, res) => {
                        COALESCE(SUM(CASE WHEN gross_profit < 0 THEN ABS(gross_profit) ELSE 0 END),0) loss
                 FROM transactions WHERE status <> $1`, ['CANCELLED']),
     pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL'),
-    pool.query('SELECT COALESCE(SUM(customer_due),0) + COALESCE((SELECT SUM(opening_due) FROM customers),0) customer_receivable FROM transactions WHERE status <> $1', ['CANCELLED']),
-    pool.query('SELECT COALESCE(SUM(vendor_due),0) + COALESCE((SELECT SUM(opening_payable) FROM vendors),0) vendor_payable FROM transactions WHERE status <> $1', ['CANCELLED']),
+    pool.query('SELECT COALESCE(SUM(customer_due),0) + COALESCE((SELECT SUM(opening_due) FROM customers),0) customer_receivable FROM transactions WHERE deleted_at IS NULL WHERE status <> $1', ['CANCELLED']),
+    pool.query('SELECT COALESCE(SUM(vendor_due),0) + COALESCE((SELECT SUM(opening_payable) FROM vendors),0) vendor_payable FROM transactions WHERE deleted_at IS NULL WHERE status <> $1', ['CANCELLED']),
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(CASE WHEN gross_profit > 0 THEN gross_profit ELSE 0 END),0) gross_profit,
                        COALESCE(SUM(CASE WHEN gross_profit < 0 THEN ABS(gross_profit) ELSE 0 END),0) loss
@@ -125,7 +125,7 @@ app.get('/api/customers/:id/ledger', auth, async (req, res) => {
   const customerId = req.params.id;
   const customer = (await pool.query('SELECT * FROM customers WHERE id=$1', [customerId])).rows[0];
   if (!customer) return res.status(404).json({ error: 'Customer not found' });
-  const transactions = (await pool.query('SELECT * FROM transactions WHERE customer_id=$1 ORDER BY date DESC, time DESC, created_at DESC', [customerId])).rows;
+  const transactions = (await pool.query('SELECT * FROM transactions WHERE customer_id=$1 AND deleted_at IS NULL ORDER BY date DESC, time DESC, created_at DESC', [customerId])).rows;
   const payments = (await pool.query("SELECT * FROM payments WHERE entity_id=$1 AND payment_type='customer' ORDER BY paid_at DESC", [customerId])).rows;
   const totalSales = transactions.filter((t:any) => t.status !== 'CANCELLED').reduce((s:number,t:any)=>s+Number(t.selling_price),0);
   const totalPaid = payments.reduce((s:number,p:any)=>s+Number(p.amount),0);
@@ -142,16 +142,34 @@ app.get('/api/vendors/:id/ledger', auth, async (req, res) => {
   const vendorId = req.params.id;
   const vendor = (await pool.query('SELECT * FROM vendors WHERE id=$1', [vendorId])).rows[0];
   if (!vendor) return res.status(404).json({ error: 'Vendor not found' });
-  const transactions = (await pool.query('SELECT * FROM transactions WHERE vendor_id=$1 ORDER BY date DESC, time DESC, created_at DESC', [vendorId])).rows;
+  const transactions = (await pool.query('SELECT * FROM transactions WHERE vendor_id=$1 AND deleted_at IS NULL ORDER BY date DESC, time DESC, created_at DESC', [vendorId])).rows;
   const payments = (await pool.query("SELECT * FROM payments WHERE entity_id=$1 AND payment_type='vendor' ORDER BY paid_at DESC", [vendorId])).rows;
   const totalCost = transactions.filter((t:any) => t.status !== 'CANCELLED').reduce((s:number,t:any)=>s+Number(t.vendor_cost),0);
   const totalPaid = payments.reduce((s:number,p:any)=>s+Number(p.amount),0);
   res.json({ vendor, totalCost, totalPaid, currentPayable: Number(vendor.opening_payable || 0) + totalCost - totalPaid, transactions, payments });
 });
 
+app.delete('/api/transactions/:id', adminOnly, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const tx = (await client.query('SELECT * FROM transactions WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!tx) throw new Error('Transaction not found');
+    if (tx.deleted_at) throw new Error('Transaction is already deleted');
+    await client.query(`UPDATE account_entries SET reversed_at=now() WHERE source_id=$1 AND reversed_at IS NULL`, [tx.id]);
+    await client.query('UPDATE transactions SET deleted_at=now(), deleted_by=$1, updated_at=now() WHERE id=$2', [req.session.userId, tx.id]);
+    await audit(client, req.session.userId!, 'TRANSACTION_SOFT_DELETED', 'Transaction', tx.id, tx, { deletedAt: new Date().toISOString(), invoiceNumber: tx.invoice_number });
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Transaction deletion failed' });
+  } finally { client.release(); }
+});
+
 app.get('/api/transactions', auth, async (req, res) => {
   const limit = Math.min(Number(req.query.limit || 100), 500);
-  const { rows } = await pool.query('SELECT t.*, c.name customer_name, c.mobile customer_mobile, s.name service_name, v.name vendor_name FROM transactions t JOIN customers c ON c.id=t.customer_id LEFT JOIN services s ON s.id=t.service_id LEFT JOIN vendors v ON v.id=t.vendor_id ORDER BY t.date DESC, t.time DESC LIMIT $1', [limit]);
+  const { rows } = await pool.query('SELECT t.*, c.name customer_name, c.mobile customer_mobile, s.name service_name, v.name vendor_name FROM transactions t JOIN customers c ON c.id=t.customer_id LEFT JOIN services s ON s.id=t.service_id LEFT JOIN vendors v ON v.id=t.vendor_id WHERE t.deleted_at IS NULL ORDER BY t.date DESC, t.time DESC LIMIT $1', [limit]);
   res.json(rows);
 });
 
