@@ -240,6 +240,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...parsed,
           backupSchedule: parsed.backupSchedule || INITIAL_BACKUP_SCHEDULE,
           backupLogs: parsed.backupLogs || INITIAL_BACKUP_LOGS,
+          // Keep existing user-edited catalog entries, while automatically adding
+          // any newly introduced default service/expense items.
+          services: Array.from(new Map(
+            [...(parsed.services || []), ...INITIAL_SERVICES].map((item: ServiceItem) => [item.name.toLowerCase().trim(), item])
+          ).values()).map((item: ServiceItem, index: number) => ({ ...item, order: index + 1 })),
+          expenseCategories: Array.from(new Map(
+            [...(parsed.expenseCategories || []), ...INITIAL_EXPENSE_CATEGORIES].map((item: ExpenseCategory) => [item.name.toLowerCase().trim(), item])
+          ).values()),
         };
       } catch (e) {
         console.error('Failed to parse stored business data:', e);
