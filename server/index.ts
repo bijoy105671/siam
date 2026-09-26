@@ -88,8 +88,8 @@ app.get('/api/dashboard', auth, async (_req, res) => {
                        COALESCE(SUM(CASE WHEN gross_profit > 0 THEN gross_profit ELSE 0 END),0) gross_profit,
                        COALESCE(SUM(CASE WHEN gross_profit < 0 THEN ABS(gross_profit) ELSE 0 END),0) loss
                 FROM transactions WHERE status <> $1 AND date = CURRENT_DATE`, ['CANCELLED']),
-    pool.query("SELECT COALESCE(SUM(amount),0) total_received FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND payment_type='customer' AND paid_at::date = CURRENT_DATE"),
-    pool.query("SELECT COALESCE(SUM(amount),0) total_vendor_payment FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND payment_type='vendor' AND paid_at::date = CURRENT_DATE"),
+    pool.query("SELECT COALESCE(SUM(amount),0) total_received FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND payment_type='customer' AND p.reversed_at IS NULL AND paid_at::date = CURRENT_DATE"),
+    pool.query("SELECT COALESCE(SUM(amount),0) total_vendor_payment FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND payment_type='vendor' AND p.reversed_at IS NULL AND paid_at::date = CURRENT_DATE"),
     pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL AND occurred_at::date = CURRENT_DATE')
   ]);
   const todayGrossProfit = Number(todaySales.rows[0].gross_profit || 0);
@@ -126,7 +126,7 @@ app.get('/api/customers/:id/ledger', auth, async (req, res) => {
   const customer = (await pool.query('SELECT * FROM customers WHERE id=$1', [customerId])).rows[0];
   if (!customer) return res.status(404).json({ error: 'Customer not found' });
   const transactions = (await pool.query('SELECT * FROM transactions WHERE customer_id=$1 AND deleted_at IS NULL ORDER BY date DESC, time DESC, created_at DESC', [customerId])).rows;
-  const payments = (await pool.query("SELECT p.* FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE p.entity_id=$1 AND p.payment_type='customer' AND t.deleted_at IS NULL ORDER BY p.paid_at DESC", [customerId])).rows;
+  const payments = (await pool.query("SELECT p.* FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE p.entity_id=$1 AND p.payment_type='customer' AND p.reversed_at IS NULL AND t.deleted_at IS NULL ORDER BY p.paid_at DESC", [customerId])).rows;
   const totalSales = transactions.filter((t:any) => t.status !== 'CANCELLED').reduce((s:number,t:any)=>s+Number(t.selling_price),0);
   const totalPaid = payments.reduce((s:number,p:any)=>s+Number(p.amount),0);
   res.json({ customer, totalSales, totalPaid, currentDue: Number(customer.opening_due || 0) + totalSales - totalPaid, transactions, payments });
@@ -143,7 +143,7 @@ app.get('/api/vendors/:id/ledger', auth, async (req, res) => {
   const vendor = (await pool.query('SELECT * FROM vendors WHERE id=$1', [vendorId])).rows[0];
   if (!vendor) return res.status(404).json({ error: 'Vendor not found' });
   const transactions = (await pool.query('SELECT * FROM transactions WHERE vendor_id=$1 AND deleted_at IS NULL ORDER BY date DESC, time DESC, created_at DESC', [vendorId])).rows;
-  const payments = (await pool.query("SELECT p.* FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE p.entity_id=$1 AND p.payment_type='vendor' AND t.deleted_at IS NULL ORDER BY p.paid_at DESC", [vendorId])).rows;
+  const payments = (await pool.query("SELECT p.* FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE p.entity_id=$1 AND p.payment_type='vendor' AND p.reversed_at IS NULL AND t.deleted_at IS NULL ORDER BY p.paid_at DESC", [vendorId])).rows;
   const totalCost = transactions.filter((t:any) => t.status !== 'CANCELLED').reduce((s:number,t:any)=>s+Number(t.vendor_cost),0);
   const totalPaid = payments.reduce((s:number,p:any)=>s+Number(p.amount),0);
   res.json({ vendor, totalCost, totalPaid, currentPayable: Number(vendor.opening_payable || 0) + totalCost - totalPaid, transactions, payments });
@@ -156,7 +156,7 @@ app.delete('/api/transactions/:id', adminOnly, async (req, res) => {
     const tx = (await client.query('SELECT * FROM transactions WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
     if (!tx) throw new Error('Transaction not found');
     if (tx.deleted_at) throw new Error('Transaction is already deleted');
-    await client.query(`UPDATE account_entries SET reversed_at=now() WHERE source_id=$1 AND reversed_at IS NULL`, [tx.id]);
+    await client.query(`UPDATE account_entries SET reversed_at=now() WHERE (source_id=$1 OR transaction_id=$1) AND reversed_at IS NULL`, [tx.id]);
     await client.query('UPDATE transactions SET deleted_at=now(), deleted_by=$1, updated_at=now() WHERE id=$2', [req.session.userId, tx.id]);
     await audit(client, req.session.userId!, 'TRANSACTION_SOFT_DELETED', 'Transaction', tx.id, tx, { deletedAt: new Date().toISOString(), invoiceNumber: tx.invoice_number });
     await client.query('COMMIT');
@@ -181,9 +181,9 @@ const accountBalance = async (client: Pool | PoolClient, account: string) => {
   return Number(opening.rows[0]?.amount || 0) + Number(entries.rows[0]?.balance || 0);
 };
 
-const addAccountEntry = async (client: PoolClient, account: string, amount: number, sourceType: string, sourceId: string, userId: string, note?: string) => {
+const addAccountEntry = async (client: PoolClient, account: string, amount: number, sourceType: string, sourceId: string, userId: string, note?: string, paymentId?: string, expenseId?: string, fundTransferId?: string) => {
   if (!ACCOUNT_METHODS.has(account.toLowerCase())) throw new Error('Invalid payment account');
-  await client.query('INSERT INTO account_entries (account_name,amount,source_type,source_id,created_by,note) VALUES ($1,$2,$3,$4,$5,$6)', [account.toLowerCase(), amount, sourceType, sourceId, userId, note || null]);
+  await client.query('INSERT INTO account_entries (account_name,amount,source_type,source_id,created_by,note,payment_id,expense_id,fund_transfer_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [account.toLowerCase(), amount, sourceType, sourceId, userId, note || null, paymentId || null, expenseId || null, fundTransferId || null]);
 };
 
 app.post('/api/transactions/:id/payments', auth, async (req, res) => {
@@ -207,15 +207,15 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
       const balance = await accountBalance(client, method);
       if (value > balance) throw new Error(`Insufficient balance for vendor payment (balance: ${balance})`);
     }
-    await client.query('INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [tx.id, paymentType, entityId, value, method, req.session.userId, note || null, reference || null]);
+    const payment = (await client.query('INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [tx.id, paymentType, entityId, value, method, req.session.userId, note || null, reference || null])).rows[0];
     if (paymentType === 'customer') {
       const due = outstanding - value;
       await client.query('UPDATE transactions SET customer_paid=customer_paid+$1, customer_due=$2, status=$3, updated_at=now() WHERE id=$4', [value, due, due === 0 ? 'PAID' : 'PARTIAL', tx.id]);
-      await addAccountEntry(client, method, value, 'customer_payment', tx.id, req.session.userId!, note);
+      await addAccountEntry(client, method, value, 'customer_payment', tx.id, req.session.userId!, note, payment.id);
     } else {
       const due = outstanding - value;
       await client.query('UPDATE transactions SET vendor_paid=vendor_paid+$1, vendor_due=$2, updated_at=now() WHERE id=$3', [value, due, tx.id]);
-      await addAccountEntry(client, method, -value, 'vendor_payment', tx.id, req.session.userId!, note);
+      await addAccountEntry(client, method, -value, 'vendor_payment', tx.id, req.session.userId!, note, payment.id);
     }
     await audit(client, req.session.userId!, 'PAYMENT_RECORDED', 'Transaction', tx.id, tx, { paymentType, amount: value, paymentMethod: method });
     await client.query('COMMIT');
@@ -223,6 +223,38 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
   } catch (e) {
     await client.query('ROLLBACK');
     res.status(400).json({ error: e instanceof Error ? e.message : 'Payment failed' });
+  } finally { client.release(); }
+});
+
+app.post('/api/payments/:id/reverse', adminOnly, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const payment = (await client.query('SELECT * FROM payments WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!payment) throw new Error('Payment not found');
+    if (payment.reversed_at) throw new Error('Payment is already reversed');
+    const tx = (await client.query('SELECT * FROM transactions WHERE id=$1 FOR UPDATE', [payment.transaction_id])).rows[0];
+    if (!tx || tx.deleted_at) throw new Error('Linked transaction is missing or deleted');
+    const entries = (await client.query('SELECT * FROM account_entries WHERE payment_id=$1 AND reversed_at IS NULL FOR UPDATE', [payment.id])).rows;
+    if (entries.length !== 1) throw new Error('Payment accounting entry is missing or ambiguous');
+    await client.query('UPDATE account_entries SET reversed_at=now() WHERE payment_id=$1 AND reversed_at IS NULL', [payment.id]);
+    if (payment.payment_type === 'customer') {
+      const newPaid = Math.max(0, Number(tx.customer_paid) - Number(payment.amount));
+      const newDue = Number(tx.selling_price) - newPaid;
+      const status = newDue === 0 ? 'PAID' : newPaid > 0 ? 'PARTIAL' : 'DUE';
+      await client.query('UPDATE transactions SET customer_paid=$1, customer_due=$2, status=$3, updated_at=now() WHERE id=$4', [newPaid,newDue,status,tx.id]);
+    } else {
+      const newPaid = Math.max(0, Number(tx.vendor_paid) - Number(payment.amount));
+      const newDue = Number(tx.vendor_cost) - newPaid;
+      await client.query('UPDATE transactions SET vendor_paid=$1, vendor_due=$2, updated_at=now() WHERE id=$3', [newPaid,newDue,tx.id]);
+    }
+    await client.query('UPDATE payments SET reversed_at=now(), reversed_by=$1 WHERE id=$2', [req.session.userId, payment.id]);
+    await audit(client, req.session.userId!, 'PAYMENT_REVERSED', 'Payment', payment.id, payment, { reversedAt: new Date().toISOString(), transactionId: tx.id });
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Payment reversal failed' });
   } finally { client.release(); }
 });
 
@@ -334,11 +366,29 @@ app.post('/api/expenses', auth, async (req, res) => {
     const balance = await accountBalance(client, method);
     if (amount > balance) throw new Error('Insufficient balance for expense');
     const expense = (await client.query('INSERT INTO expenses (category,description,amount,payment_method,created_by,note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',[category,description,amount,method,req.session.userId,req.body?.note || null])).rows[0];
-    await addAccountEntry(client, method, -amount, 'expense', expense.id, req.session.userId!, description);
+    await addAccountEntry(client, method, -amount, 'expense', expense.id, req.session.userId!, description, undefined, expense.id);
     await audit(client, req.session.userId!, 'EXPENSE_CREATED', 'Expense', expense.id, null, expense);
     await client.query('COMMIT'); res.status(201).json({ expense });
   } catch (e) { await client.query('ROLLBACK'); res.status(400).json({ error: e instanceof Error ? e.message : 'Expense failed' }); }
   finally { client.release(); }
+});
+
+app.post('/api/expenses/:id/reverse', adminOnly, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const expense = (await client.query('SELECT * FROM expenses WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!expense) throw new Error('Expense not found');
+    if (expense.reversed_at) throw new Error('Expense is already reversed');
+    await client.query('UPDATE account_entries SET reversed_at=now() WHERE expense_id=$1 AND reversed_at IS NULL', [expense.id]);
+    await client.query('UPDATE expenses SET reversed_at=now(), reversed_by=$1 WHERE id=$2', [req.session.userId, expense.id]);
+    await audit(client, req.session.userId!, 'EXPENSE_REVERSED', 'Expense', expense.id, expense, { reversedAt: new Date().toISOString() });
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Expense reversal failed' });
+  } finally { client.release(); }
 });
 
 app.post('/api/fund-transfers', auth, async (req, res) => {
@@ -357,12 +407,34 @@ app.post('/api/fund-transfers', auth, async (req, res) => {
     const balance = await accountBalance(client, from);
     if (amount > balance) throw new Error('Insufficient balance for fund transfer');
     const transfer = (await client.query('INSERT INTO fund_transfers (from_account,to_account,amount,reason,created_by,note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',[from,to,amount,reason,req.session.userId,req.body?.note || null])).rows[0];
-    await addAccountEntry(client, from, -amount, 'fund_transfer_out', transfer.id, req.session.userId!, reason);
-    await addAccountEntry(client, to, amount, 'fund_transfer_in', transfer.id, req.session.userId!, reason);
+    await addAccountEntry(client, from, -amount, 'fund_transfer_out', transfer.id, req.session.userId!, reason, undefined, undefined, transfer.id);
+    await addAccountEntry(client, to, amount, 'fund_transfer_in', transfer.id, req.session.userId!, reason, undefined, undefined, transfer.id);
     await audit(client, req.session.userId!, 'FUND_TRANSFER_CREATED', 'FundTransfer', transfer.id, null, transfer);
     await client.query('COMMIT'); res.status(201).json({ transfer });
   } catch (e) { await client.query('ROLLBACK'); res.status(400).json({ error: e instanceof Error ? e.message : 'Fund transfer failed' }); }
   finally { client.release(); }
+});
+
+app.post('/api/fund-transfers/:id/reverse', adminOnly, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const transfer = (await client.query('SELECT * FROM fund_transfers WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!transfer) throw new Error('Fund transfer not found');
+    if (transfer.reversed_at) throw new Error('Fund transfer is already reversed');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [transfer.from_account]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [transfer.to_account]);
+    const entries = (await client.query('SELECT id FROM account_entries WHERE fund_transfer_id=$1 AND reversed_at IS NULL FOR UPDATE', [transfer.id])).rows;
+    if (entries.length !== 2) throw new Error('Fund transfer accounting entries are missing or ambiguous');
+    await client.query('UPDATE account_entries SET reversed_at=now() WHERE fund_transfer_id=$1 AND reversed_at IS NULL', [transfer.id]);
+    await client.query('UPDATE fund_transfers SET reversed_at=now(), reversed_by=$1 WHERE id=$2', [req.session.userId, transfer.id]);
+    await audit(client, req.session.userId!, 'FUND_TRANSFER_REVERSED', 'FundTransfer', transfer.id, transfer, { reversedAt: new Date().toISOString() });
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Fund transfer reversal failed' });
+  } finally { client.release(); }
 });
 
 app.get('/api/accounts/:account/ledger', auth, async (req, res) => {
