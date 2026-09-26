@@ -2,6 +2,40 @@ export type ApiError = { error?: string; [key: string]: unknown };
 
 export const USE_SERVER_API = import.meta.env.VITE_USE_SERVER_API === 'true';
 
+const SECURITY_VERIFIED_STORAGE_KEY = 'siam_security_otp_verified_at';
+
+const waitForSecurityVerification = (message: string): Promise<void> => {
+  if (typeof window === 'undefined') return Promise.reject(new Error('Security OTP verification requires a browser.'));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (ok: boolean, error?: string) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('siam:security-otp-verified', onVerified);
+      window.removeEventListener('siam:security-otp-cancelled', onCancelled);
+      window.removeEventListener('storage', onStorage);
+      if (ok) resolve();
+      else reject(new Error(error || 'Security OTP verification cancelled.'));
+    };
+    const onVerified = () => finish(true);
+    const onCancelled = (event: Event) => finish(false, (event as CustomEvent).detail?.message);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === SECURITY_VERIFIED_STORAGE_KEY && event.newValue) finish(true);
+    };
+    window.addEventListener('siam:security-otp-verified', onVerified);
+    window.addEventListener('siam:security-otp-cancelled', onCancelled);
+    window.addEventListener('storage', onStorage);
+    try {
+      const lastVerified = Number(localStorage.getItem(SECURITY_VERIFIED_STORAGE_KEY) || 0);
+      if (lastVerified && Date.now() - lastVerified < 10 * 60 * 1000) {
+        finish(true);
+        return;
+      }
+    } catch {}
+    window.dispatchEvent(new CustomEvent('siam:security-otp-required', { detail: { message } }));
+  });
+};
+
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const request = async (retry = false): Promise<T> => {
     const response = await fetch(path, {
@@ -11,15 +45,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     });
     const payload = (await response.json().catch(() => ({}))) as T & ApiError & { message?: string };
     if (response.status === 428 && payload?.error === 'SECURITY_OTP_REQUIRED' && !retry) {
-      const otp = window.prompt((payload.message || 'Security OTP required') + '\n\nEnter the 6-digit OTP sent to bijoy105671@gmail.com:');
-      if (!otp) throw new Error('Security OTP verification cancelled.');
-      const verify = await fetch('/api/auth/verify-security-otp', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ otp: otp.trim() }),
-      });
-      const verifyPayload = await verify.json().catch(() => ({}));
-      if (!verify.ok) throw new Error(verifyPayload?.error || 'Security OTP verification failed.');
+      await waitForSecurityVerification(payload.message || 'A security OTP was sent to your recovery email.');
       return request(true);
     }
     if (!response.ok) {
