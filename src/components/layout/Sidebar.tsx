@@ -14,6 +14,7 @@ import {
   History,
   Database,
   ShieldCheck,
+  Trash2,
   X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
