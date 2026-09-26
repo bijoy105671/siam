@@ -5,7 +5,7 @@ import { LoanAdvanceDirection, LoanAdvanceKind, LoanAdvancePartyType, PaymentMet
 import { formatCurrency } from '../../utils/formatters';
 
 export const LoanAdvanceManager: React.FC = () => {
-  const { customers, vendors, loanAdvances, loanAdvanceAdjustments, transactions, addLoanAdvance, updateLoanAdvance, deleteLoanAdvance, adjustLoanAdvance, deleteLoanAdvanceAdjustment, addCustomer, addVendor } = useApp();
+  const { customers, vendors, loanAdvances, loanAdvanceAdjustments, transactions, addLoanAdvance, updateLoanAdvance, deleteLoanAdvance, adjustLoanAdvance, deleteLoanAdvanceAdjustment, addCustomerAsync, addVendorAsync } = useApp();
   const [partyType, setPartyType] = useState<LoanAdvancePartyType>('customer');
   const [partyId, setPartyId] = useState('');
   const [kind, setKind] = useState<LoanAdvanceKind>('advance');
@@ -35,11 +35,11 @@ export const LoanAdvanceManager: React.FC = () => {
     setProfileCompany(''); setProfileAccountInfo(''); setProfileOpeningBalance(0);
   };
   const closeProfileModal = () => setProfileModal(null);
-  const saveProfile = (e: React.FormEvent) => {
+  const saveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profileName.trim()) { alert('Name is required.'); return; }
     if (profileModal === 'customer') {
-      const created = addCustomer({
+      const created = await addCustomerAsync({
         name: profileName.trim(), mobile: profileMobile.trim(),
         whatsapp: profileWhatsapp.trim() || profileMobile.trim(), email: profileEmail.trim(),
         address: profileAddress.trim(), nid: profileNid.trim(),
@@ -48,7 +48,7 @@ export const LoanAdvanceManager: React.FC = () => {
       });
       setPartyType('customer'); setPartyId(created.id);
     } else if (profileModal === 'vendor') {
-      const created = addVendor({
+      const created = await addVendorAsync({
         name: profileName.trim(), company: profileCompany.trim(), mobile: profileMobile.trim(),
         whatsapp: profileWhatsapp.trim() || profileMobile.trim(), email: profileEmail.trim(),
         address: profileAddress.trim(), accountInfo: profileAccountInfo.trim(),
