@@ -25,7 +25,7 @@ app.use(session({
 const audit = async (client: PoolClient, userId: string | null, action: string, recordType: string, recordId: string, previousValue?: unknown, newValue?: unknown) => {
   await client.query(
     'INSERT INTO audit_logs (user_id, action, record_type, record_id, previous_value, new_value) VALUES ($1,$2,$3,$4,$5,$6)',
-    [userId, action, recordType, recordId, previousValue ? JSON.stringify(previousValue) : null, newValue ? JSON.stringify(newValue) : null]
+    [userId, action, recordType, recordId, previousValue === undefined ? null : JSON.stringify(previousValue), newValue === undefined ? null : JSON.stringify(newValue)]
   );
 };
 
@@ -36,10 +36,14 @@ const auth = (req: express.Request, res: express.Response, next: express.NextFun
 
 const adminOnly = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Authentication required' });
-  const { rows } = await pool.query('SELECT role, is_active FROM users WHERE id=$1', [req.session.userId]);
-  if (!rows[0]?.is_active) return res.status(401).json({ error: 'Account inactive' });
-  if (rows[0].role !== 'admin') return res.status(403).json({ error: 'Administrator permission required' });
-  next();
+  try {
+    const { rows } = await pool.query('SELECT role, is_active FROM users WHERE id=$1', [req.session.userId]);
+    if (!rows[0]?.is_active) return res.status(401).json({ error: 'Account inactive' });
+    if (rows[0].role !== 'admin') return res.status(403).json({ error: 'Administrator permission required' });
+    next();
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Authorization check failed' });
+  }
 };
 
 app.get('/api/health', async (_req, res) => {
@@ -153,7 +157,7 @@ app.get('/api/transactions', auth, async (req, res) => {
 
 const ACCOUNT_METHODS = new Set(['cash','bkash','nagad','rocket','bank','card','other']);
 
-const accountBalance = async (client: PoolClient, account: string) => {
+const accountBalance = async (client: Pool | PoolClient, account: string) => {
   const opening = await client.query('SELECT amount FROM account_opening_balances WHERE lower(account_name)=lower($1)', [account]);
   const entries = await client.query('SELECT COALESCE(SUM(amount),0) balance FROM account_entries WHERE lower(account_name)=lower($1) AND reversed_at IS NULL', [account]);
   return Number(opening.rows[0]?.amount || 0) + Number(entries.rows[0]?.balance || 0);
@@ -306,6 +310,7 @@ app.post('/api/expenses', auth, async (req, res) => {
     if (!category || !description || !Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Valid category, description and positive amount are required' });
     if (!ACCOUNT_METHODS.has(method)) return res.status(400).json({ error: 'Invalid payment method' });
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [method]);
     const balance = await accountBalance(client, method);
     if (amount > balance) throw new Error('Insufficient balance for expense');
     const expense = (await client.query('INSERT INTO expenses (category,description,amount,payment_method,created_by,note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',[category,description,amount,method,req.session.userId,req.body?.note || null])).rows[0];
@@ -326,6 +331,7 @@ app.post('/api/fund-transfers', auth, async (req, res) => {
     if (!ACCOUNT_METHODS.has(from) || !ACCOUNT_METHODS.has(to)) return res.status(400).json({ error: 'Invalid account' });
     if (from === to || !Number.isFinite(amount) || amount <= 0 || !reason) return res.status(400).json({ error: 'Different accounts, positive amount and reason are required' });
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [from]);
     const balance = await accountBalance(client, from);
     if (amount > balance) throw new Error('Insufficient balance for fund transfer');
     const transfer = (await client.query('INSERT INTO fund_transfers (from_account,to_account,amount,reason,created_by,note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',[from,to,amount,reason,req.session.userId,req.body?.note || null])).rows[0];
