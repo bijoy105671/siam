@@ -238,6 +238,19 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
                             <span>Statement</span>
                           </button>
 
+                          {hasDue && ledger.transactions.find(tx => tx.vendorDue > 0) && onOpenPayment && (
+                            <button
+                              onClick={() => {
+                                const tx = ledger.transactions.find(item => item.vendorDue > 0);
+                                if (tx) onOpenPayment(tx, 'vendor');
+                              }}
+                              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <DollarSign className="w-3.5 h-3.5" />
+                              <span>PAY</span>
+                            </button>
+                          )}
+
                           {vend.mobile && (
                             <a
                               href={`tel:${vend.mobile}`}
