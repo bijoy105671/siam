@@ -14,6 +14,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [resetStep, setResetStep] = useState<'request' | 'verify'>('request');
+  const [resetUsername, setResetUsername] = useState('');
+  const [resetOtp, setResetOtp] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
 
   if (!isOpen) return null;
 
@@ -42,6 +48,30 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
+
+  const requestResetOtp = async (e: React.FormEvent) => {
+    e.preventDefault(); setError(''); setIsSubmitting(true);
+    try {
+      const { api } = await import('../../services/apiClient');
+      await api.requestPasswordReset(resetUsername);
+      setResetStep('verify');
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to send OTP.'); }
+    finally { setIsSubmitting(false); }
+  };
+
+  const verifyReset = async (e: React.FormEvent) => {
+    e.preventDefault(); setError('');
+    if (resetPassword !== resetConfirm) { setError('New password and confirmation do not match.'); return; }
+    setIsSubmitting(true);
+    try {
+      const { api } = await import('../../services/apiClient');
+      await api.verifyPasswordReset(resetUsername, resetOtp, resetPassword);
+      setShowForgot(false); setResetStep('request'); setResetOtp(''); setResetPassword(''); setResetConfirm('');
+      alert('Admin password reset successfully. Please sign in with your new password.');
+    } catch (err) { setError(err instanceof Error ? err.message : 'Invalid or expired OTP.'); }
+    finally { setIsSubmitting(false); }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200">
@@ -59,6 +89,38 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        {USE_SERVER_API && (
+          <button type="button" onClick={() => { setShowForgot(true); setError(''); setResetStep('request'); }} className="w-full text-xs font-semibold text-blue-600 hover:text-blue-700">
+            Forgot Admin Password?
+          </button>
+        )}
+
+        {showForgot && USE_SERVER_API && (
+          <div className="fixed inset-0 z-[60] bg-slate-900/70 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200">
+              <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+                <span className="font-bold text-sm">Admin Password Recovery</span>
+                <button type="button" onClick={() => setShowForgot(false)}><X className="w-5 h-5" /></button>
+              </div>
+              <form onSubmit={resetStep === 'request' ? requestResetOtp : verifyReset} className="p-5 space-y-4">
+                {resetStep === 'request' ? <>
+                  <p className="text-xs text-slate-600">Enter Admin username. A 6-digit OTP will be sent to the registered recovery email.</p>
+                  <input value={resetUsername} onChange={e => setResetUsername(e.target.value)} placeholder="Admin username" required className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg" />
+                  <button disabled={isSubmitting} className="w-full py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg">{isSubmitting ? 'Sending OTP...' : 'Send OTP'}</button>
+                </> : <>
+                  <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">OTP sent to <b>bijoy105671@gmail.com</b>. Expires in 10 minutes.</div>
+                  <input value={resetOtp} onChange={e => setResetOtp(e.target.value.replace(/\D/g,'').slice(0,6))} inputMode="numeric" maxLength={6} required placeholder="6-digit OTP" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg text-center tracking-[0.5em] font-bold" />
+                  <input type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} minLength={8} required placeholder="New password" className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg" />
+                  <input type="password" value={resetConfirm} onChange={e => setResetConfirm(e.target.value)} minLength={8} required placeholder="Confirm password" className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg" />
+                  <button disabled={isSubmitting} className="w-full py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg">{isSubmitting ? 'Resetting...' : 'Reset Admin Password'}</button>
+                  <button type="button" onClick={() => setResetStep('request')} className="w-full text-xs text-slate-500">Use another username</button>
+                </>}
+              </form>
+            </div>
+          </div>
+        )}
+
+
           <div className="text-center pb-2">
             <div className="text-xs text-slate-500">Currently Authenticated As:</div>
             <div className="text-sm font-bold text-slate-900 mt-0.5">
