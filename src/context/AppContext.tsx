@@ -1210,7 +1210,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         note: params.note,
         reference: params.reference || targetTx.invoiceNumber,
         paidAt: `${params.date}T${params.time}:00`,
-      }).then(commitLocalPayment).catch((error) => {
+      }).then(async () => {
+        commitLocalPayment();
+        try {
+          const rows = await api.transactions(500);
+          const mapped = (rows as any[]).map((row) => ({
+            ...row,
+            id: String(row.id),
+            customerId: String(row.customer_id ?? row.customerId ?? ''),
+            customerName: String(row.customer_name ?? row.customerName ?? ''),
+            customerMobile: String(row.customer_mobile ?? row.customerMobile ?? ''),
+            vendorId: row.vendor_id ? String(row.vendor_id) : undefined,
+            vendorName: row.vendor_name ?? row.vendorName ?? undefined,
+            serviceId: row.service_id ? String(row.service_id) : undefined,
+            serviceName: String(row.service_name ?? row.serviceName ?? ''),
+            invoiceNumber: row.invoice_number ?? row.invoiceNumber,
+            sellingPrice: Number(row.selling_price ?? row.sellingPrice ?? 0),
+            customerPaid: Number(row.customer_paid ?? row.customerPaid ?? 0),
+            customerDue: Number(row.customer_due ?? row.customerDue ?? 0),
+            vendorCost: Number(row.vendor_cost ?? row.vendorCost ?? 0),
+            vendorPaid: Number(row.vendor_paid ?? row.vendorPaid ?? 0),
+            vendorDue: Number(row.vendor_due ?? row.vendorDue ?? 0),
+            grossProfit: Number(row.gross_profit ?? row.grossProfit ?? 0),
+            flightDetails: row.flight_details ? (typeof row.flight_details === 'string' ? JSON.parse(row.flight_details) : row.flight_details) : row.flightDetails,
+          })) as Transaction[];
+          setData((prev: any) => ({ ...prev, transactions: mapped }));
+        } catch (refreshError) {
+          console.error('Payment transaction refresh failed:', refreshError);
+        }
+      }).catch((error) => {
         console.error('Server payment failed:', error);
         window.alert(error instanceof Error ? error.message : 'Payment could not be saved.');
       });
