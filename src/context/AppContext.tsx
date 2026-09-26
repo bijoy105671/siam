@@ -266,7 +266,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return {
       settings: INITIAL_SETTINGS,
       users: INITIAL_USERS,
-      currentUserId: INITIAL_USERS[0].id,
+      currentUserId: USE_SERVER_API ? undefined : INITIAL_USERS[0].id,
       customers: INITIAL_CUSTOMERS,
       vendors: INITIAL_VENDORS,
       services: INITIAL_SERVICES,
@@ -295,7 +295,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Auth helper
   const currentUser = useMemo(() => {
-    return data.users.find((u: User) => u.id === data.currentUserId) || data.users[0] || null;
+    return data.users.find((u: User) => u.id === data.currentUserId) || (USE_SERVER_API ? null : data.users[0]) || null;
   }, [data.users, data.currentUserId]);
 
   const recordAudit = (
