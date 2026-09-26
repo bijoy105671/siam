@@ -15,6 +15,7 @@ import {
   History,
   Database,
   ShieldCheck,
+  Trash2,
   X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -32,7 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { todayReminders, overdueReminders, upcomingFlights } = useApp();
+  const { todayReminders, overdueReminders, upcomingFlights, currentUser, settings } = useApp();
 
   const totalDuesAlert = todayReminders.length + overdueReminders.length;
 
@@ -125,6 +126,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: 'AES-256',
       badgeColor: 'bg-blue-100 text-blue-700',
     },
+    ...(currentUser?.role === 'admin' ? [{
+      id: 'recycle_bin',
+      label: 'Transaction Recycle Bin',
+      icon: Trash2,
+      badge: '30D',
+      badgeColor: 'bg-amber-100 text-amber-800',
+    }] : []),
     {
       id: 'verify_portal',
       label: 'Verify Invoice',
@@ -215,8 +223,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Agency Footer Stamp */}
         <div className="p-3 border-t border-slate-100 bg-slate-50/60">
-          <div className="text-[11px] font-semibold text-slate-800">SIAM AIR & DIGITAL</div>
-          <div className="text-[10px] text-slate-500">Dhaka & Noakhali, Bangladesh</div>
+          <div className="text-[11px] font-semibold text-slate-800 truncate">{settings.name}</div>
+          <div className="text-[10px] text-slate-500 truncate">{settings.address || 'Business address not configured'}</div>
+          <div className="text-[10px] text-slate-500 truncate">{settings.mobile || settings.whatsapp || 'Phone not configured'}</div>
           <div className="text-[9px] font-mono text-emerald-600 mt-1">One Entry Engine Active</div>
         </div>
       </aside>
