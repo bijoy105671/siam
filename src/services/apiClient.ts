@@ -38,10 +38,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
-  recoveryReset: (recoveryKey: string, username: string, newPassword: string) =>
-    apiRequest<{ ok: boolean; message?: string }>('/api/auth/recovery-reset', {
+  requestPasswordReset: (username: string) =>
+    apiRequest<{ ok: boolean; message?: string }>('/api/auth/request-password-reset', {
       method: 'POST',
-      body: JSON.stringify({ recoveryKey, username, newPassword }),
+      body: JSON.stringify({ username }),
+    }),
+  verifyPasswordReset: (username: string, otp: string, newPassword: string) =>
+    apiRequest<{ ok: boolean; message?: string }>('/api/auth/verify-password-reset', {
+      method: 'POST',
+      body: JSON.stringify({ username, otp, newPassword }),
     }),
   settings: () => apiRequest<{ settings: Record<string, any> }>('/api/settings'),
   updateSettings: (settings: Record<string, any>) =>
