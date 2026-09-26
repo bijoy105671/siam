@@ -40,6 +40,8 @@ export const api = {
     apiRequest<unknown[]>(`/api/vendors${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   transactions: (limit = 100) =>
     apiRequest<unknown[]>(`/api/transactions?limit=${limit}`),
+  deleteTransaction: (id: string) =>
+    apiRequest<{ ok: boolean }>(`/api/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   accountBalances: () =>
     apiRequest<{ balances: Record<string, number>; total: number }>('/api/accounts/balances'),
   openingBalances: () =>
