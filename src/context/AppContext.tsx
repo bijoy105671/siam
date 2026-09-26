@@ -465,7 +465,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addLoanAdvance(record);
       return { ...record, id: 'la_' + Date.now(), createdBy: currentUser?.fullName || 'Staff' };
     }
-    const result = await api.createLoanAdvance({ ...record, paymentMethod: record.paymentMethod.toLowerCase(), occurredAt: record.date && record.time ? record.date + 'T' + record.time + ':00+06:00' });
+    const occurredAt = record.date && record.time ? record.date + 'T' + record.time + ':00+06:00' : undefined;
+    const result = await api.createLoanAdvance({ ...record, paymentMethod: record.paymentMethod.toLowerCase(), occurredAt });
     const mapped = mapServerLoanAdvance(result.loanAdvance);
     setData((prev: any) => ({ ...prev, loanAdvances: [mapped, ...(prev.loanAdvances || []).filter((x: LoanAdvanceRecord) => x.id !== mapped.id)] }));
     return mapped;
