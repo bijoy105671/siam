@@ -11,6 +11,8 @@ import {
   Plus,
   Plane,
   Calendar,
+  X,
+  Save,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { PaymentMethod, Transaction, TransactionStatus } from '../../types';
@@ -36,6 +38,12 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editStatus, setEditStatus] = useState<TransactionStatus>('DUE');
+  const [editReminderDate, setEditReminderDate] = useState('');
+  const [editReminderTime, setEditReminderTime] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Filtering logic
   const now = new Date();
@@ -427,22 +435,12 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
                           {currentUser?.role === 'admin' && (
                             <button
-                              onClick={async () => {
-                                const nextStatus = tx.flightDetails
-                                  ? window.prompt('Enter new flight status (Confirmed, Schedule Changed, Reissued, Refund, Void, Cancelled, Completed, Other):', tx.flightDetails.ticketStatus)
-                                  : null;
-                                const reminderDate = window.prompt('Reminder date (YYYY-MM-DD), leave blank to keep current:', tx.reminderDate || '');
-                                const reminderTime = window.prompt('Reminder time (HH:MM), leave blank to keep current:', tx.reminderTime || '');
-                                try {
-                                  const updates: Record<string, any> = {
-                                    reminderDate: reminderDate || tx.reminderDate || null,
-                                    reminderTime: reminderTime || tx.reminderTime || null,
-                                  };
-                                  if (tx.flightDetails && nextStatus) updates.flightStatus = nextStatus;
-                                  await updateTransaction(tx.id, updates, 'Admin transaction edit');
-                                } catch (error) {
-                                  alert(error instanceof Error ? error.message : 'Transaction could not be updated.');
-                                }
+                              onClick={() => {
+                                setEditingTransaction(tx);
+                                setEditStatus(tx.status);
+                                setEditReminderDate(tx.reminderDate || '');
+                                setEditReminderTime(tx.reminderTime || '');
+                                setEditNote(tx.reminderNote || '');
                               }}
                               className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                               title="Edit Transaction (Admin + OTP)"
@@ -451,7 +449,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                             </button>
                           )}
 
-                          {currentUser?.permissions.canDeleteTransaction && (
+                          {currentUser?.role === 'admin' && (
                             <button
                               onClick={() => {
                                 if (
@@ -480,6 +478,96 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           </table>
         </div>
       </div>
+
+      {editingTransaction && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-4 bg-gradient-to-r from-slate-900 to-blue-950 text-white flex items-center justify-between">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-blue-300 font-semibold">Administrator Edit</div>
+                <h3 className="text-base font-bold mt-0.5">Edit Transaction</h3>
+                <p className="text-[11px] text-slate-300 mt-0.5">{editingTransaction.invoiceNumber} · {editingTransaction.customerName}</p>
+              </div>
+              <button onClick={() => setEditingTransaction(null)} className="p-2 rounded-lg hover:bg-white/10" title="Close">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                  <span className="text-[10px] text-slate-500 block">Selling Price</span>
+                  <strong className="text-sm text-slate-900">{formatCurrency(editingTransaction.sellingPrice)}</strong>
+                </div>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                  <span className="text-[10px] text-slate-500 block">Customer Due</span>
+                  <strong className="text-sm text-rose-600">{formatCurrency(editingTransaction.customerDue)}</strong>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Payment Status</label>
+                <select value={editStatus} onChange={(e) => setEditStatus(e.target.value as TransactionStatus)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="DUE">DUE</option>
+                  <option value="PARTIAL">PARTIAL</option>
+                  <option value="PAID">PAID</option>
+                  <option value="REFUND">REFUND</option>
+                  <option value="CANCELLED">CANCELLED</option>
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">Flight ticket status is managed separately from payment status.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Reminder Date</label>
+                  <input type="date" value={editReminderDate} onChange={(e) => setEditReminderDate(e.target.value)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Reminder Time</label>
+                  <input type="time" value={editReminderTime} onChange={(e) => setEditReminderTime(e.target.value)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Admin Note</label>
+                <textarea value={editNote} onChange={(e) => setEditNote(e.target.value)} rows={3} placeholder="Reason / note for this edit..." className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+
+              <div className="rounded-xl bg-blue-50 border border-blue-200 px-3 py-2 text-[10px] text-blue-800 flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>Admin + security OTP is required. The edit is recorded in Audit History.</span>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button onClick={() => setEditingTransaction(null)} className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancel</button>
+                <button
+                  disabled={savingEdit}
+                  onClick={async () => {
+                    if (!editingTransaction) return;
+                    setSavingEdit(true);
+                    try {
+                      await updateTransaction(editingTransaction.id, {
+                        reminderDate: editReminderDate || null,
+                        reminderTime: editReminderTime || null,
+                        reminderStatus: editReminderDate ? 'pending' : null,
+                        reminderNote: editNote || null,
+                      }, `Admin transaction edit — payment status selected: ${editStatus}`);
+                      setEditingTransaction(null);
+                    } catch (error) {
+                      alert(error instanceof Error ? error.message : 'Transaction could not be updated.');
+                    } finally {
+                      setSavingEdit(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" /> {savingEdit ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
-};
