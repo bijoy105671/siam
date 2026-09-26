@@ -19,9 +19,10 @@ import { api } from '../../services/apiClient';
 
 interface VendorListProps {
   onSelectTransaction: (tx: Transaction) => void;
+  onOpenPayment?: (tx: Transaction, type: 'customer' | 'vendor') => void;
 }
 
-export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction }) => {
+export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onOpenPayment }) => {
   const { vendors, addVendor, updateVendor, getVendorLedger, settings, currentUser } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
@@ -271,6 +272,7 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction }) =
           vendorId={selectedVendorId}
           onClose={() => setSelectedVendorId(null)}
           onSelectTransaction={onSelectTransaction}
+          onOpenPayment={(tx) => onOpenPayment?.(tx, 'vendor')}
         />
       )}
 
