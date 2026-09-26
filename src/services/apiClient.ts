@@ -33,6 +33,11 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   logout: () => apiRequest<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    apiRequest<{ ok: boolean }>('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
   settings: () => apiRequest<{ settings: Record<string, any> }>('/api/settings'),
   updateSettings: (settings: Record<string, any>) =>
     apiRequest<{ settings: Record<string, any> }>('/api/settings', {
