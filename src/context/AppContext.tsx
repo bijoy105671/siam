@@ -747,69 +747,88 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateTransaction = (id: string, updates: Partial<Transaction>, changeReason?: string) => {
+    const target = data.transactions.find((t: Transaction) => t.id === id);
+    if (!target) return;
+    if (USE_SERVER_API) {
+      void api.updateTransaction(id, updates as Record<string, any>).then(() => {
+        setData((prev: any) => ({
+          ...prev,
+          transactions: prev.transactions.map((t: Transaction) => {
+            if (t.id !== id) return t;
+            const merged = { ...t, ...updates, updatedAt: new Date().toISOString(), updatedBy: currentUser?.fullName };
+            if (updates.sellingPrice !== undefined || updates.customerPaid !== undefined) {
+              const sp = Number(updates.sellingPrice ?? t.sellingPrice);
+              const cp = Number(updates.customerPaid ?? t.customerPaid);
+              merged.customerDue = Math.max(0, sp - cp);
+              merged.status = merged.customerDue === 0 ? 'PAID' : (cp > 0 ? 'PARTIAL' : 'DUE');
+            }
+            if (updates.vendorCost !== undefined || updates.vendorPaid !== undefined) {
+              const vc = Number(updates.vendorCost ?? t.vendorCost);
+              const vp = Number(updates.vendorPaid ?? t.vendorPaid);
+              merged.vendorDue = Math.max(0, vc - vp);
+            }
+            if (updates.sellingPrice !== undefined || updates.vendorCost !== undefined) {
+              merged.grossProfit = Number(updates.sellingPrice ?? t.sellingPrice) - Number(updates.vendorCost ?? t.vendorCost);
+            }
+            return merged;
+          }),
+        }));
+        recordAudit('Updated Transaction', 'Transaction', id, JSON.stringify(target), `Updated: ${JSON.stringify(updates)} ${changeReason ? `(Reason: ${changeReason})` : ''}`);
+      }).catch((error) => {
+        console.error('Server transaction update failed:', error);
+        window.alert(error instanceof Error ? error.message : 'Transaction could not be updated.');
+      });
+      return;
+    }
     let oldTx: Transaction | undefined;
     setData((prev: any) => {
       oldTx = prev.transactions.find((t: Transaction) => t.id === id);
       return {
         ...prev,
         transactions: prev.transactions.map((t: Transaction) => {
-          if (t.id === id) {
-            const merged = { ...t, ...updates, updatedAt: new Date().toISOString(), updatedBy: currentUser?.fullName };
-            // Recalculate derived dues if price was adjusted
-            if (updates.sellingPrice !== undefined || updates.customerPaid !== undefined) {
-              const sp = updates.sellingPrice !== undefined ? updates.sellingPrice : t.sellingPrice;
-              const cp = updates.customerPaid !== undefined ? updates.customerPaid : t.customerPaid;
-              merged.customerDue = Math.max(0, sp - cp);
-              merged.status = merged.customerDue === 0 ? 'PAID' : (cp > 0 ? 'PARTIAL' : 'DUE');
-            }
-            if (updates.vendorCost !== undefined || updates.vendorPaid !== undefined) {
-              const vc = updates.vendorCost !== undefined ? updates.vendorCost : t.vendorCost;
-              const vp = updates.vendorPaid !== undefined ? updates.vendorPaid : t.vendorPaid;
-              merged.vendorDue = Math.max(0, vc - vp);
-            }
-            if (updates.sellingPrice !== undefined || updates.vendorCost !== undefined) {
-              const sp = updates.sellingPrice !== undefined ? updates.sellingPrice : t.sellingPrice;
-              const vc = updates.vendorCost !== undefined ? updates.vendorCost : t.vendorCost;
-              merged.grossProfit = sp - vc;
-            }
-            return merged;
+          if (t.id !== id) return t;
+          const merged = { ...t, ...updates, updatedAt: new Date().toISOString(), updatedBy: currentUser?.fullName };
+          if (updates.sellingPrice !== undefined || updates.customerPaid !== undefined) {
+            const sp = Number(updates.sellingPrice ?? t.sellingPrice), cp = Number(updates.customerPaid ?? t.customerPaid);
+            merged.customerDue = Math.max(0, sp - cp);
+            merged.status = merged.customerDue === 0 ? 'PAID' : (cp > 0 ? 'PARTIAL' : 'DUE');
           }
-          return t;
+          if (updates.vendorCost !== undefined || updates.vendorPaid !== undefined) {
+            const vc = Number(updates.vendorCost ?? t.vendorCost), vp = Number(updates.vendorPaid ?? t.vendorPaid);
+            merged.vendorDue = Math.max(0, vc - vp);
+          }
+          if (updates.sellingPrice !== undefined || updates.vendorCost !== undefined) merged.grossProfit = Number(updates.sellingPrice ?? t.sellingPrice) - Number(updates.vendorCost ?? t.vendorCost);
+          return merged;
         }),
       };
     });
-
-    recordAudit(
-      'Updated Transaction',
-      'Transaction',
-      id,
-      JSON.stringify(oldTx),
-      `Updated: ${JSON.stringify(updates)} ${changeReason ? `(Reason: ${changeReason})` : ''}`
-    );
+    recordAudit('Updated Transaction', 'Transaction', id, JSON.stringify(oldTx), `Updated: ${JSON.stringify(updates)} ${changeReason ? `(Reason: ${changeReason})` : ''}`);
   };
 
   const deleteTransaction = (id: string) => {
-    let deletedTx: Transaction | undefined;
-    setData((prev: any) => {
-      deletedTx = prev.transactions.find((t: Transaction) => t.id === id);
-      return {
-        ...prev,
-        transactions: prev.transactions.filter((t: Transaction) => t.id !== id),
-        partialPayments: prev.partialPayments.filter((p: PartialPayment) => p.transactionId !== id),
-        // Remove invoice-linked loan/advance adjustments when the invoice is deleted.
-        // This prevents orphaned adjustments from reducing the advance's available balance.
-        loanAdvanceAdjustments: (prev.loanAdvanceAdjustments || []).filter(
-          (a: LoanAdvanceAdjustment) => a.transactionId !== id
-        ),
-      };
-    });
-    recordAudit(
-      'Deleted Transaction',
-      'Transaction',
-      id,
-      JSON.stringify(deletedTx),
-      `Deleted Invoice ${deletedTx?.invoiceNumber}`
-    );
+    const deletedTx = data.transactions.find((t: Transaction) => t.id === id);
+    if (!deletedTx) return;
+    if (USE_SERVER_API) {
+      void api.deleteTransaction(id).then(() => {
+        setData((prev: any) => ({
+          ...prev,
+          transactions: prev.transactions.filter((t: Transaction) => t.id !== id),
+          partialPayments: prev.partialPayments.filter((p: PartialPayment) => p.transactionId !== id),
+          loanAdvanceAdjustments: (prev.loanAdvanceAdjustments || []).filter((a: LoanAdvanceAdjustment) => a.transactionId !== id),
+        }));
+      }).catch((error) => {
+        console.error('Server transaction delete failed:', error);
+        window.alert(error instanceof Error ? error.message : 'Transaction could not be deleted.');
+      });
+      return;
+    }
+    setData((prev: any) => ({
+      ...prev,
+      transactions: prev.transactions.filter((t: Transaction) => t.id !== id),
+      partialPayments: prev.partialPayments.filter((p: PartialPayment) => p.transactionId !== id),
+      loanAdvanceAdjustments: (prev.loanAdvanceAdjustments || []).filter((a: LoanAdvanceAdjustment) => a.transactionId !== id),
+    }));
+    recordAudit('Deleted Transaction', 'Transaction', id, JSON.stringify(deletedTx), `Deleted Invoice ${deletedTx.invoiceNumber}`);
   };
 
   const updateFlightStatus = (txId: string, status: TicketStatus, note?: string) => {
