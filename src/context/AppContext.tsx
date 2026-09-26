@@ -515,9 +515,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Customers
   const addCustomer = (cust: Omit<Customer, 'id' | 'createdAt'>): Customer => {
-    if (USE_SERVER_API) throw new Error('Use addCustomerAsync in server mode');
     const newCust: Customer = { ...cust, id: `cust_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`, createdAt: new Date().toISOString() };
     setData((prev: any) => ({ ...prev, customers: [...prev.customers, newCust] }));
+    if (USE_SERVER_API) { void api.createCustomer(cust as any).then((result: any) => { const row = result.customer; const mapped: Customer = { ...cust, id: String(row.id), createdAt: row.created_at ?? newCust.createdAt, openingDue: Number(row.opening_due ?? cust.openingDue ?? 0) }; setData((prev: any) => ({ ...prev, customers: [...prev.customers.filter((x: Customer) => x.id !== newCust.id && x.id !== mapped.id), mapped] })); }).catch(err => alert(err instanceof Error ? err.message : 'Customer creation failed')); }
     recordAudit('Created Customer', 'Customer', newCust.id, undefined, `Added customer ${newCust.name} (${newCust.mobile})`);
     return newCust;
   };
@@ -545,9 +545,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Vendors
   const addVendor = (vend: Omit<Vendor, 'id' | 'createdAt'>): Vendor => {
-    if (USE_SERVER_API) throw new Error('Use addVendorAsync in server mode');
     const newVend: Vendor = { ...vend, id: `vend_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`, createdAt: new Date().toISOString() };
     setData((prev: any) => ({ ...prev, vendors: [...prev.vendors, newVend] }));
+    if (USE_SERVER_API) { void api.createVendor(vend as any).then((result: any) => { const row = result.vendor; const mapped: Vendor = { ...vend, id: String(row.id), createdAt: row.created_at ?? newVend.createdAt, openingPayable: Number(row.opening_payable ?? vend.openingPayable ?? 0) }; setData((prev: any) => ({ ...prev, vendors: [...prev.vendors.filter((x: Vendor) => x.id !== newVend.id && x.id !== mapped.id), mapped] })); }).catch(err => alert(err instanceof Error ? err.message : 'Vendor creation failed')); }
     recordAudit('Created Vendor', 'Vendor', newVend.id, undefined, `Added vendor ${newVend.name}`);
     return newVend;
   };
