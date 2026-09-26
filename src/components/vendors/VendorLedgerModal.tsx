@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Printer, Briefcase, FileText, PhoneCall, MessageSquare } from 'lucide-react';
+import { X, Printer, Briefcase, FileText, PhoneCall, MessageSquare, DollarSign } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Transaction, Vendor } from '../../types';
 import { formatCurrency, formatDate, sanitizePhoneForWhatsapp } from '../../utils/formatters';
@@ -8,12 +8,14 @@ interface VendorLedgerModalProps {
   vendorId: string | null;
   onClose: () => void;
   onSelectTransaction: (tx: Transaction) => void;
+  onOpenPayment?: (tx: Transaction) => void;
 }
 
 export const VendorLedgerModal: React.FC<VendorLedgerModalProps> = ({
   vendorId,
   onClose,
   onSelectTransaction,
+  onOpenPayment,
 }) => {
   const { getVendorLedger, settings } = useApp();
 
@@ -181,6 +183,9 @@ export const VendorLedgerModal: React.FC<VendorLedgerModalProps> = ({
                         >
                           Invoice
                         </button>
+                        {tx.vendorDue > 0 && onOpenPayment && (
+                          <button onClick={() => onOpenPayment(tx)} className="ml-2 inline-flex items-center gap-1 text-amber-700 hover:underline font-semibold"><DollarSign className="w-3 h-3" /> Pay</button>
+                        )}
                       </td>
                     </tr>
                   ))}
