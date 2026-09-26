@@ -1216,8 +1216,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       window.alert('Payment amount must be greater than zero.');
       return;
     }
+
+    const validPaymentMethods: PaymentMethod[] = ['Cash', 'bKash', 'Nagad', 'Rocket', 'Bank', 'Card', 'Other'];
+    if (!validPaymentMethods.includes(params.paymentMethod)) {
+      window.alert('Please select a valid payment method.');
+      return;
+    }
+
+    if (!params.date || Number.isNaN(Date.parse(params.date))) {
+      window.alert('Please enter a valid payment date.');
+      return;
+    }
+
+    if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(params.time)) {
+      window.alert('Please enter a valid payment time.');
+      return;
+    }
+
+    if (params.paymentType === 'vendor' && !targetTx.vendorId) {
+      window.alert('This transaction has no linked vendor account.');
+      return;
+    }
+
     const outstanding = params.paymentType === 'customer' ? Number(targetTx.customerDue) : Number(targetTx.vendorDue);
-    if (amount > outstanding) {
+    if (!Number.isFinite(outstanding) || outstanding <= 0) {
+      window.alert('There is no outstanding balance for this payment.');
+      return;
+    }
+    if (amount > outstanding + 0.005) {
       window.alert(`Payment cannot exceed outstanding due of ৳${outstanding.toFixed(2)}.`);
       return;
     }
