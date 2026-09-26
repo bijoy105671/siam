@@ -504,7 +504,7 @@ app.delete('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
   } finally { client.release(); }
 });
 
-app.patch('/api/transactions/:id', auth, async (req, res) => {
+app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
