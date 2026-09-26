@@ -1,0 +1,139 @@
+name: Apply security hardening
+on:
+  push:
+    branches: [production-upgrade-v1]
+permissions:
+  contents: write
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply security hardening once
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const serverPath='server/index.ts';
+          let s=fs.readFileSync(serverPath,'utf8');
+          if (!s.includes('SECURITY_OTP_REQUIRED')) {
+            const authOld=`const auth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Authentication required' });
+  next();
+};`;
+            const authNew=`const auth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Authentication required' });
+  next();
+};
+
+const criticalAdminOnly = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Authentication required' });
+  try {
+    const { rows } = await pool.query('SELECT role, is_active FROM users WHERE id=$1', [req.session.userId]);
+    if (!rows[0]?.is_active) return res.status(401).json({ error: 'Account inactive' });
+    if (rows[0].role !== 'admin') return res.status(403).json({ error: 'Administrator permission required' });
+    const verifiedUntil = Number((req.session as any).securityVerifiedUntil || 0);
+    if (verifiedUntil <= Date.now()) {
+      const otp = String(randomInt(100000, 1000000));
+      await pool.query('CREATE TABLE IF NOT EXISTS security_otps (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, otp_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now())');
+      await pool.query('UPDATE security_otps SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [req.session.userId]);
+      await pool.query('INSERT INTO security_otps (user_id,otp_hash,expires_at) VALUES ($1,$2,now()+interval \'10 minutes\')', [req.session.userId, hashOtp(otp)]);
+      await sendPasswordResetOtp(otp);
+      return res.status(428).json({ error: 'SECURITY_OTP_REQUIRED', message: 'A security OTP was sent to the recovery email. Enter it to continue this important change.' });
+    }
+    next();
+  } catch (e) {
+    res.status(503).json({ error: e instanceof Error ? e.message : 'Security verification unavailable' });
+  }
+};`;
+            if (!s.includes(authOld)) throw new Error('auth block not found');
+            s=s.replace(authOld,authNew);
+            const marker="app.post('/api/auth/change-password', auth, async (req, res) => {";
+            const securityRoutes=`
+app.post('/api/auth/verify-security-otp', auth, async (req, res) => {
+  const otp=String(req.body?.otp||'').trim();
+  if (!/^\\d{6}$/.test(otp)) return res.status(400).json({error:'Enter the 6-digit security OTP'});
+  try {
+    const {rows}=await pool.query('SELECT id,otp_hash,expires_at,attempts FROM security_otps WHERE user_id=$1 AND used_at IS NULL ORDER BY created_at DESC LIMIT 1',[req.session.userId]);
+    const item=rows[0];
+    if(!item || new Date(item.expires_at).getTime()<=Date.now() || Number(item.attempts)>=5) return res.status(400).json({error:'Invalid or expired security OTP'});
+    if(hashOtp(otp)!==item.otp_hash){ await pool.query('UPDATE security_otps SET attempts=attempts+1 WHERE id=$1',[item.id]); return res.status(400).json({error:'Invalid or expired security OTP'}); }
+    await pool.query('UPDATE security_otps SET used_at=now() WHERE id=$1',[item.id]);
+    (req.session as any).securityVerifiedUntil=Date.now()+10*60*1000;
+    res.json({ok:true});
+  } catch(e){ res.status(503).json({error:e instanceof Error?e.message:'Security verification failed'}); }
+});
+
+`;
+            if (!s.includes("app.post('/api/auth/verify-security-otp'")) s=s.replace(marker,securityRoutes+marker);
+            const mutations=[
+              ["app.patch('/api/settings', adminOnly","app.patch('/api/settings', criticalAdminOnly"],
+              ["app.post('/api/users', adminOnly","app.post('/api/users', criticalAdminOnly"],
+              ["app.patch('/api/users/:id', adminOnly","app.patch('/api/users/:id', criticalAdminOnly"],
+              ["app.delete('/api/users/:id', adminOnly","app.delete('/api/users/:id', criticalAdminOnly"],
+              ["app.put('/api/expense-categories', adminOnly","app.put('/api/expense-categories', criticalAdminOnly"],
+              ["app.post('/api/services', adminOnly","app.post('/api/services', criticalAdminOnly"],
+              ["app.patch('/api/services/:id', adminOnly","app.patch('/api/services/:id', criticalAdminOnly"],
+              ["app.delete('/api/services/:id', adminOnly","app.delete('/api/services/:id', criticalAdminOnly"],
+              ["app.patch('/api/transactions/:id', adminOnly","app.patch('/api/transactions/:id', criticalAdminOnly"],
+              ["app.delete('/api/transactions/:id', adminOnly","app.delete('/api/transactions/:id', criticalAdminOnly"],
+              ["app.post('/api/payments/:id/reverse', adminOnly","app.post('/api/payments/:id/reverse', criticalAdminOnly"],
+              ["app.post('/api/expenses/:id/reverse', adminOnly","app.post('/api/expenses/:id/reverse', criticalAdminOnly"],
+              ["app.post('/api/fund-transfers/:id/reverse', adminOnly","app.post('/api/fund-transfers/:id/reverse', criticalAdminOnly"],
+              ["app.put('/api/opening-balances/:account', adminOnly","app.put('/api/opening-balances/:account', criticalAdminOnly"]
+            ];
+            for(const [a,b] of mutations) s=s.replace(a,b);
+            fs.writeFileSync(serverPath,s);
+            const apiPath='src/services/apiClient.ts';
+            let a=fs.readFileSync(apiPath,'utf8');
+            const old=`export async function apiRequest<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const response = await fetch(path, {
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as T & ApiError;
+  if (!response.ok) {
+    const error = new Error(payload?.error || \`Request failed (\${response.status})\`);
+    Object.assign(error, payload);
+    throw error;
+  }
+  return payload;
+}`;
+            const neu=`export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const request = async (retry=false): Promise<T> => {
+    const response = await fetch(path, { credentials:'include', headers:{'Content-Type':'application/json', ...(options.headers || {})}, ...options });
+    const payload = (await response.json().catch(() => ({}))) as T & ApiError & { message?: string };
+    if (response.status === 428 && payload?.error === 'SECURITY_OTP_REQUIRED' && !retry) {
+      const otp = window.prompt((payload.message || 'Security OTP required') + '\\n\\nEnter the 6-digit OTP sent to bijoy105671@gmail.com:');
+      if (!otp) throw new Error('Security OTP verification cancelled.');
+      const verify = await fetch('/api/auth/verify-security-otp', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({otp:otp.trim()})});
+      const verifyPayload = await verify.json().catch(()=>({}));
+      if (!verify.ok) throw new Error(verifyPayload?.error || 'Security OTP verification failed.');
+      return request(true);
+    }
+    if (!response.ok) { const error=new Error(payload?.error || \`Request failed (\${response.status})\`); Object.assign(error,payload); throw error; }
+    return payload;
+  };
+  return request(false);
+}`;
+            if (!a.includes('SECURITY_OTP_REQUIRED')) {
+              if (!a.includes(old)) throw new Error('apiRequest block not found');
+              a=a.replace(old,neu);
+              fs.writeFileSync(apiPath,a);
+            }
+          }
+          NODE
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add server/index.ts src/services/apiClient.ts
+          if git diff --cached --quiet; then echo 'No changes'; exit 0; fi
+          git commit -m "feat: require email OTP for critical admin changes"
+          git push
