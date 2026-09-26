@@ -56,6 +56,18 @@ export const VendorLedgerModal: React.FC<VendorLedgerModalProps> = ({
               </a>
             )}
 
+            {onOpenPayment && ledger.currentPayable > 0 && ledger.transactions.some(tx => tx.vendorDue > 0) && (
+              <button
+                onClick={() => {
+                  const tx = ledger.transactions.find(item => item.vendorDue > 0);
+                  if (tx) onOpenPayment(tx);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg"
+              >
+                <DollarSign className="w-3.5 h-3.5" />
+                <span>Pay Vendor {formatCurrency(ledger.currentPayable)}</span>
+              </button>
+            )}
             <button
               onClick={handlePrint}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-900 bg-white hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
@@ -112,6 +124,8 @@ export const VendorLedgerModal: React.FC<VendorLedgerModalProps> = ({
               <div className="text-slate-600">Opening Payable: {formatCurrency(vendor.openingPayable || 0)}</div>
               <div className="text-slate-600">Total Purchases / Cost: {formatCurrency(ledger.totalCost)}</div>
               <div className="text-blue-600 font-semibold">Total Paid to Vendor: {formatCurrency(ledger.totalPaid)}</div>
+              <div className="text-amber-700 font-semibold">Loan / Advance Given: {formatCurrency(ledger.availableAdvance)}</div>
+              <div className="text-slate-700 font-semibold">Invoice Payable: {formatCurrency(ledger.invoicePayable)}</div>
               <div className="text-sm font-bold text-amber-800 mt-1">
                 Net Outstanding Payable: {formatCurrency(ledger.currentPayable)}
               </div>
