@@ -11,7 +11,6 @@ import {
   DollarSign,
   AlertCircle,
   CheckCircle,
-  Users as UsersIcon,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency, formatDate, getTransactionStatusColor } from '../../utils/formatters';
@@ -24,8 +23,6 @@ interface DashboardProps {
   onOpenNewEntry: () => void;
   onOpenCustomerDue: () => void;
   onOpenVendorDue: () => void;
-  onOpenCustomerProfiles: () => void;
-  onOpenVendorProfiles: () => void;
   onOpenTransfer: () => void;
   onOpenExpense: () => void;
   onViewAllTransactions: () => void;
@@ -39,8 +36,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenNewEntry,
   onOpenCustomerDue,
   onOpenVendorDue,
-  onOpenCustomerProfiles,
-  onOpenVendorProfiles,
   onOpenTransfer,
   onOpenExpense,
   onViewAllTransactions,
@@ -91,20 +86,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           >
             <Building className="w-3.5 h-3.5" />
             <span>Vendor Due / Partial</span>
-          </button>
-          <button
-            onClick={onOpenCustomerProfiles}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors cursor-pointer"
-          >
-            <UsersIcon className="w-3.5 h-3.5" />
-            <span>Customer Profile</span>
-          </button>
-          <button
-            onClick={onOpenVendorProfiles}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors cursor-pointer"
-          >
-            <Building className="w-3.5 h-3.5" />
-            <span>Vendor Profile</span>
           </button>
           <button
             onClick={onOpenExpense}
