@@ -35,6 +35,7 @@ import {
   BackupExecutionLog,
   CloudProvider,
 } from '../../types';
+import { api } from '../../services/apiClient';
 
 export const AutomatedBackupSettings: React.FC = () => {
   const {
@@ -1075,32 +1076,38 @@ export const AutomatedBackupSettings: React.FC = () => {
           </button>
         </div>
 
-        {/* Clear All Input Data (Start Fresh) */}
-        <div className="p-4 rounded-xl border border-rose-300 bg-rose-50/40 shadow-xs space-y-2">
+        {/* Protected Admin Data Reset */}
+        <div className="p-4 rounded-xl border border-rose-300 bg-rose-50/40 shadow-xs space-y-3 md:col-span-2">
           <div className="flex items-center gap-2">
-            <Trash2 className="w-4 h-4 text-rose-600" />
-            <h4 className="text-xs font-bold text-slate-900">Clear All Input Data (Start Fresh)</h4>
+            <ShieldCheck className="w-4 h-4 text-rose-600" />
+            <h4 className="text-xs font-bold text-slate-900">Protected: Clear All Business Data</h4>
           </div>
-          <p className="text-[11px] text-slate-500">
-            Wipes all transactions, customer records, vendor records, expenses, fund transfers, and ledger history. Leaves business settings, service items, and user accounts intact for real business operations.
+          <p className="text-[11px] text-slate-600">
+            Permanently clears transactions, customer/vendor records, payments, expenses, transfers, account balances and other business input data. Users, services, business settings and audit history are preserved.
           </p>
           <button
             type="button"
-            onClick={() => {
-              if (
-                confirm(
-                  'Are you sure you want to CLEAR ALL INPUT DATA? All transactions, customer profiles, vendor records, and expenses will be wiped clean.'
-                )
-              ) {
-                clearAllInputData();
-                alert('All input data has been cleared! The system is now completely empty and ready for your real business entries.');
+            onClick={async () => {
+              const code = window.prompt('ADMIN DATA RESET\n\nEnter Backup Code to continue:');
+              if (code === null) return;
+              if (!code) return alert('Backup Code is required.');
+              if (!confirm('FINAL WARNING: This will permanently clear all business input data. Continue?')) return;
+              try {
+                const result = await api.clearAllData(code);
+                alert(result.message || 'All business data cleared successfully.');
+                window.location.reload();
+              } catch (error) {
+                alert(error instanceof Error ? error.message : 'Unable to clear business data.');
               }
             }}
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-lg cursor-pointer shadow-xs transition-colors"
+            className="flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg cursor-pointer shadow-xs"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span>Clear All Input Data</span>
+            <span>Clear All Business Data</span>
           </button>
+          <div className="text-[10px] text-rose-700 font-medium">
+            Security: Administrator session + Email OTP + Backup Code required.
+          </div>
         </div>
 
         {/* Load Demo Data */}
