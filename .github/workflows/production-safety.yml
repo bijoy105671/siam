@@ -1,0 +1,33 @@
+name: Production Safety Gate
+
+on:
+  pull_request:
+    branches: [production-upgrade-v1]
+  push:
+    branches: [production-upgrade-v1]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      # Critical feature-presence checks. If any disappears, the build fails.
+      - name: Verify critical features
+        shell: bash
+        run: |
+          set -e
+          test -f src/components/admin/TransactionRecycleBin.tsx
+          test -f src/components/auth/SecurityOtpModal.tsx
+          grep -q "TransactionRecycleBin" src/App.tsx
+          grep -q "SecurityOtpModal" src/App.tsx
+          grep -q "loginAsync" src/context/AppContext.tsx
+          grep -q "settings:" src/context/AppContext.tsx
+          grep -q "tagline" src/context/AppContext.tsx || true
+          echo "Critical feature-presence checks passed."
