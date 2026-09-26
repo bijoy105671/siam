@@ -88,6 +88,11 @@ export const LoanAdvanceManager: React.FC = () => {
   const startEdit = (id: string) => {
     const r = loanAdvances.find((x) => x.id === id);
     if (!r) return;
+    const alreadyAdjusted = adjustedAmount(r.id);
+    if (alreadyAdjusted > 0) {
+      alert('This loan/advance already has settlement adjustments. Reverse those adjustments first, then edit the original entry.');
+      return;
+    }
     setEditingId(r.id); setPartyType(r.partyType); setPartyId(r.partyId); setKind(r.kind);
     setDirection(r.direction); setAmount(r.amount); setPaymentMethod(r.paymentMethod);
     setNote(r.note || ''); setReference(r.reference || '');
