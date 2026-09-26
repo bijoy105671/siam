@@ -382,6 +382,59 @@ app.get('/api/customers', auth, async (req, res) => {
   res.json(rows);
 });
 
+app.delete('/api/customers/:id', criticalAdminOnly, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const customer = (await client.query('SELECT * FROM customers WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!customer) throw new Error('Customer not found');
+    const linked = (await client.query('SELECT COUNT(*)::int count FROM transactions WHERE customer_id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0].count;
+    if (Number(linked) > 0) throw new Error('Customer has active transactions. Delete or archive those transactions first.');
+    await client.query('DELETE FROM customers WHERE id=$1', [req.params.id]);
+    await audit(client, req.session.userId!, 'CUSTOMER_DELETED', 'Customer', req.params.id, customer, null);
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) { await client.query('ROLLBACK'); res.status(400).json({ error: e instanceof Error ? e.message : 'Customer deletion failed' }); }
+  finally { client.release(); }
+});
+
+app.delete('/api/vendors/:id', criticalAdminOnly, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const vendor = (await client.query('SELECT * FROM vendors WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!vendor) throw new Error('Vendor not found');
+    const linked = (await client.query('SELECT COUNT(*)::int count FROM transactions WHERE vendor_id=$1 AND deleted_at IS NULL', [req.params.id])).rows[0].count;
+    if (Number(linked) > 0) throw new Error('Vendor has active transactions. Delete or archive those transactions first.');
+    await client.query('DELETE FROM vendors WHERE id=$1', [req.params.id]);
+    await audit(client, req.session.userId!, 'VENDOR_DELETED', 'Vendor', req.params.id, vendor, null);
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) { await client.query('ROLLBACK'); res.status(400).json({ error: e instanceof Error ? e.message : 'Vendor deletion failed' }); }
+  finally { client.release(); }
+});
+
+app.post('/api/admin/clear-all-data', criticalAdminOnly, async (req, res) => {
+  const backupCode = String(req.body?.backupCode || '');
+  if (backupCode !== '105671') return res.status(403).json({ error: 'Invalid backup code' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM account_entries');
+    await client.query('DELETE FROM payments');
+    await client.query('DELETE FROM transactions');
+    await client.query('DELETE FROM expenses');
+    await client.query('DELETE FROM fund_transfers');
+    await client.query('DELETE FROM customers');
+    await client.query('DELETE FROM vendors');
+    await client.query('DELETE FROM account_opening_balances');
+    await audit(client, req.session.userId!, 'ALL_INPUT_DATA_CLEARED', 'System', 'all-input-data', null, { clearedAt: new Date().toISOString(), preserved: ['users','services','app_settings','audit_logs'] });
+    await client.query('COMMIT');
+    res.json({ ok: true, message: 'All business input data cleared. Users, services, settings and audit history were preserved.' });
+  } catch (e) { await client.query('ROLLBACK'); res.status(400).json({ error: e instanceof Error ? e.message : 'Clear all data failed' }); }
+  finally { client.release(); }
+});
+
 app.get('/api/customers/:id/ledger', auth, async (req, res) => {
   const customerId = req.params.id;
   const customer = (await pool.query('SELECT * FROM customers WHERE id=$1', [customerId])).rows[0];
