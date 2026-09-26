@@ -340,6 +340,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           api.accountBalances(),
           api.services(),
           api.expenseCategories(),
+          api.settings(),
         ]);
       const userResult = serverUser.role === 'admin' ? await api.users() : [];
       const mapCustomer = (row: any): Customer => ({
@@ -379,6 +380,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             enabled: row.enabled !== false,
           }))
         : [];
+      const serverSettings = (settingsResult as any)?.settings || {};
 
       const balances: AccountBalances = {
         Cash: Number(balanceResult.balances.cash || 0),
@@ -438,6 +440,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           users: serverUsers.length ? serverUsers : (localMatch
             ? prev.users.map((u: User) => u.id === localMatch.id ? mappedUser : u)
             : [mappedUser, ...prev.users]),
+          settings: { ...prev.settings, ...serverSettings },
           services: serverServices.length ? serverServices : prev.services,
           expenseCategories: serverExpenseCategories.length ? serverExpenseCategories : prev.expenseCategories,
           customers: (customerResult as any[]).map(mapCustomer),
