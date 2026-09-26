@@ -1,27 +1,3 @@
-  const completeReminder = async (txId: string) => {
-    if (USE_SERVER_API) {
-      await api.updateTransaction(txId, { reminderStatus: 'completed' });
-      await hydrateServerSession();
-      return;
-    }
-    setData((prev: any) => ({ ...prev, transactions: prev.transactions.map((t: Transaction) => t.id === txId ? { ...t, reminderStatus: 'completed' as const } : t) }));
-  };
-
-  const snoozeReminder = async (txId: string, days: number) => {
-    const target = data.transactions.find((t: Transaction) => t.id === txId);
-    if (!target) return;
-    const baseDate = target.reminderDate ? new Date(target.reminderDate) : new Date();
-    baseDate.setDate(baseDate.getDate() + days);
-    const newDateStr = baseDate.toISOString().split('T')[0];
-    if (USE_SERVER_API) {
-      await api.updateTransaction(txId, { reminderDate: newDateStr, reminderStatus: 'pending' });
-      await hydrateServerSession();
-      return;
-    }
-    setData((prev: any) => ({ ...prev, transactions: prev.transactions.map((t: Transaction) => t.id === txId ? { ...t, reminderDate: newDateStr, reminderStatus: 'pending' as const } : t) }));
-    recordAudit('Snoozed Reminder', 'Transaction', txId, undefined, `Snoozed reminder for ${days} days to ${newDateStr}`);
-  };
-
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   DEMO_AUDIT_LOGS,
