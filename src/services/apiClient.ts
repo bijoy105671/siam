@@ -101,6 +101,9 @@ export const api = {
   deleteVendor: (id: string) => apiRequest<{ ok: boolean }>(`/api/vendors/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   transactions: (limit = 100) =>
     apiRequest<unknown[]>(`/api/transactions?limit=${limit}`),
+  recycleBin: () => apiRequest<unknown[]>('/api/admin/recycle-bin'),
+  restoreTransaction: (id: string) =>
+    apiRequest<{ ok: boolean }>(`/api/admin/recycle-bin/${encodeURIComponent(id)}/restore`, { method: 'POST' }),
   clearAllData: (backupCode: string) => apiRequest<{ ok: boolean; message: string }>('/api/admin/clear-all-data', { method: 'POST', body: JSON.stringify({ backupCode }) }),
   deleteTransaction: (id: string) =>
     apiRequest<{ ok: boolean }>(`/api/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
