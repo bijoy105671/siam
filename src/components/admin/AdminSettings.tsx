@@ -23,6 +23,7 @@ import { UserManagement } from './UserManagement';
 import { AuditHistoryView } from './AuditHistoryView';
 import { AutomatedBackupSettings } from './AutomatedBackupSettings';
 import { formatCurrency } from '../../utils/formatters';
+import { api, USE_SERVER_API } from '../../services/apiClient';
 
 interface AdminSettingsProps {
   defaultTab?: 'business' | 'services' | 'templates' | 'opening' | 'users' | 'backup' | 'audit';
@@ -93,7 +94,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
     setTimeout(() => setSaveMessage(''), 3000);
   };
 
-  const handleAddService = (e: React.FormEvent) => {
+  const handleAddService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newServiceName.trim()) return;
     const newService: ServiceItem = {
@@ -103,19 +104,53 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
       enabled: true,
       order: services.length + 1,
     };
-    updateServices([...services, newService]);
-    setNewServiceName('');
+    try {
+      if (USE_SERVER_API) {
+        await api.createService({
+          name: newService.name,
+          category: newService.category,
+          enabled: true,
+          sortOrder: newService.order,
+        });
+        window.location.reload();
+        return;
+      }
+      updateServices([...services, newService]);
+      setNewServiceName('');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to add service');
+    }
   };
 
-  const handleToggleService = (id: string) => {
+  const handleToggleService = async (id: string) => {
     const updated = services.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s));
-    updateServices(updated);
+    try {
+      if (USE_SERVER_API) {
+        const item = services.find((service) => service.id === id);
+        if (!item) return;
+        await api.updateService(id, { enabled: !item.enabled });
+        window.location.reload();
+        return;
+      }
+      updateServices(updated);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to update service');
+    }
   };
 
-  const handleDeleteService = (id: string) => {
+  const handleDeleteService = async (id: string) => {
     if (confirm('Delete this service?')) {
-      const updated = services.filter((s) => s.id !== id);
-      updateServices(updated);
+      try {
+        if (USE_SERVER_API) {
+          await api.disableService(id);
+          window.location.reload();
+          return;
+        }
+        const updated = services.filter((s) => s.id !== id);
+        updateServices(updated);
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Unable to disable service');
+      }
     }
   };
 
