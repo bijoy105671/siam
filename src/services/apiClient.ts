@@ -65,6 +65,14 @@ export const api = {
     apiRequest<{ expense: unknown }>('/api/expenses', { method: 'POST', body: JSON.stringify(input) }),
   createFundTransfer: (input: Record<string, any>) =>
     apiRequest<{ transfer: unknown }>('/api/fund-transfers', { method: 'POST', body: JSON.stringify(input) }),
+  users: () => apiRequest<unknown[]>('/api/users'),
+  createUser: (input: Record<string, any>) => apiRequest<{ user: unknown }>('/api/users', { method: 'POST', body: JSON.stringify(input) }),
+  updateUserServer: (id: string, input: Record<string, any>) => apiRequest<{ user: unknown }>(`/api/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  deactivateUser: (id: string) => apiRequest<{ ok: boolean }>(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  services: () => apiRequest<unknown[]>('/api/services'),
+  createService: (input: Record<string, any>) => apiRequest<{ service: unknown }>('/api/services', { method: 'POST', body: JSON.stringify(input) }),
+  updateService: (id: string, input: Record<string, any>) => apiRequest<{ service: unknown }>(`/api/services/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  disableService: (id: string) => apiRequest<{ ok: boolean }>(`/api/services/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   updateOpeningBalance: (account: string, amount: number) =>
     apiRequest<{ account: string; amount: number }>('/api/opening-balances/' + encodeURIComponent(account), {
       method: 'PUT', body: JSON.stringify({ amount }),
