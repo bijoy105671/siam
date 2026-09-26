@@ -42,6 +42,12 @@ export const api = {
     apiRequest<unknown[]>(`/api/transactions?limit=${limit}`),
   deleteTransaction: (id: string) =>
     apiRequest<{ ok: boolean }>(`/api/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  reversePayment: (id: string) =>
+    apiRequest<{ ok: boolean }>(`/api/payments/${encodeURIComponent(id)}/reverse`, { method: 'POST' }),
+  reverseExpense: (id: string) =>
+    apiRequest<{ ok: boolean }>(`/api/expenses/${encodeURIComponent(id)}/reverse`, { method: 'POST' }),
+  reverseFundTransfer: (id: string) =>
+    apiRequest<{ ok: boolean }>(`/api/fund-transfers/${encodeURIComponent(id)}/reverse`, { method: 'POST' }),
   accountBalances: () =>
     apiRequest<{ balances: Record<string, number>; total: number }>('/api/accounts/balances'),
   openingBalances: () =>
