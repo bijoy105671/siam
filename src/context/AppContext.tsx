@@ -432,7 +432,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (t.id !== transactionId) return t;
         if (record.partyType === 'customer') {
           const paid = t.customerPaid + applied;
-          return { ...t, customerPaid: paid, customerDue: Math.max(0, t.sellingPrice - paid), status: t.customerDue <= applied ? 'PAID' : 'PARTIAL', updatedAt: now.toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
+          const due = Math.max(0, t.sellingPrice - paid);
+          return { ...t, customerPaid: paid, customerDue: due, status: due === 0 ? 'PAID' : 'PARTIAL', updatedAt: now.toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
         }
         const paid = t.vendorPaid + applied;
         return { ...t, vendorPaid: paid, vendorDue: Math.max(0, t.vendorCost - paid), updatedAt: now.toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
