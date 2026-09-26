@@ -29,3 +29,71 @@
     size: auto;
   }
 }
+
+
+/* --------------------------------------------------------------------------
+   SIAM responsive/mobile guardrails
+   Keep the desktop layout unchanged while making narrow screens feel native.
+   -------------------------------------------------------------------------- */
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+html,
+body {
+  overflow-x: hidden;
+}
+body { margin: 0; }
+
+@media (max-width: 1023px) {
+  #root { min-height: 100dvh; min-width: 0; max-width: 100%; }
+  #root > * { min-width: 0; max-width: 100%; }
+  main {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+  main .overflow-x-auto {
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+  button, input, select, textarea { touch-action: manipulation; }
+}
+
+@media (max-width: 640px) {
+  header {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+  header > div { min-width: 0; }
+  main { padding: 12px !important; }
+  header button { max-width: 100%; }
+  main > *, main section, main article, main form, main [role="dialog"] {
+    max-width: 100%;
+    min-width: 0;
+  }
+  main table { min-width: max-content; }
+}
+
+@media (max-width: 420px) {
+  header .text-base, header .text-lg {
+    font-size: 0.875rem !important;
+    line-height: 1.15rem !important;
+  }
+  header .w-9, header .h-9 {
+    width: 32px !important;
+    height: 32px !important;
+  }
+  header button:has(svg.lucide-plus-circle) span { display: none; }
+  header button:has(svg.lucide-plus-circle) {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+}
