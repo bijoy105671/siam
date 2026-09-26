@@ -136,7 +136,7 @@ app.get('/api/dashboard', auth, async (_req, res) => {
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(CASE WHEN gross_profit > 0 THEN gross_profit ELSE 0 END),0) gross_profit,
                        COALESCE(SUM(CASE WHEN gross_profit < 0 THEN ABS(gross_profit) ELSE 0 END),0) loss
-                FROM transactions WHERE status <> $1 AND date = CURRENT_DATE`, ['CANCELLED']),
+                FROM transactions WHERE deleted_at IS NULL AND status <> $1 AND date = CURRENT_DATE`, ['CANCELLED']),
     pool.query("SELECT COALESCE(SUM(amount),0) total_received FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND payment_type='customer' AND p.reversed_at IS NULL AND paid_at::date = CURRENT_DATE"),
     pool.query("SELECT COALESCE(SUM(amount),0) total_vendor_payment FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND payment_type='vendor' AND p.reversed_at IS NULL AND paid_at::date = CURRENT_DATE"),
     pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL AND occurred_at::date = CURRENT_DATE')
