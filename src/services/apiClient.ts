@@ -3,6 +3,7 @@ export type ApiError = { error?: string; [key: string]: unknown };
 export const USE_SERVER_API = import.meta.env.VITE_USE_SERVER_API === 'true';
 
 const SECURITY_VERIFIED_STORAGE_KEY = 'siam_security_otp_verified_at';
+const SECURITY_REQUIRED_STORAGE_KEY = 'siam_security_otp_required';
 
 const waitForSecurityVerification = (message: string): Promise<void> => {
   if (typeof window === 'undefined') return Promise.reject(new Error('Security OTP verification requires a browser.'));
@@ -32,6 +33,7 @@ const waitForSecurityVerification = (message: string): Promise<void> => {
         return;
       }
     } catch {}
+    try { localStorage.setItem(SECURITY_REQUIRED_STORAGE_KEY, JSON.stringify({ message, requestedAt: Date.now() })); } catch {}
     window.dispatchEvent(new CustomEvent('siam:security-otp-required', { detail: { message } }));
   });
 };
