@@ -43,6 +43,7 @@ const MainLayout: React.FC = () => {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [paymentFocus, setPaymentFocus] = useState<'customer' | 'vendor' | null>(null);
 
   // Direct modal ledgers
   const [inspectCustomerId, setInspectCustomerId] = useState<string | null>(null);
@@ -163,8 +164,8 @@ const MainLayout: React.FC = () => {
             <Dashboard
               onOpenNewEntry={() => setCurrentView('new_entry')}
               onOpenTransfer={() => setIsTransferModalOpen(true)}
-              onOpenCustomerDue={() => setCurrentView('transactions')}
-              onOpenVendorDue={() => setCurrentView('transactions')}
+              onOpenCustomerDue={() => { setPaymentFocus('customer'); setCurrentView('transactions'); }}
+              onOpenVendorDue={() => { setPaymentFocus('vendor'); setCurrentView('transactions'); }}
               onOpenCustomerProfiles={() => setCurrentView('customers')}
               onOpenVendorProfiles={() => setCurrentView('vendors')}
               onOpenExpense={() => setCurrentView('expenses')}
@@ -187,6 +188,7 @@ const MainLayout: React.FC = () => {
             <TransactionList
               onSelectTransaction={(tx) => setActiveInvoiceTx(tx)}
               onOpenNewEntry={() => setCurrentView('new_entry')}
+              paymentFocus={paymentFocus}
               onOpenPayment={handleOpenPayment}
             />
           )}
