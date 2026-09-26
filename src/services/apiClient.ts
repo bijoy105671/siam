@@ -75,6 +75,11 @@ export const api = {
   createService: (input: Record<string, any>) => apiRequest<{ service: unknown }>('/api/services', { method: 'POST', body: JSON.stringify(input) }),
   updateService: (id: string, input: Record<string, any>) => apiRequest<{ service: unknown }>(`/api/services/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   disableService: (id: string) => apiRequest<{ ok: boolean }>(`/api/services/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  updateTransaction: (id: string, input: Record<string, any>) =>
+    apiRequest<{ ok: boolean }>(`/api/transactions/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  expenseCategories: () => apiRequest<unknown[]>('/api/expense-categories'),
+  updateExpenseCategories: (categories: unknown[]) =>
+    apiRequest<{ categories: unknown[] }>('/api/expense-categories', { method: 'PUT', body: JSON.stringify({ categories }) }),
   updateOpeningBalance: (account: string, amount: number) =>
     apiRequest<{ account: string; amount: number }>('/api/opening-balances/' + encodeURIComponent(account), {
       method: 'PUT', body: JSON.stringify({ amount }),
