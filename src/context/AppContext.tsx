@@ -706,10 +706,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const tx = result.transaction as Transaction;
     // Refresh the complete server-backed collections after One Entry.
     // This keeps customer/vendor profiles, their transactions, ledgers, and All Transactions in sync.
-    const [customerRows, vendorRows, transactionRows] = await Promise.all([
+    const [customerRows, vendorRows, transactionRows, dashboard] = await Promise.all([
       api.customers(),
       api.vendors(),
       api.transactions(500),
+      api.dashboard(),
     ]);
     const mappedTransactions = (transactionRows as any[]).map((row: any) => ({
       ...row,
@@ -760,6 +761,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       customers: mappedCustomers,
       vendors: mappedVendors,
     }));
+    const t = dashboard.today || {} as any;
+    setServerTodaySummary({
+      totalSales: Number(t.total_sales || 0),
+      totalReceived: Number(t.total_received || 0),
+      totalExpense: Number(t.total_expense || 0),
+      totalVendorPayment: Number(t.total_vendor_payment || 0),
+      grossProfit: Number(t.gross_profit || 0),
+      loss: Number(t.loss || 0),
+      netProfit: Number(t.net_profit || 0),
+    });
     return tx;
   };
 
