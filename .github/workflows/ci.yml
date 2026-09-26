@@ -22,6 +22,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Verify generated lockfile
+        run: test -s package-lock.json
+
       - name: Type check
         run: npm run lint
 
