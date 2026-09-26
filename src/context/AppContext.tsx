@@ -169,10 +169,15 @@ interface AppContextType {
 
   addFundTransfer: (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => void;
   addLoanAdvance: (record: Omit<LoanAdvanceRecord, 'id' | 'createdBy'>) => void;
+  addLoanAdvanceAsync: (record: Omit<LoanAdvanceRecord, 'id' | 'createdBy'>) => Promise<LoanAdvanceRecord>;
   updateLoanAdvance: (id: string, updates: Partial<LoanAdvanceRecord>) => void;
+  updateLoanAdvanceAsync: (id: string, updates: Partial<LoanAdvanceRecord>) => Promise<LoanAdvanceRecord>;
   deleteLoanAdvance: (id: string) => void;
+  deleteLoanAdvanceAsync: (id: string) => Promise<void>;
   adjustLoanAdvance: (loanAdvanceId: string, transactionId: string, amount: number, note?: string) => boolean;
+  adjustLoanAdvanceAsync: (loanAdvanceId: string, transactionId: string, amount: number, note?: string) => Promise<boolean>;
   deleteLoanAdvanceAdjustment: (id: string) => boolean;
+  deleteLoanAdvanceAdjustmentAsync: (id: string) => Promise<boolean>;
 
   updateOpeningBalance: (method: PaymentMethod, amount: number) => void;
   updateSettings: (settings: Partial<BusinessSettings>) => void;
@@ -405,101 +410,113 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     recordAudit('Deleted User', 'User', id, undefined, `Deleted user ${id}`);
   };
 
+  const mapServerLoanAdvance = (row: any): LoanAdvanceRecord => ({
+    id: String(row.id), partyType: row.party_type ?? row.partyType, partyId: String(row.party_id ?? row.partyId),
+    partyName: String(row.party_name ?? row.partyName ?? ''), kind: row.kind, direction: row.direction,
+    amount: Number(row.amount || 0), paymentMethod: String(row.payment_method ?? row.paymentMethod ?? 'cash').toLowerCase() as PaymentMethod,
+    date: row.date ?? (row.occurred_at ? new Date(row.occurred_at).toISOString().slice(0,10) : new Date().toISOString().slice(0,10)),
+    time: row.time ?? (row.occurred_at ? new Date(row.occurred_at).toTimeString().slice(0,5) : new Date().toTimeString().slice(0,5)),
+    note: row.note || undefined, reference: row.reference || undefined, createdBy: String(row.created_by_name ?? row.createdBy ?? 'Staff'),
+  });
+
+  const mapServerLoanAdjustment = (row: any): LoanAdvanceAdjustment => ({
+    id: String(row.id), loanAdvanceId: String(row.loan_advance_id ?? row.loanAdvanceId),
+    transactionId: String(row.transaction_id ?? row.transactionId), partyType: row.party_type ?? row.partyType,
+    partyId: String(row.party_id ?? row.partyId), amount: Number(row.amount || 0),
+    date: row.date ?? (row.occurred_at ? new Date(row.occurred_at).toISOString().slice(0,10) : new Date().toISOString().slice(0,10)),
+    time: row.time ?? (row.occurred_at ? new Date(row.occurred_at).toTimeString().slice(0,5) : new Date().toTimeString().slice(0,5)),
+    note: row.note || undefined, createdBy: String(row.created_by_name ?? row.createdBy ?? 'Staff'),
+  });
+
+  const addLoanAdvanceAsync = async (record: Omit<LoanAdvanceRecord, 'id' | 'createdBy'>): Promise<LoanAdvanceRecord> => {
+    if (!USE_SERVER_API) {
+      addLoanAdvance(record);
+      return { ...record, id: 'la_' + Date.now(), createdBy: currentUser?.fullName || 'Staff' };
+    }
+    const result = await api.createLoanAdvance({ ...record, paymentMethod: record.paymentMethod.toLowerCase(), occurredAt: record.date && record.time ? record.date + 'T' + record.time + ':00+06:00' });
+    const mapped = mapServerLoanAdvance(result.loanAdvance);
+    setData((prev: any) => ({ ...prev, loanAdvances: [mapped, ...(prev.loanAdvances || []).filter((x: LoanAdvanceRecord) => x.id !== mapped.id)] }));
+    return mapped;
+  };
+
   const addLoanAdvance = (record: Omit<LoanAdvanceRecord, 'id' | 'createdBy'>) => {
-    const newRecord: LoanAdvanceRecord = {
-      ...record,
-      id: 'la_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-      createdBy: currentUser?.fullName || 'Staff',
-    };
+    if (USE_SERVER_API) { void addLoanAdvanceAsync(record).catch(err => alert(err instanceof Error ? err.message : 'Loan/advance creation failed')); return; }
+    const newRecord: LoanAdvanceRecord = { ...record, id: 'la_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4), createdBy: currentUser?.fullName || 'Staff' };
     setData((prev: any) => ({ ...prev, loanAdvances: [newRecord, ...(prev.loanAdvances || [])] }));
-    recordAudit('Created Loan / Advance', 'LoanAdvance', newRecord.id, undefined,
-      newRecord.partyName + ': ' + newRecord.kind + ' ' + newRecord.direction + ' ৳' + newRecord.amount);
+    recordAudit('Created Loan / Advance', 'LoanAdvance', newRecord.id, undefined, newRecord.partyName + ': ' + newRecord.kind + ' ' + newRecord.direction + ' ৳' + newRecord.amount);
+  };
+
+  const updateLoanAdvanceAsync = async (id: string, updates: Partial<LoanAdvanceRecord>): Promise<LoanAdvanceRecord> => {
+    if (!USE_SERVER_API) { updateLoanAdvance(id, updates); const found=(data.loanAdvances||[]).find((r: LoanAdvanceRecord)=>r.id===id); if(!found) throw new Error('Loan/advance not found'); return {...found,...updates}; }
+    const result = await api.updateLoanAdvance(id, { ...updates, paymentMethod: updates.paymentMethod?.toLowerCase() });
+    const mapped = mapServerLoanAdvance(result.loanAdvance);
+    setData((prev:any)=>({...prev,loanAdvances:(prev.loanAdvances||[]).map((r:LoanAdvanceRecord)=>r.id===id?mapped:r)}));
+    return mapped;
   };
 
   const updateLoanAdvance = (id: string, updates: Partial<LoanAdvanceRecord>) => {
-    setData((prev: any) => ({
-      ...prev,
-      loanAdvances: (prev.loanAdvances || []).map((r: LoanAdvanceRecord) => r.id === id ? { ...r, ...updates } : r),
-    }));
+    if (USE_SERVER_API) { void updateLoanAdvanceAsync(id,updates).catch(err=>alert(err instanceof Error?err.message:'Loan/advance update failed')); return; }
+    setData((prev: any) => ({ ...prev, loanAdvances: (prev.loanAdvances || []).map((r: LoanAdvanceRecord) => r.id === id ? { ...r, ...updates } : r) }));
     recordAudit('Updated Loan / Advance', 'LoanAdvance', id, undefined, JSON.stringify(updates));
   };
 
+  const deleteLoanAdvanceAsync = async (id: string): Promise<void> => {
+    if (!USE_SERVER_API) { deleteLoanAdvance(id); return; }
+    await api.deleteLoanAdvance(id);
+    setData((prev:any)=>({...prev,loanAdvances:(prev.loanAdvances||[]).filter((r:LoanAdvanceRecord)=>r.id!==id)}));
+  };
+
   const deleteLoanAdvance = (id: string) => {
+    if (USE_SERVER_API) { void deleteLoanAdvanceAsync(id).catch(err=>alert(err instanceof Error?err.message:'Loan/advance delete failed')); return; }
     setData((prev: any) => ({ ...prev, loanAdvances: (prev.loanAdvances || []).filter((r: LoanAdvanceRecord) => r.id !== id) }));
     recordAudit('Deleted Loan / Advance', 'LoanAdvance', id, undefined, 'Loan / advance record deleted');
   };
 
+  const adjustLoanAdvanceAsync = async (loanAdvanceId: string, transactionId: string, amount: number, note?: string): Promise<boolean> => {
+    if (!USE_SERVER_API) return adjustLoanAdvance(loanAdvanceId, transactionId, amount, note);
+    const result = await api.adjustLoanAdvance(loanAdvanceId, { transactionId, amount, note });
+    const mappedAdj = mapServerLoanAdjustment(result.adjustment);
+    const tx:any = result.transaction;
+    setData((prev:any)=>({
+      ...prev,
+      loanAdvanceAdjustments:[mappedAdj,...(prev.loanAdvanceAdjustments||[]).filter((a:LoanAdvanceAdjustment)=>a.id!==mappedAdj.id)],
+      transactions:prev.transactions.map((t:Transaction)=>t.id===transactionId?{...t,customerPaid:Number(tx.customer_paid??t.customerPaid),customerDue:Number(tx.customer_due??t.customerDue),vendorPaid:Number(tx.vendor_paid??t.vendorPaid),vendorDue:Number(tx.vendor_due??t.vendorDue),status:tx.status}:t)
+    }));
+    return true;
+  };
+
   const adjustLoanAdvance = (loanAdvanceId: string, transactionId: string, amount: number, note?: string): boolean => {
+    if (USE_SERVER_API) { void adjustLoanAdvanceAsync(loanAdvanceId,transactionId,amount,note).catch(err=>alert(err instanceof Error?err.message:'Adjustment failed')); return true; }
     const record = (data.loanAdvances || []).find((r: LoanAdvanceRecord) => r.id === loanAdvanceId);
     const tx = data.transactions.find((t: Transaction) => t.id === transactionId);
     if (!record || !tx || amount <= 0) return false;
-
-    const sameParty = record.partyType === 'customer'
-      ? tx.customerId === record.partyId
-      : tx.vendorId === record.partyId;
+    const sameParty = record.partyType === 'customer' ? tx.customerId === record.partyId : tx.vendorId === record.partyId;
     if (!sameParty) return false;
-
-    const adjusted = (data.loanAdvanceAdjustments || [])
-      .filter((a: LoanAdvanceAdjustment) => a.loanAdvanceId === loanAdvanceId)
-      .reduce((sum: number, a: LoanAdvanceAdjustment) => sum + a.amount, 0);
+    const adjusted = (data.loanAdvanceAdjustments || []).filter((a: LoanAdvanceAdjustment) => a.loanAdvanceId === loanAdvanceId).reduce((sum: number, a: LoanAdvanceAdjustment) => sum + a.amount, 0);
     const available = Math.max(0, record.amount - adjusted);
     const targetDue = record.partyType === 'customer' ? Math.max(0, tx.customerDue) : Math.max(0, tx.vendorDue);
     const applied = Math.min(amount, available, targetDue);
     if (applied <= 0) return false;
-
     const now = new Date();
-    const adjustment: LoanAdvanceAdjustment = {
-      id: 'laa_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-      loanAdvanceId,
-      transactionId,
-      partyType: record.partyType,
-      partyId: record.partyId,
-      amount: applied,
-      date: now.toISOString().split('T')[0],
-      time: now.toTimeString().split(' ')[0].substring(0, 5),
-      note: note?.trim() || undefined,
-      createdBy: currentUser?.fullName || 'Staff',
-    };
+    const adjustment: LoanAdvanceAdjustment = { id: 'laa_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4), loanAdvanceId, transactionId, partyType: record.partyType, partyId: record.partyId, amount: applied, date: now.toISOString().split('T')[0], time: now.toTimeString().split(' ')[0].substring(0, 5), note: note?.trim() || undefined, createdBy: currentUser?.fullName || 'Staff' };
+    setData((prev:any)=>({...prev,loanAdvanceAdjustments:[...(prev.loanAdvanceAdjustments||[]),adjustment],transactions:prev.transactions.map((t:Transaction)=>{if(t.id!==transactionId)return t;if(record.partyType==='customer'){const paid=t.customerPaid+applied;const due=Math.max(0,t.sellingPrice-paid);return {...t,customerPaid:paid,customerDue:due,status:due===0?'PAID':'PARTIAL',updatedAt:now.toISOString(),updatedBy:currentUser?.fullName||'Staff'};}const paid=t.vendorPaid+applied;return {...t,vendorPaid:paid,vendorDue:Math.max(0,t.vendorCost-paid),updatedAt:now.toISOString(),updatedBy:currentUser?.fullName||'Staff'};})}));
+    recordAudit('Adjusted Loan / Advance','LoanAdvance',adjustment.id,undefined,record.partyName+' → '+tx.invoiceNumber+' ৳'+applied); return true;
+  };
 
-    setData((prev: any) => ({
-      ...prev,
-      loanAdvanceAdjustments: [...(prev.loanAdvanceAdjustments || []), adjustment],
-      transactions: prev.transactions.map((t: Transaction) => {
-        if (t.id !== transactionId) return t;
-        if (record.partyType === 'customer') {
-          const paid = t.customerPaid + applied;
-          const due = Math.max(0, t.sellingPrice - paid);
-          return { ...t, customerPaid: paid, customerDue: due, status: due === 0 ? 'PAID' : 'PARTIAL', updatedAt: now.toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
-        }
-        const paid = t.vendorPaid + applied;
-        return { ...t, vendorPaid: paid, vendorDue: Math.max(0, t.vendorCost - paid), updatedAt: now.toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
-      }),
-    }));
-    recordAudit('Adjusted Loan / Advance', 'LoanAdvance', adjustment.id, undefined,
-      record.partyName + ' → ' + tx.invoiceNumber + ' ৳' + applied);
+  const deleteLoanAdvanceAdjustmentAsync = async (id: string): Promise<boolean> => {
+    if (!USE_SERVER_API) return deleteLoanAdvanceAdjustment(id);
+    await api.reverseLoanAdvanceAdjustment(id);
+    setData((prev:any)=>({...prev,loanAdvanceAdjustments:(prev.loanAdvanceAdjustments||[]).filter((a:LoanAdvanceAdjustment)=>a.id!==id)}));
     return true;
   };
 
   const deleteLoanAdvanceAdjustment = (id: string): boolean => {
+    if (USE_SERVER_API) { void deleteLoanAdvanceAdjustmentAsync(id).catch(err=>alert(err instanceof Error?err.message:'Adjustment reversal failed')); return true; }
     const adjustment = (data.loanAdvanceAdjustments || []).find((a: LoanAdvanceAdjustment) => a.id === id);
     const tx = adjustment ? data.transactions.find((t: Transaction) => t.id === adjustment.transactionId) : undefined;
     if (!adjustment || !tx) return false;
-    setData((prev: any) => ({
-      ...prev,
-      loanAdvanceAdjustments: (prev.loanAdvanceAdjustments || []).filter((a: LoanAdvanceAdjustment) => a.id !== id),
-      transactions: prev.transactions.map((t: Transaction) => {
-        if (t.id !== adjustment.transactionId) return t;
-        if (adjustment.partyType === 'customer') {
-          const paid = Math.max(0, t.customerPaid - adjustment.amount);
-          const due = Math.max(0, t.sellingPrice - paid);
-          return { ...t, customerPaid: paid, customerDue: due, status: due === 0 && t.sellingPrice > 0 ? 'PAID' : paid > 0 ? 'PARTIAL' : 'DUE', updatedAt: new Date().toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
-        }
-        const paid = Math.max(0, t.vendorPaid - adjustment.amount);
-        return { ...t, vendorPaid: paid, vendorDue: Math.max(0, t.vendorCost - paid), updatedAt: new Date().toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
-      }),
-    }));
-    recordAudit('Reversed Loan / Advance Adjustment', 'LoanAdvance', id, undefined, 'Adjustment reversed without cash movement');
-    return true;
+    setData((prev:any)=>({...prev,loanAdvanceAdjustments:(prev.loanAdvanceAdjustments||[]).filter((a:LoanAdvanceAdjustment)=>a.id!==id),transactions:prev.transactions.map((t:Transaction)=>t.id===adjustment.transactionId?adjustment.partyType==='customer'?{...t,customerPaid:Math.max(0,t.customerPaid-adjustment.amount),customerDue:Math.max(0,t.sellingPrice-(t.customerPaid-adjustment.amount)),status:t.sellingPrice-(t.customerPaid-adjustment.amount)<=0&&t.sellingPrice>0?'PAID':t.customerPaid-adjustment.amount>0?'PARTIAL':'DUE',updatedAt:new Date().toISOString(),updatedBy:currentUser?.fullName||'Staff'}:{...t,vendorPaid:Math.max(0,t.vendorPaid-adjustment.amount),vendorDue:Math.max(0,t.vendorCost-(t.vendorPaid-adjustment.amount)),updatedAt:new Date().toISOString(),updatedBy:currentUser?.fullName||'Staff'} }));
+    recordAudit('Reversed Loan / Advance Adjustment','LoanAdvance',id,undefined,'Adjustment reversed without cash movement'); return true;
   };
 
   const createOneEntryAsync = async (input: OneEntryInput): Promise<Transaction> => {
@@ -1704,10 +1721,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateExpenseCategories,
         addFundTransfer,
         addLoanAdvance,
+        addLoanAdvanceAsync,
         updateLoanAdvance,
+        updateLoanAdvanceAsync,
         deleteLoanAdvance,
+        deleteLoanAdvanceAsync,
         adjustLoanAdvance,
+        adjustLoanAdvanceAsync,
         deleteLoanAdvanceAdjustment,
+        deleteLoanAdvanceAdjustmentAsync,
         updateOpeningBalance,
         updateSettings,
         updateServices,
