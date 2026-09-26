@@ -27,8 +27,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [note, setNote] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
   const [recordedAmount, setRecordedAmount] = useState<number>(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const numAmount = Number(amount) || 0;
     if (numAmount <= 0) {
@@ -36,11 +38,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       return;
     }
 
+    setIsSubmitting(true);
+    setSubmitError(null);
+
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
     const timeStr = now.toTimeString().split(' ')[0].substring(0, 5);
 
-    addPartialPayment({
+    try {
+      await addPartialPayment({
       transactionId: transaction.id,
       paymentType,
       amount: numAmount,
@@ -48,10 +54,17 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       date: todayStr,
       time: timeStr,
       note: note || `Partial payment for Ref: ${transaction.invoiceNumber}`,
-      reference: transaction.invoiceNumber,
-    });
+        reference: transaction.invoiceNumber,
+      });
+      setRecordedAmount(numAmount);
+      setIsSuccess(true);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Payment could not be recorded. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
 
-    setRecordedAmount(numAmount);
+    /*
     setIsSuccess(true);
   };
 
@@ -228,11 +241,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               >
                 Cancel
               </button>
+              {submitError && (
+                <div className="mr-auto text-[11px] text-rose-600 font-medium max-w-[220px]">{submitError}</div>
+              )}
               <button
                 type="submit"
-                className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs cursor-pointer"
+                disabled={isSubmitting}
+                className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed rounded-lg shadow-xs cursor-pointer"
               >
-                Confirm & Record
+                {isSubmitting ? 'Recording…' : 'Confirm & Record'}
               </button>
             </div>
           </form>
