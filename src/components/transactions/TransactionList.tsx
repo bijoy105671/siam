@@ -13,6 +13,7 @@ import {
   Calendar,
   X,
   Save,
+  ShieldCheck,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { PaymentMethod, Transaction, TransactionStatus } from '../../types';
@@ -39,7 +40,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  const [editStatus, setEditStatus] = useState<TransactionStatus>('DUE');
+  const [editFlightStatus, setEditFlightStatus] = useState(tx.flightDetails?.ticketStatus || 'Confirmed');
   const [editReminderDate, setEditReminderDate] = useState('');
   const [editReminderTime, setEditReminderTime] = useState('');
   const [editNote, setEditNote] = useState('');
@@ -437,7 +438,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                             <button
                               onClick={() => {
                                 setEditingTransaction(tx);
-                                setEditStatus(tx.status);
+                                setEditFlightStatus(tx.flightDetails?.ticketStatus || 'Confirmed');
                                 setEditReminderDate(tx.reminderDate || '');
                                 setEditReminderTime(tx.reminderTime || '');
                                 setEditNote(tx.reminderNote || '');
@@ -505,17 +506,21 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Payment Status</label>
-                <select value={editStatus} onChange={(e) => setEditStatus(e.target.value as TransactionStatus)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="DUE">DUE</option>
-                  <option value="PARTIAL">PARTIAL</option>
-                  <option value="PAID">PAID</option>
-                  <option value="REFUND">REFUND</option>
-                  <option value="CANCELLED">CANCELLED</option>
-                </select>
-                <p className="text-[10px] text-slate-400 mt-1">Flight ticket status is managed separately from payment status.</p>
-              </div>
+              {editingTransaction.flightDetails && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Flight Ticket Status</label>
+                  <select value={editFlightStatus} onChange={(e) => setEditFlightStatus(e.target.value)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option>Confirmed</option>
+                    <option>Schedule Changed</option>
+                    <option>Reissued</option>
+                    <option>Refund</option>
+                    <option>Void</option>
+                    <option>Cancelled</option>
+                    <option>Completed</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -551,7 +556,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         reminderTime: editReminderTime || null,
                         reminderStatus: editReminderDate ? 'pending' : null,
                         reminderNote: editNote || null,
-                      }, `Admin transaction edit — payment status selected: ${editStatus}`);
+                        ...(editingTransaction.flightDetails ? { flightStatus: editFlightStatus } : {}),
+                      }, 'Admin transaction edit');
                       setEditingTransaction(null);
                     } catch (error) {
                       alert(error instanceof Error ? error.message : 'Transaction could not be updated.');
