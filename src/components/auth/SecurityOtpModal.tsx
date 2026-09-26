@@ -86,7 +86,10 @@ export const SecurityOtpModal: React.FC = () => {
               <div className="text-[11px] text-white/80">Admin confirmation required</div>
             </div>
           </div>
-          <button type="button" onClick={() => setOpen(false)} className="p-1.5 rounded-lg hover:bg-white/10" aria-label="Close">
+          <button type="button" onClick={() => {
+            setOpen(false);
+            window.dispatchEvent(new CustomEvent('siam:security-otp-cancelled', { detail: { message: 'Security OTP verification cancelled.' } }));
+          }} className="p-1.5 rounded-lg hover:bg-white/10" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -121,7 +124,10 @@ export const SecurityOtpModal: React.FC = () => {
               {error && <div className="text-xs font-medium text-rose-600 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">{error}</div>}
 
               <div className="flex gap-2">
-                <button type="button" onClick={() => setOpen(false)} disabled={busy} className="flex-1 px-4 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">
+                <button type="button" onClick={() => {
+            setOpen(false);
+            window.dispatchEvent(new CustomEvent('siam:security-otp-cancelled', { detail: { message: 'Security OTP verification cancelled.' } }));
+          }} disabled={busy} className="flex-1 px-4 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">
                   Cancel
                 </button>
                 <button type="button" onClick={() => void verify()} disabled={busy || otp.length !== 6} className="flex-1 px-4 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl flex items-center justify-center gap-2">
