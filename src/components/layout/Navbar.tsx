@@ -63,7 +63,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {settings.name}
             </div>
             <div className="hidden sm:block text-[11px] text-slate-500 font-medium tracking-wide uppercase">
-              Travel Agency · Visa · Passport · Digital
+              {settings.tagline || 'Travel Agency · Visa · Passport · Digital'}
             </div>
           </div>
         </button>
