@@ -110,6 +110,27 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
+app.get('/api/public-settings', async (_req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT value FROM app_settings WHERE key=$1', ['business_settings']);
+    const value = rows[0]?.value && typeof rows[0].value === 'object' ? rows[0].value as Record<string, unknown> : {};
+    res.json({
+      settings: {
+        name: value.name || 'SIAM AIR & DIGITAL SERVICE',
+        tagline: value.tagline || 'Travel Agency · Visa · Passport · Digital',
+        logoUrl: value.logoUrl || '',
+        address: value.address || '',
+        mobile: value.mobile || '',
+        whatsapp: value.whatsapp || '',
+        email: value.email || '',
+        website: value.website || ''
+      }
+    });
+  } catch (e) {
+    res.status(503).json({ error: e instanceof Error ? e.message : 'Unable to load public business settings' });
+  }
+});
+
 app.get('/api/settings', auth, async (_req, res) => {
   const { rows } = await pool.query('SELECT value FROM app_settings WHERE key=$1', ['business_settings']);
   const value = rows[0]?.value;
