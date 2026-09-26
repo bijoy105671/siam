@@ -104,6 +104,25 @@ app.delete('/api/users/:id', adminOnly, async (req,res) => {
   if(!rows[0])return res.status(404).json({error:'User not found'});
   res.json({ok:true});
 });
+app.get('/api/services', auth, async (_req,res) => {
+  const {rows}=await pool.query('SELECT id,name,category,enabled,sort_order FROM services ORDER BY sort_order,name');
+  res.json(rows);
+});
+app.post('/api/services', adminOnly, async (req,res) => {
+  const name=String(req.body?.name||'').trim(), category=String(req.body?.category||'Other').trim()||'Other';
+  if(!name)return res.status(400).json({error:'Service name is required'});
+  try{const {rows}=await pool.query('INSERT INTO services (name,category,enabled,sort_order) VALUES ($1,$2,$3,$4) RETURNING id,name,category,enabled,sort_order',[name,category,req.body?.enabled!==false,Number(req.body?.sortOrder||0)]);res.status(201).json({service:rows[0]});}
+  catch(e){res.status(400).json({error:e instanceof Error?e.message:'Service creation failed'});}
+});
+app.patch('/api/services/:id', adminOnly, async (req,res) => {
+  const {rows}=await pool.query('UPDATE services SET name=COALESCE($1,name), category=COALESCE($2,category), enabled=COALESCE($3,enabled), sort_order=COALESCE($4,sort_order) WHERE id=$5 RETURNING id,name,category,enabled,sort_order',
+    [req.body?.name!==undefined?String(req.body.name).trim():null,req.body?.category!==undefined?String(req.body.category).trim():null,req.body?.enabled!==undefined?Boolean(req.body.enabled):null,req.body?.sortOrder!==undefined?Number(req.body.sortOrder):null,req.params.id]);
+  if(!rows[0])return res.status(404).json({error:'Service not found'});res.json({service:rows[0]});
+});
+app.delete('/api/services/:id', adminOnly, async (req,res) => {
+  const {rows}=await pool.query('UPDATE services SET enabled=false WHERE id=$1 RETURNING id',[req.params.id]);
+  if(!rows[0])return res.status(404).json({error:'Service not found'});res.json({ok:true});
+});
 app.get('/api/dashboard', auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
