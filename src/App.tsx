@@ -208,18 +208,20 @@ const MainLayout: React.FC = () => {
           {currentView === 'customers' && (
             <CustomerList
               onSelectTransaction={(tx) => setActiveInvoiceTx(tx)}
+              onOpenPayment={handleOpenPayment}
             />
           )}
 
           {currentView === 'vendors' && (
             <VendorList
               onSelectTransaction={(tx) => setActiveInvoiceTx(tx)}
+              onOpenPayment={handleOpenPayment}
             />
           )}
 
           {currentView === 'expenses' && <ExpenseManager />}
 
-          {currentView === 'loans' && <LoanAdvanceManager />}
+          {currentView === 'loans' && <LoanAdvanceManager onOpenPayment={handleOpenPayment} />}
 
           {currentView === 'transfers' && (
             <div className="space-y-4">
@@ -318,6 +320,7 @@ const MainLayout: React.FC = () => {
           customerId={inspectCustomerId}
           onClose={() => setInspectCustomerId(null)}
           onSelectTransaction={(tx) => setActiveInvoiceTx(tx)}
+          onOpenPayment={(tx) => handleOpenPayment(tx, 'customer')}
         />
       )}
 
@@ -327,6 +330,7 @@ const MainLayout: React.FC = () => {
           vendorId={inspectVendorId}
           onClose={() => setInspectVendorId(null)}
           onSelectTransaction={(tx) => setActiveInvoiceTx(tx)}
+          onOpenPayment={(tx) => handleOpenPayment(tx, 'vendor')}
         />
       )}
 
