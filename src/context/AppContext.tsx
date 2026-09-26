@@ -324,7 +324,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const hydrateServerSession = async () => {
     if (!USE_SERVER_API) return;
     try {
-      const [sessionResult, dashboardResult, transactionResult, customerResult, vendorResult, balanceResult] =
+      const [sessionResult, dashboardResult, transactionResult, customerResult, vendorResult, balanceResult, userResult, serviceResult] =
         await Promise.all([
           api.me(),
           api.dashboard(),
@@ -332,6 +332,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           api.customers(),
           api.vendors(),
           api.accountBalances(),
+          api.users(),
+          api.services(),
         ]);
 
       const serverUser = sessionResult.user as Partial<User> | null;
@@ -395,6 +397,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         totalAvailableMoney: Number(balanceResult.total || 0),
       });
 
+      const serverUsers: User[] = (userResult as any[]).map((row: any) => ({
+        id: String(row.id),
+        username: String(row.username || ''),
+        fullName: String(row.full_name || row.fullName || row.username || ''),
+        role: (row.role as User['role']) || 'staff',
+        isActive: row.is_active !== false,
+        permissions: row.permissions || {},
+        createdAt: row.created_at || new Date().toISOString(),
+      }));
+      const serverServices: ServiceItem[] = (serviceResult as any[]).map((row: any) => ({
+        id: String(row.id),
+        name: String(row.name || ''),
+        category: row.category || 'Other',
+        enabled: row.enabled !== false,
+        order: Number(row.sort_order || 0),
+      }));
+
       setData((prev: any) => {
         const localMatch = prev.users.find((u: User) => u.username.toLowerCase() === String(serverUser.username).toLowerCase());
         const mappedUser: User = {
@@ -409,9 +428,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
         return {
           ...prev,
-          users: localMatch
+          users: serverUsers.length ? serverUsers : (localMatch
             ? prev.users.map((u: User) => u.id === localMatch.id ? mappedUser : u)
-            : [mappedUser, ...prev.users],
+            : [mappedUser, ...prev.users]),
+          services: serverServices.length ? serverServices : prev.services,
           customers: (customerResult as any[]).map(mapCustomer),
           vendors: (vendorResult as any[]).map(mapVendor),
           transactions: serverTransactions,
