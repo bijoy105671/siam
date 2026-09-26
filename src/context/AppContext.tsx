@@ -151,7 +151,7 @@ interface AppContextType {
     time: string;
     note?: string;
     reference?: string;
-  }) => void;
+  }) => Promise<void>;
 
   addCustomer: (cust: Omit<Customer, 'id' | 'createdAt'>) => Customer;
   updateCustomer: (id: string, cust: Partial<Customer>) => void;
@@ -886,7 +886,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Partial Payment
-  const addPartialPayment = (params: {
+  const addPartialPayment = async (params: {
     transactionId: string;
     paymentType: 'customer' | 'vendor';
     amount: number;
@@ -897,7 +897,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     reference?: string;
   }) => {
     if (USE_SERVER_API) {
-      void api.recordPayment({
+      await api.recordPayment({
         transactionId: params.transactionId,
         paymentType: params.paymentType,
         amount: params.amount,
@@ -905,9 +905,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         note: params.note,
         reference: params.reference,
         paidAt: params.date && params.time ? `${params.date} ${params.time}:00` : undefined,
-      }).then(() => hydrateServerSession()).catch((error) => {
-        console.error('Server payment failed:', error);
       });
+      await hydrateServerSession();
       return;
     }
 
@@ -955,16 +954,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Expenses
-  const addExpense = (expense: Omit<Expense, 'id' | 'createdBy'>) => {
+  const addExpense = async (expense: Omit<Expense, 'id' | 'createdBy'>) => {
     if (USE_SERVER_API) {
-      void api.createExpense({
+      await api.createExpense({
         category: expense.category,
         description: expense.description,
         amount: expense.amount,
         paymentMethod: String(expense.paymentMethod).toLowerCase(),
         note: (expense as any).note || null,
         occurredAt: (expense as any).date && (expense as any).time ? `${(expense as any).date} ${(expense as any).time}:00` : undefined,
-      }).then(() => hydrateServerSession()).catch((error) => console.error('Server expense failed:', error));
+      });
+      await hydrateServerSession();
       return;
     }
     const newExp: Expense = { ...expense, id: `exp_${Date.now()}`, createdBy: currentUser?.fullName || 'Staff' };
@@ -989,16 +989,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Fund Transfers
-  const addFundTransfer = (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => {
+  const addFundTransfer = async (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => {
     if (USE_SERVER_API) {
-      void api.createFundTransfer({
+      await api.createFundTransfer({
         fromAccount: String(transfer.fromAccount).toLowerCase(),
         toAccount: String(transfer.toAccount).toLowerCase(),
         amount: transfer.amount,
         reason: transfer.reason,
         note: (transfer as any).note || null,
         occurredAt: (transfer as any).date && (transfer as any).time ? `${(transfer as any).date} ${(transfer as any).time}:00` : undefined,
-      }).then(() => hydrateServerSession()).catch((error) => console.error('Server transfer failed:', error));
+      });
+      await hydrateServerSession();
       return;
     }
     const newTrf: FundTransfer = { ...transfer, id: `trf_${Date.now()}`, createdBy: currentUser?.fullName || 'Staff' };
