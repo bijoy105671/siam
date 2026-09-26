@@ -185,6 +185,7 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
     const entityId = paymentType === 'customer' ? tx.customer_id : tx.vendor_id;
     if (!entityId) throw new Error('No entity linked to this payment');
     if (paymentType === 'vendor') {
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [method]);
       const balance = await accountBalance(client, method);
       if (value > balance) throw new Error(`Insufficient balance for vendor payment (balance: ${balance})`);
     }
@@ -285,6 +286,7 @@ app.post('/api/entries', auth, async (req, res) => {
 
     if (vendorPaid > 0) {
       if (!vendorId) throw new Error('Vendor is required when vendor payment is entered');
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [vendorPaymentMethod]);
       const balance = await accountBalance(client, vendorPaymentMethod);
       if (vendorPaid > balance) throw new Error('Insufficient balance for vendor payment');
       await client.query('INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,\'vendor\',$2,$3,$4,$5,$6,$7)', [tx.id, vendorId, vendorPaid, vendorPaymentMethod, req.session.userId, body.vendorPaymentNote || null, body.vendorPaymentReference || null]);
