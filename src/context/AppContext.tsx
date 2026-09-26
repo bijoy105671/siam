@@ -463,6 +463,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? prev.users.map((u: User) => u.id === localMatch.id ? mappedUser : u)
             : [mappedUser, ...prev.users]),
           services: serverServices.length ? serverServices : prev.services,
+          expenseCategories: serverExpenseCategories.length ? serverExpenseCategories : prev.expenseCategories,
           customers: (customerResult as any[]).map(mapCustomer),
           vendors: (vendorResult as any[]).map(mapVendor),
           transactions: serverTransactions,
