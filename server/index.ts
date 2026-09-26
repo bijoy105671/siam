@@ -104,6 +104,29 @@ app.delete('/api/users/:id', adminOnly, async (req,res) => {
   if(!rows[0])return res.status(404).json({error:'User not found'});
   res.json({ok:true});
 });
+app.get('/api/expense-categories', auth, async (_req, res) => {
+  const { rows } = await pool.query('SELECT value FROM app_settings WHERE key=$1', ['expense_categories']);
+  const value = rows[0]?.value;
+  res.json(Array.isArray(value) ? value : []);
+});
+
+app.put('/api/expense-categories', adminOnly, async (req, res) => {
+  const categories = Array.isArray(req.body?.categories) ? req.body.categories : null;
+  if (!categories) return res.status(400).json({ error: 'categories must be an array' });
+  const normalized = categories
+    .filter((c: any) => c && typeof c === 'object' && String(c.name || '').trim())
+    .map((c: any) => ({
+      id: String(c.id || crypto.randomUUID()),
+      name: String(c.name).trim(),
+      enabled: c.enabled !== false,
+    }));
+  await pool.query(
+    'INSERT INTO app_settings (key,value) VALUES ($1,$2::jsonb) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()',
+    ['expense_categories', JSON.stringify(normalized)]
+  );
+  res.json({ categories: normalized });
+});
+
 app.get('/api/services', auth, async (_req,res) => {
   const {rows}=await pool.query('SELECT id,name,category,enabled,sort_order FROM services ORDER BY sort_order,name');
   res.json(rows);
