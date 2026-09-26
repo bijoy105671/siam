@@ -239,6 +239,61 @@ app.delete('/api/transactions/:id', adminOnly, async (req, res) => {
   } finally { client.release(); }
 });
 
+app.patch('/api/transactions/:id', auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const tx = (await client.query('SELECT * FROM transactions WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [req.params.id])).rows[0];
+    if (!tx) throw new Error('Transaction not found');
+    const body = req.body ?? {};
+    const allowed = ['reminderDate','reminderTime','reminderStatus','reminderNote'];
+    const hasReminder = allowed.some((k) => Object.prototype.hasOwnProperty.call(body, k));
+    const hasFlightStatus = body.flightStatus !== undefined;
+    if (!hasReminder && !hasFlightStatus) throw new Error('No supported transaction update supplied');
+    const previous = { ...tx };
+    let flightDetails = tx.flight_details;
+    if (hasFlightStatus) {
+      if (!flightDetails) throw new Error('Transaction has no flight details');
+      const details = typeof flightDetails === 'string' ? JSON.parse(flightDetails) : flightDetails;
+      const oldStatus = details.ticketStatus;
+      details.ticketStatus = String(body.flightStatus);
+      details.statusHistory = Array.isArray(details.statusHistory) ? details.statusHistory : [];
+      details.statusHistory.push({
+        status: details.ticketStatus,
+        changedAt: new Date().toISOString(),
+        changedBy: req.session.userId,
+        note: body.note ? String(body.note) : `Status changed from ${oldStatus} to ${details.ticketStatus}`,
+      });
+      flightDetails = details;
+    }
+    const result = await client.query(
+      `UPDATE transactions
+       SET reminder_date=CASE WHEN $1::boolean THEN $2::date ELSE reminder_date END,
+           reminder_time=CASE WHEN $3::boolean THEN $4::time ELSE reminder_time END,
+           reminder_status=CASE WHEN $5::boolean THEN $6 ELSE reminder_status END,
+           reminder_note=CASE WHEN $7::boolean THEN $8 ELSE reminder_note END,
+           flight_details=CASE WHEN $9::boolean THEN $10::jsonb ELSE flight_details END,
+           updated_at=now()
+       WHERE id=$11
+       RETURNING *`,
+      [
+        body.reminderDate !== undefined, body.reminderDate || null,
+        body.reminderTime !== undefined, body.reminderTime || null,
+        body.reminderStatus !== undefined, body.reminderStatus || null,
+        body.reminderNote !== undefined, body.reminderNote || null,
+        hasFlightStatus, hasFlightStatus ? JSON.stringify(flightDetails) : null,
+        tx.id
+      ]
+    );
+    await audit(client, req.session.userId!, hasFlightStatus ? 'FLIGHT_STATUS_UPDATED' : 'REMINDER_UPDATED', 'Transaction', tx.id, previous, result.rows[0]);
+    await client.query('COMMIT');
+    res.json({ transaction: result.rows[0] });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Transaction update failed' });
+  } finally { client.release(); }
+});
+
 app.get('/api/transactions', auth, async (req, res) => {
   const limit = Math.min(Number(req.query.limit || 100), 500);
   const { rows } = await pool.query('SELECT t.*, c.name customer_name, c.mobile customer_mobile, s.name service_name, v.name vendor_name FROM transactions t JOIN customers c ON c.id=t.customer_id LEFT JOIN services s ON s.id=t.service_id LEFT JOIN vendors v ON v.id=t.vendor_id WHERE t.deleted_at IS NULL ORDER BY t.date DESC, t.time DESC LIMIT $1', [limit]);
