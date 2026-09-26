@@ -867,7 +867,8 @@ app.patch('/api/loan-advances/:id', auth, async (req, res) => {
       const oldBalance = await accountBalance(client, oldMethod);
       if (oldDelta < 0 && oldBalance + oldDelta < 0) throw new Error('Invalid source balance for reversal');
       const newBalance = await accountBalance(client, method);
-      if (newDelta < 0 && newBalance + (oldMethod === method ? 0 : 0) < amount) throw new Error('Insufficient balance for updated loan/advance');
+      const effectiveNewBalance = newBalance + (oldMethod === method ? Math.max(0, oldDelta) : 0);
+      if (newDelta < 0 && effectiveNewBalance < amount) throw new Error('Insufficient balance for updated loan/advance');
       await client.query('UPDATE account_entries SET reversed_at=now() WHERE source_type=$1 AND source_id=$2 AND reversed_at IS NULL',['loan_advance',old.id]);
       if (oldMethod !== method) await addAccountEntry(client, oldMethod, -oldDelta, 'loan_advance_edit', old.id, req.session.userId!, 'Reversal of original loan/advance');
       else await addAccountEntry(client, oldMethod, -oldDelta, 'loan_advance_edit', old.id, req.session.userId!, 'Reversal of original loan/advance');
