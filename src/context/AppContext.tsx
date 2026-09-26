@@ -895,6 +895,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     note?: string;
     reference?: string;
   }) => {
+    if (USE_SERVER_API) {
+      void api.recordPayment({
+        transactionId: params.transactionId,
+        paymentType: params.paymentType,
+        amount: params.amount,
+        paymentMethod: params.paymentMethod,
+        note: params.note,
+        reference: params.reference,
+        paidAt: params.date && params.time ? `${params.date} ${params.time}:00` : undefined,
+      }).then(() => hydrateServerSession()).catch((error) => {
+        console.error('Server payment failed:', error);
+      });
+      return;
+    }
+
     const targetTx = data.transactions.find((t: Transaction) => t.id === params.transactionId);
     if (!targetTx) return;
 
@@ -913,37 +928,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       reference: params.reference || targetTx.invoiceNumber,
     };
 
-    setData((prev: any) => {
-      const updatedTxs = prev.transactions.map((t: Transaction) => {
-        if (t.id === params.transactionId) {
-          if (params.paymentType === 'customer') {
-            const newPaid = t.customerPaid + params.amount;
-            const newDue = Math.max(0, t.sellingPrice - newPaid);
-            return {
-              ...t,
-              customerPaid: newPaid,
-              customerDue: newDue,
-              status: newDue === 0 ? ('PAID' as const) : ('PARTIAL' as const),
-            };
-          } else {
-            const newPaid = t.vendorPaid + params.amount;
-            const newDue = Math.max(0, t.vendorCost - newPaid);
-            return {
-              ...t,
-              vendorPaid: newPaid,
-              vendorDue: newDue,
-            };
-          }
+    setData((prev: any) => ({
+      ...prev,
+      transactions: prev.transactions.map((t: Transaction) => {
+        if (t.id !== params.transactionId) return t;
+        if (params.paymentType === 'customer') {
+          const newPaid = t.customerPaid + params.amount;
+          const newDue = Math.max(0, t.sellingPrice - newPaid);
+          return { ...t, customerPaid: newPaid, customerDue: newDue, status: newDue === 0 ? 'PAID' : 'PARTIAL' };
         }
-        return t;
-      });
-
-      return {
-        ...prev,
-        transactions: updatedTxs,
-        partialPayments: [...prev.partialPayments, newPayment],
-      };
-    });
+        const newPaid = t.vendorPaid + params.amount;
+        const newDue = Math.max(0, t.vendorCost - newPaid);
+        return { ...t, vendorPaid: newPaid, vendorDue: newDue };
+      }),
+      partialPayments: [...prev.partialPayments, newPayment],
+    }));
 
     recordAudit(
       params.paymentType === 'customer' ? 'Customer Payment Received' : 'Vendor Payment Made',
@@ -956,22 +955,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Expenses
   const addExpense = (expense: Omit<Expense, 'id' | 'createdBy'>) => {
-    const newExp: Expense = {
-      ...expense,
-      id: `exp_${Date.now()}`,
-      createdBy: currentUser?.fullName || 'Staff',
-    };
-    setData((prev: any) => ({
-      ...prev,
-      expenses: [newExp, ...prev.expenses],
-    }));
-    recordAudit(
-      'Added Expense',
-      'Expense',
-      newExp.id,
-      undefined,
-      `Expense: ${newExp.category} - ৳${newExp.amount} (${newExp.description}) paid via ${newExp.paymentMethod}`
-    );
+    if (USE_SERVER_API) {
+      void api.createExpense({
+        category: expense.category,
+        description: expense.description,
+        amount: expense.amount,
+        paymentMethod: String(expense.paymentMethod).toLowerCase(),
+        note: (expense as any).note || null,
+        occurredAt: (expense as any).date && (expense as any).time ? `${(expense as any).date} ${(expense as any).time}:00` : undefined,
+      }).then(() => hydrateServerSession()).catch((error) => console.error('Server expense failed:', error));
+      return;
+    }
+    const newExp: Expense = { ...expense, id: `exp_${Date.now()}`, createdBy: currentUser?.fullName || 'Staff' };
+    setData((prev: any) => ({ ...prev, expenses: [newExp, ...prev.expenses] }));
+    recordAudit('Added Expense', 'Expense', newExp.id, undefined, `Expense: ${newExp.category} - ৳${newExp.amount} (${newExp.description}) paid via ${newExp.paymentMethod}`);
   };
 
   const deleteExpense = (id: string) => {
@@ -992,22 +989,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Fund Transfers
   const addFundTransfer = (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => {
-    const newTrf: FundTransfer = {
-      ...transfer,
-      id: `trf_${Date.now()}`,
-      createdBy: currentUser?.fullName || 'Staff',
-    };
-    setData((prev: any) => ({
-      ...prev,
-      transfers: [newTrf, ...prev.transfers],
-    }));
-    recordAudit(
-      'Fund Transfer',
-      'Transfer',
-      newTrf.id,
-      undefined,
-      `Transfer ৳${newTrf.amount} from ${newTrf.fromAccount} to ${newTrf.toAccount} (Reason: ${newTrf.reason})`
-    );
+    if (USE_SERVER_API) {
+      void api.createFundTransfer({
+        fromAccount: String(transfer.fromAccount).toLowerCase(),
+        toAccount: String(transfer.toAccount).toLowerCase(),
+        amount: transfer.amount,
+        reason: transfer.reason,
+        note: (transfer as any).note || null,
+        occurredAt: (transfer as any).date && (transfer as any).time ? `${(transfer as any).date} ${(transfer as any).time}:00` : undefined,
+      }).then(() => hydrateServerSession()).catch((error) => console.error('Server transfer failed:', error));
+      return;
+    }
+    const newTrf: FundTransfer = { ...transfer, id: `trf_${Date.now()}`, createdBy: currentUser?.fullName || 'Staff' };
+    setData((prev: any) => ({ ...prev, transfers: [newTrf, ...prev.transfers] }));
+    recordAudit('Fund Transfer', 'Transfer', newTrf.id, undefined, `Transfer ৳${newTrf.amount} from ${newTrf.fromAccount} to ${newTrf.toAccount} (Reason: ${newTrf.reason})`);
   };
 
   const updateOpeningBalance = (method: PaymentMethod, amount: number) => {
