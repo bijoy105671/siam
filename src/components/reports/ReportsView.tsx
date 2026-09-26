@@ -28,33 +28,46 @@ export const ReportsView: React.FC = () => {
 
   const [timeframe, setTimeframe] = useState<'all' | 'today' | 'this_month' | 'this_year'>('this_month');
 
-  const now = new Date();
-  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka' }).format(now);
-  const firstOfMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
-  const firstOfYear = `${now.getFullYear()}-01-01`;
+  // Reporting periods always use Bangladesh time (Asia/Dhaka).
+  const dhakaParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Dhaka',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const dhakaYear = dhakaParts.find((p) => p.type === 'year')?.value ?? '';
+  const dhakaMonth = dhakaParts.find((p) => p.type === 'month')?.value ?? '';
+  const dhakaDay = dhakaParts.find((p) => p.type === 'day')?.value ?? '';
+  const todayStr = `${dhakaYear}-${dhakaMonth}-${dhakaDay}`;
+  const firstOfMonth = `${dhakaYear}-${dhakaMonth}-01`;
+  const firstOfYear = `${dhakaYear}-01-01`;
 
-  // Filter transactions according to timeframe
-  const filteredTxs = transactions.filter((t) => {
+  // Cancelled transactions are excluded consistently with the server dashboard.
+  const activeTxs = transactions.filter((t) => t.status !== 'CANCELLED');
+
+  const filteredTxs = activeTxs.filter((t) => {
     if (timeframe === 'today') return t.date === todayStr;
-    if (timeframe === 'this_month') return t.date >= firstOfMonth;
-    if (timeframe === 'this_year') return t.date >= firstOfYear;
+    if (timeframe === 'this_month') return t.date >= firstOfMonth && t.date <= todayStr;
+    if (timeframe === 'this_year') return t.date >= firstOfYear && t.date <= todayStr;
     return true;
   });
 
   const filteredExpenses = expenses.filter((e) => {
     if (timeframe === 'today') return e.date === todayStr;
-    if (timeframe === 'this_month') return e.date >= firstOfMonth;
-    if (timeframe === 'this_year') return e.date >= firstOfYear;
+    if (timeframe === 'this_month') return e.date >= firstOfMonth && e.date <= todayStr;
+    if (timeframe === 'this_year') return e.date >= firstOfYear && e.date <= todayStr;
     return true;
   });
 
-  // Financial aggregates
+  // One signed gross-profit calculation keeps the master P&L and service
+  // breakdown mathematically consistent: Gross Profit = Sales - Vendor Cost.
   const totalSales = filteredTxs.reduce((sum, t) => sum + t.sellingPrice, 0);
   const totalVendorCost = filteredTxs.reduce((sum, t) => sum + t.vendorCost, 0);
-  const totalGrossProfit = filteredTxs.reduce((sum, t) => sum + (t.grossProfit > 0 ? t.grossProfit : 0), 0);
-  const totalGrossLoss = filteredTxs.reduce((sum, t) => sum + (t.grossProfit < 0 ? Math.abs(t.grossProfit) : 0), 0);
+  const signedGrossProfit = filteredTxs.reduce((sum, t) => sum + (t.sellingPrice - t.vendorCost), 0);
+  const totalGrossProfit = Math.max(0, signedGrossProfit);
+  const totalGrossLoss = Math.max(0, -signedGrossProfit);
   const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const netProfit = totalGrossProfit - totalGrossLoss - totalExpenses;
+  const netProfit = signedGrossProfit - totalExpenses;
 
   // Service-wise breakdown
   const serviceBreakdown = services.map((s) => {
@@ -62,7 +75,7 @@ export const ReportsView: React.FC = () => {
     const count = sTxs.length;
     const sales = sTxs.reduce((sum, t) => sum + t.sellingPrice, 0);
     const cost = sTxs.reduce((sum, t) => sum + t.vendorCost, 0);
-    const profit = sTxs.reduce((sum, t) => sum + t.grossProfit, 0);
+    const profit = sTxs.reduce((sum, t) => sum + (t.sellingPrice - t.vendorCost), 0);
     return {
       service: s.name,
       category: s.category,
