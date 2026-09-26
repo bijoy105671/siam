@@ -11,6 +11,7 @@ import { CustomerLedgerModal } from './components/customers/CustomerLedgerModal'
 import { VendorList } from './components/vendors/VendorList';
 import { VendorLedgerModal } from './components/vendors/VendorLedgerModal';
 import { ExpenseManager } from './components/expenses/ExpenseManager';
+import { LoanAdvanceManager } from './components/loans/LoanAdvanceManager';
 import { FundTransferModal } from './components/transfers/FundTransferModal';
 import { ReminderManager } from './components/reminders/ReminderManager';
 import { ReportsView } from './components/reports/ReportsView';
@@ -206,6 +207,8 @@ const MainLayout: React.FC = () => {
           )}
 
           {currentView === 'expenses' && <ExpenseManager />}
+
+          {currentView === 'loans' && <LoanAdvanceManager />}
 
           {currentView === 'transfers' && (
             <div className="space-y-4">

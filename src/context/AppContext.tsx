@@ -42,6 +42,7 @@ import {
   Transaction,
   User,
   Vendor,
+  LoanAdvanceRecord,
 } from '../types';
 import {
   decryptDatabasePayload,
@@ -111,6 +112,7 @@ interface AppContextType {
   partialPayments: PartialPayment[];
   expenses: Expense[];
   transfers: FundTransfer[];
+  loanAdvances: LoanAdvanceRecord[];
   auditLogs: AuditLog[];
   settings: BusinessSettings;
   openingBalances: Record<PaymentMethod, number>;
@@ -160,6 +162,9 @@ interface AppContextType {
   updateExpenseCategories: (cats: ExpenseCategory[]) => void;
 
   addFundTransfer: (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => void;
+  addLoanAdvance: (record: Omit<LoanAdvanceRecord, 'id' | 'createdBy'>) => void;
+  updateLoanAdvance: (id: string, updates: Partial<LoanAdvanceRecord>) => void;
+  deleteLoanAdvance: (id: string) => void;
 
   updateOpeningBalance: (method: PaymentMethod, amount: number) => void;
   updateSettings: (settings: Partial<BusinessSettings>) => void;
@@ -240,6 +245,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...parsed,
           backupSchedule: parsed.backupSchedule || INITIAL_BACKUP_SCHEDULE,
           backupLogs: parsed.backupLogs || INITIAL_BACKUP_LOGS,
+          loanAdvances: parsed.loanAdvances || [],
         };
       } catch (e) {
         console.error('Failed to parse stored business data:', e);
@@ -257,6 +263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       partialPayments: INITIAL_PARTIAL_PAYMENTS,
       expenses: INITIAL_EXPENSES,
       transfers: INITIAL_TRANSFERS,
+      loanAdvances: [],
       auditLogs: INITIAL_AUDIT_LOGS,
       openingBalances: INITIAL_OPENING_BALANCES,
       backupSchedule: INITIAL_BACKUP_SCHEDULE,
@@ -354,6 +361,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       users: prev.users.filter((u: User) => u.id !== id),
     }));
     recordAudit('Deleted User', 'User', id, undefined, `Deleted user ${id}`);
+  };
+
+  const addLoanAdvance = (record: Omit<LoanAdvanceRecord, 'id' | 'createdBy'>) => {
+    const newRecord: LoanAdvanceRecord = {
+      ...record,
+      id: 'la_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      createdBy: currentUser?.fullName || 'Staff',
+    };
+    setData((prev: any) => ({ ...prev, loanAdvances: [newRecord, ...(prev.loanAdvances || [])] }));
+    recordAudit('Created Loan / Advance', 'LoanAdvance', newRecord.id, undefined,
+      newRecord.partyName + ': ' + newRecord.kind + ' ' + newRecord.direction + ' ৳' + newRecord.amount);
+  };
+
+  const updateLoanAdvance = (id: string, updates: Partial<LoanAdvanceRecord>) => {
+    setData((prev: any) => ({
+      ...prev,
+      loanAdvances: (prev.loanAdvances || []).map((r: LoanAdvanceRecord) => r.id === id ? { ...r, ...updates } : r),
+    }));
+    recordAudit('Updated Loan / Advance', 'LoanAdvance', id, undefined, JSON.stringify(updates));
+  };
+
+  const deleteLoanAdvance = (id: string) => {
+    setData((prev: any) => ({ ...prev, loanAdvances: (prev.loanAdvances || []).filter((r: LoanAdvanceRecord) => r.id !== id) }));
+    recordAudit('Deleted Loan / Advance', 'LoanAdvance', id, undefined, 'Loan / advance record deleted');
   };
 
   // Customers
@@ -1196,6 +1227,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       partialPayments: [],
       expenses: [],
       transfers: [],
+      loanAdvances: [],
       auditLogs: [],
       openingBalances: {
         Cash: 0,
@@ -1231,6 +1263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       partialPayments: DEMO_PARTIAL_PAYMENTS,
       expenses: DEMO_EXPENSES,
       transfers: DEMO_TRANSFERS,
+      loanAdvances: [],
       auditLogs: DEMO_AUDIT_LOGS,
       openingBalances: DEMO_OPENING_BALANCES,
       backupSchedule: data.backupSchedule || INITIAL_BACKUP_SCHEDULE,
@@ -1274,7 +1307,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 4. Fund Transfers
+    // 4. Loan / Advance cash movement (not income or expense)
+    (data.loanAdvances || []).forEach((r: LoanAdvanceRecord) => {
+      if (balances[r.paymentMethod] !== undefined) {
+        balances[r.paymentMethod] += r.direction === 'received' ? r.amount : -r.amount;
+      }
+    });
+
+    // 5. Fund Transfers
     data.transfers.forEach((trf: FundTransfer) => {
       if (balances[trf.fromAccount] !== undefined) {
         balances[trf.fromAccount] -= trf.amount;
@@ -1453,6 +1493,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         partialPayments: data.partialPayments,
         expenses: data.expenses,
         transfers: data.transfers,
+        loanAdvances: data.loanAdvances || [],
         auditLogs: data.auditLogs,
         settings: data.settings,
         openingBalances: data.openingBalances,
@@ -1477,6 +1518,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteExpense,
         updateExpenseCategories,
         addFundTransfer,
+        addLoanAdvance,
+        updateLoanAdvance,
+        deleteLoanAdvance,
         updateOpeningBalance,
         updateSettings,
         updateServices,

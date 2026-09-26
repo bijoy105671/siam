@@ -178,6 +178,26 @@ export interface Expense {
   createdBy: string;
 }
 
+export type LoanAdvancePartyType = 'customer' | 'vendor';
+export type LoanAdvanceKind = 'advance' | 'loan';
+export type LoanAdvanceDirection = 'received' | 'given';
+
+export interface LoanAdvanceRecord {
+  id: string;
+  partyType: LoanAdvancePartyType;
+  partyId: string;
+  partyName: string;
+  kind: LoanAdvanceKind;
+  direction: LoanAdvanceDirection;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  date: string;
+  time: string;
+  note?: string;
+  reference?: string;
+  createdBy: string;
+}
+
 export interface FundTransfer {
   id: string;
   fromAccount: PaymentMethod;
@@ -196,7 +216,7 @@ export interface AuditLog {
   action: string;
   date: string;
   time: string;
-  recordType: 'Transaction' | 'Customer' | 'Vendor' | 'Payment' | 'Expense' | 'Transfer' | 'Service' | 'User' | 'Settings';
+  recordType: 'Transaction' | 'Customer' | 'Vendor' | 'Payment' | 'Expense' | 'Transfer' | 'LoanAdvance' | 'Service' | 'User' | 'Settings';
   recordId: string;
   previousValue?: string;
   newValue?: string;

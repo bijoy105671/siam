@@ -7,6 +7,7 @@ import {
   Users,
   Briefcase,
   WalletCards,
+  HandCoins,
   ArrowLeftRight,
   BellRing,
   BarChart3,
@@ -78,6 +79,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'expenses',
       label: 'Expense Manager',
       icon: WalletCards,
+      badge: null,
+    },
+    {
+      id: 'loans',
+      label: 'Loan & Advance',
+      icon: HandCoins,
       badge: null,
     },
     {
