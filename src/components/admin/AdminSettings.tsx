@@ -69,6 +69,21 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
   // Status message
   const [saveMessage, setSaveMessage] = useState('');
 
+  const handleLogoUpload = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file.');
+      return;
+    }
+    if (file.size > 1300000) {
+      alert('Please use a logo image smaller than about 1.3 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setLogoUrl(String(reader.result || ''));
+    reader.readAsDataURL(file);
+  };
+
   const handleSaveBusiness = (e: React.FormEvent) => {
     e.preventDefault();
     updateSettings({
@@ -304,6 +319,23 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ defaultTab = 'busi
                 onChange={(e) => setBizTagline(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none"
               />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-slate-700 mb-1">Business Logo</label>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="w-16 h-16 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden">
+                  {logoUrl ? <img src={logoUrl} alt="Business logo" className="w-full h-full object-contain" /> : <span className="text-[10px] text-slate-400">No Logo</span>}
+                </div>
+                <div className="space-y-1">
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={(e) => handleLogoUpload(e.target.files?.[0])}
+                    className="block w-full text-xs text-slate-600 file:mr-2 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 file:font-semibold"
+                  />
+                  <p className="text-[10px] text-slate-400">Upload PNG/JPG/WebP/SVG. Keep it under about 1.3 MB, then click Save Configuration.</p>
+                </div>
+              </div>
             </div>
 
             <div>
