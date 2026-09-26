@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   PlusCircle,
   ReceiptText,
+  FileText,
   Plane,
   Users,
   Briefcase,
@@ -54,6 +55,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'transactions',
       label: 'All Transactions',
       icon: ReceiptText,
+      badge: null,
+    },
+    {
+      id: 'invoices',
+      label: 'Invoice Center',
+      icon: FileText,
       badge: null,
     },
     {
