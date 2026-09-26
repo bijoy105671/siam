@@ -5,6 +5,22 @@ export const USE_SERVER_API = import.meta.env.VITE_USE_SERVER_API === 'true';
 const SECURITY_VERIFIED_STORAGE_KEY = 'siam_security_otp_verified_at';
 const SECURITY_REQUIRED_STORAGE_KEY = 'siam_security_otp_required';
 
+const getSecurityActionForPath = (path: string) => {
+  if (path === '/api/settings') return 'Update Company & Agency Identity Settings';
+  if (path === '/api/admin/clear-all-data') return 'Clear All Business Data';
+  if (path.startsWith('/api/opening-balances')) return 'Change Account Opening Balance';
+  if (path.startsWith('/api/users')) return 'User & Permission Management';
+  if (path.startsWith('/api/transactions/')) return 'Edit or Delete Transaction';
+  if (path.startsWith('/api/payments/')) return 'Reverse Payment';
+  if (path.startsWith('/api/expenses/')) return 'Reverse Expense';
+  if (path.startsWith('/api/fund-transfers/')) return 'Reverse Fund Transfer';
+  if (path.startsWith('/api/loan-advances')) return 'Loan / Advance Management';
+  if (path.startsWith('/api/admin/recycle-bin')) return 'Transaction Recycle Bin Management';
+  if (path.startsWith('/api/customers/')) return 'Customer Record Management';
+  if (path.startsWith('/api/vendors/')) return 'Vendor Record Management';
+  return 'Protected Administrator Action';
+};
+
 const waitForSecurityVerification = (message: string): Promise<void> => {
   if (typeof window === 'undefined') return Promise.reject(new Error('Security OTP verification requires a browser.'));
   return new Promise((resolve, reject) => {
@@ -42,7 +58,11 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   const request = async (retry = false): Promise<T> => {
     const response = await fetch(path, {
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Security-Action': getSecurityActionForPath(path),
+        ...(options.headers || {}),
+      },
       ...options,
     });
     const payload = (await response.json().catch(() => ({}))) as T & ApiError & { message?: string };
