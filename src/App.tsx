@@ -21,6 +21,8 @@ import { PaymentModal } from './components/common/PaymentModal';
 import { DuePaymentManager } from './components/payments/DuePaymentManager';
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { LoginModal } from './components/auth/LoginModal';
+import { SecurityOtpModal } from './components/auth/SecurityOtpModal';
+import { TransactionRecycleBin } from './components/admin/TransactionRecycleBin';
 import { InvoiceVerificationPage } from './components/verification/InvoiceVerificationPage';
 import { Customer, Transaction, Vendor } from './types';
 import { USE_SERVER_API } from './services/apiClient';
@@ -273,6 +275,7 @@ const MainLayout: React.FC = () => {
           {currentView === 'audit' && <AdminSettings defaultTab="audit" />}
 
           {currentView === 'backup' && <AdminSettings defaultTab="backup" />}
+          {currentView === 'recycle_bin' && currentUser?.role === 'admin' && <TransactionRecycleBin />}
 
           {currentView === 'verify_portal' && (
             <InvoiceVerificationPage onBackToApp={() => setCurrentView('dashboard')} />
@@ -348,7 +351,10 @@ const MainLayout: React.FC = () => {
         />
       )}
 
-      {/* 7. Login / Switch Account Modal */}
+      {/* Admin security OTP modal — stays visible while the original action waits */}
+      <SecurityOtpModal />
+
+      {/* 8. Login / Switch Account Modal */}
       <LoginModal
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
