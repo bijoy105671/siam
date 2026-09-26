@@ -33,6 +33,12 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   logout: () => apiRequest<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+  settings: () => apiRequest<{ settings: Record<string, any> }>('/api/settings'),
+  updateSettings: (settings: Record<string, any>) =>
+    apiRequest<{ settings: Record<string, any> }>('/api/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(settings),
+    }),
   dashboard: () => apiRequest<Record<string, unknown>>('/api/dashboard'),
   customers: (q = '') =>
     apiRequest<unknown[]>(`/api/customers${q ? `?q=${encodeURIComponent(q)}` : ''}`),
