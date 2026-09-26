@@ -1880,9 +1880,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const payments = data.partialPayments.filter(
       (p: PartialPayment) => p.entityId === customerId && p.paymentType === 'customer'
     );
-    const totalSales = txs.reduce((sum: number, t: Transaction) => sum + t.sellingPrice, 0);
-    const totalPaid = payments.reduce((sum: number, p: PartialPayment) => sum + p.amount, 0);
-    const currentDue = (customer?.openingDue || 0) + totalSales - totalPaid;
+    const totalSales = txs.reduce((sum: number, t: Transaction) => sum + Number(t.sellingPrice || 0), 0);
+    // In server mode transaction.customerPaid is the authoritative paid amount.
+    // Do not depend on the local partialPayments array, which may not contain server payments.
+    const totalPaid = USE_SERVER_API
+      ? txs.reduce((sum: number, t: Transaction) => sum + Number(t.customerPaid || 0), 0)
+      : payments.reduce((sum: number, p: PartialPayment) => sum + Number(p.amount || 0), 0);
+    const currentDue = Math.max(0, Number(customer?.openingDue || 0) + totalSales - totalPaid);
 
     return {
       customer,
@@ -1901,9 +1905,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const payments = data.partialPayments.filter(
       (p: PartialPayment) => p.entityId === vendorId && p.paymentType === 'vendor'
     );
-    const totalCost = txs.reduce((sum: number, t: Transaction) => sum + t.vendorCost, 0);
-    const totalPaid = payments.reduce((sum: number, p: PartialPayment) => sum + p.amount, 0);
-    const currentPayable = (vendor?.openingPayable || 0) + totalCost - totalPaid;
+    const totalCost = txs.reduce((sum: number, t: Transaction) => sum + Number(t.vendorCost || 0), 0);
+    // In server mode transaction.vendorPaid is the authoritative paid amount.
+    const totalPaid = USE_SERVER_API
+      ? txs.reduce((sum: number, t: Transaction) => sum + Number(t.vendorPaid || 0), 0)
+      : payments.reduce((sum: number, p: PartialPayment) => sum + Number(p.amount || 0), 0);
+    const currentPayable = Math.max(0, Number(vendor?.openingPayable || 0) + totalCost - totalPaid);
 
     return {
       vendor,
