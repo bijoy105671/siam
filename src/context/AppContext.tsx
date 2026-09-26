@@ -242,6 +242,7 @@ const STORAGE_KEY = 'siam_air_business_data_v3_clean';
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load state from localStorage or initial clean data
   const [serverAccountBalances, setServerAccountBalances] = useState<AccountBalances | null>(null);
+  const [serverTodaySummary, setServerTodaySummary] = useState<AppContextType['todaySummary'] | null>(null);
   const [data, setData] = useState(() => {
     // Purge previous version sample storage keys if present
     try {
@@ -327,6 +328,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
       .catch((err) => console.error('Server accounting refresh failed:', err));
     return () => { cancelled = true; };
+  }, [currentUser?.id]);
+
+  // Keep dashboard Today Sales/Profit synchronized with PostgreSQL in production mode.
+  useEffect(() => {
+    if (!USE_SERVER_API || !currentUser) return;
+    let cancelled = false;
+    const refreshDashboard = async () => {
+      try {
+        const result = await api.dashboard();
+        if (cancelled) return;
+        const t = result.today || {} as any;
+        setServerTodaySummary({
+          totalSales: Number(t.total_sales || 0),
+          totalReceived: Number(t.total_received || 0),
+          totalExpense: Number(t.total_expense || 0),
+          totalVendorPayment: Number(t.total_vendor_payment || 0),
+          grossProfit: Number(t.gross_profit || 0),
+          loss: Number(t.loss || 0),
+          netProfit: Number(t.net_profit || 0),
+        });
+      } catch (error) {
+        console.error('Server dashboard refresh failed:', error);
+      }
+    };
+    void refreshDashboard();
+    const timer = window.setInterval(refreshDashboard, 15000);
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, [currentUser?.id]);
 
   // Server is the source of truth in production mode. Hydrate profiles and all transactions
@@ -1751,37 +1779,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return openingTotal + txDueTotal;
   }, [data.vendors, data.transactions]);
 
-  // Today's summary stats
+  // Today's summary stats. PostgreSQL is authoritative in production mode.
   const todaySummary = useMemo(() => {
+    if (USE_SERVER_API && serverTodaySummary) return serverTodaySummary;
     const todayStr = new Date().toISOString().split('T')[0];
 
     const todayTxs = data.transactions.filter((t: Transaction) => t.date === todayStr);
-    const totalSales = todayTxs.reduce((sum: number, t: Transaction) => sum + t.sellingPrice, 0);
+    const totalSales = todayTxs.reduce((sum: number, t: Transaction) => sum + Number(t.sellingPrice || 0), 0);
 
     const todayCustomerPayments = data.partialPayments.filter(
       (p: PartialPayment) => p.date === todayStr && p.paymentType === 'customer'
     );
-    const totalReceived = todayCustomerPayments.reduce((sum: number, p: PartialPayment) => sum + p.amount, 0);
+    const totalReceived = todayCustomerPayments.reduce((sum: number, p: PartialPayment) => sum + Number(p.amount || 0), 0);
 
     const todayExpenses = data.expenses.filter((e: Expense) => e.date === todayStr);
-    const totalExpense = todayExpenses.reduce((sum: number, e: Expense) => sum + e.amount, 0);
+    const totalExpense = todayExpenses.reduce((sum: number, e: Expense) => sum + Number(e.amount || 0), 0);
 
     const todayVendorPayments = data.partialPayments.filter(
       (p: PartialPayment) => p.date === todayStr && p.paymentType === 'vendor'
     );
-    const totalVendorPayment = todayVendorPayments.reduce((sum: number, p: PartialPayment) => sum + p.amount, 0);
+    const totalVendorPayment = todayVendorPayments.reduce((sum: number, p: PartialPayment) => sum + Number(p.amount || 0), 0);
 
     let grossProfit = 0;
     let loss = 0;
     todayTxs.forEach((t: Transaction) => {
-      if (t.grossProfit >= 0) {
-        grossProfit += t.grossProfit;
-      } else {
-        loss += Math.abs(t.grossProfit);
-      }
+      const profit = Number(t.grossProfit || 0);
+      if (profit >= 0) grossProfit += profit;
+      else loss += Math.abs(profit);
     });
-
-    const netProfit = grossProfit - loss - totalExpense;
 
     return {
       totalSales,
@@ -1790,9 +1815,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       totalVendorPayment,
       grossProfit,
       loss,
-      netProfit,
+      netProfit: grossProfit - loss - totalExpense,
     };
-  }, [data.transactions, data.partialPayments, data.expenses]);
+  }, [data.transactions, data.partialPayments, data.expenses, serverTodaySummary]);
 
   // Upcoming flights (next 30 days)
   const upcomingFlights = useMemo(() => {
