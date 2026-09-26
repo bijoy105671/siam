@@ -55,7 +55,8 @@ export const LoanAdvanceManager: React.FC = () => {
     const map: Record<string, number> = {};
     loanAdvances.forEach((r) => {
       const sign = r.direction === 'received' ? 1 : -1;
-      map[r.partyId] = (map[r.partyId] || 0) + sign * r.amount;
+      const key = r.partyType + ':' + r.partyId;
+      map[key] = (map[key] || 0) + sign * r.amount;
     });
     return map;
   }, [loanAdvances]);
@@ -118,7 +119,7 @@ export const LoanAdvanceManager: React.FC = () => {
               <td className="p-3">{r.direction === 'received' ? <span className="text-emerald-600 flex items-center gap-1"><ArrowDownLeft className="w-3.5 h-3.5"/>Received</span> : <span className="text-rose-600 flex items-center gap-1"><ArrowUpRight className="w-3.5 h-3.5"/>Given</span>}</td>
               <td className="p-3 text-right font-bold">{formatCurrency(r.amount)}</td><td className="p-3">{r.paymentMethod}</td>
               <td className="p-3 text-right font-bold text-blue-600">{formatCurrency(getAvailable(r.id))}</td>
-              <td className="p-3 text-right whitespace-nowrap"><button onClick={() => handleAdjust(r.id)} title="Adjust / Settle against due" className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded"><SlidersHorizontal className="w-3.5 h-3.5"/></button><button onClick={() => startEdit(r.id)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"><Pencil className="w-3.5 h-3.5"/></button><button onClick={() => {if(confirm('Delete this loan/advance entry?')) deleteLoanAdvance(r.id)}} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5"/></button></td>
+              <td className="p-3 text-right whitespace-nowrap"><button onClick={() => handleAdjust(r.id)} title="Adjust / Settle against due" className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded"><SlidersHorizontal className="w-3.5 h-3.5"/></button><button onClick={() => startEdit(r.id)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"><Pencil className="w-3.5 h-3.5"/></button><button onClick={() => {if(confirm(getAvailable(r.id) < r.amount ? 'This entry has adjustments. Reverse the adjustments first, then delete it.' : 'Delete this loan/advance entry?') && getAvailable(r.id) === r.amount) deleteLoanAdvance(r.id)}} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5"/></button></td>
             </tr>
           ))}{!loanAdvances.length && <tr><td colSpan={8} className="p-10 text-center text-slate-400">No loan or advance records yet.</td></tr>}</tbody>
         </table></div>
@@ -147,7 +148,8 @@ export const LoanAdvanceManager: React.FC = () => {
         <div className="font-semibold text-xs mb-2">Party Net Position</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {Object.entries(partyBalances).map(([id, balance]) => {
-            const party = [...customers, ...vendors].find(p => p.id === id);
+            const [type, partyId] = id.split(':');
+            const party = type === 'customer' ? customers.find(p => p.id === partyId) : vendors.find(p => p.id === partyId);
             return party ? <div key={id} className="bg-white border rounded-lg p-3 text-xs flex justify-between"><span>{party.name}</span><span className={balance >= 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>{formatCurrency(balance)}</span></div> : null;
           })}
         </div>
