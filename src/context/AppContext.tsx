@@ -863,81 +863,98 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }) => {
     const targetTx = data.transactions.find((t: Transaction) => t.id === params.transactionId);
     if (!targetTx) return;
+    const amount = Number(params.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      window.alert('Payment amount must be greater than zero.');
+      return;
+    }
+    const outstanding = params.paymentType === 'customer' ? Number(targetTx.customerDue) : Number(targetTx.vendorDue);
+    if (amount > outstanding) {
+      window.alert(`Payment cannot exceed outstanding due of ৳${outstanding.toFixed(2)}.`);
+      return;
+    }
 
-    const newPayment: PartialPayment = {
-      id: `pay_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-      transactionId: params.transactionId,
-      paymentType: params.paymentType,
-      entityId: params.paymentType === 'customer' ? targetTx.customerId : (targetTx.vendorId || 'vend_unknown'),
-      entityName: params.paymentType === 'customer' ? targetTx.customerName : (targetTx.vendorName || 'Vendor'),
-      amount,
-      paymentMethod: params.paymentMethod,
-      date: params.date,
-      time: params.time,
-      recordedBy: currentUser?.fullName || 'Staff',
-      note: params.note,
-      reference: params.reference || targetTx.invoiceNumber,
-    };
-
-    setData((prev: any) => {
-      const updatedTxs = prev.transactions.map((t: Transaction) => {
-        if (t.id === params.transactionId) {
+    const commitLocalPayment = () => {
+      const newPayment: PartialPayment = {
+        id: `pay_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        transactionId: params.transactionId,
+        paymentType: params.paymentType,
+        entityId: params.paymentType === 'customer' ? targetTx.customerId : (targetTx.vendorId || 'vend_unknown'),
+        entityName: params.paymentType === 'customer' ? targetTx.customerName : (targetTx.vendorName || 'Vendor'),
+        amount,
+        paymentMethod: params.paymentMethod,
+        date: params.date,
+        time: params.time,
+        recordedBy: currentUser?.fullName || 'Staff',
+        note: params.note,
+        reference: params.reference || targetTx.invoiceNumber,
+      };
+      setData((prev: any) => ({
+        ...prev,
+        transactions: prev.transactions.map((t: Transaction) => {
+          if (t.id !== params.transactionId) return t;
           if (params.paymentType === 'customer') {
             const newPaid = t.customerPaid + amount;
             const newDue = Math.max(0, t.sellingPrice - newPaid);
-            return {
-              ...t,
-              customerPaid: newPaid,
-              customerDue: newDue,
-              status: newDue === 0 ? ('PAID' as const) : ('PARTIAL' as const),
-            };
-          } else {
-            const newPaid = t.vendorPaid + amount;
-            const newDue = Math.max(0, t.vendorCost - newPaid);
-            return {
-              ...t,
-              vendorPaid: newPaid,
-              vendorDue: newDue,
-            };
+            return { ...t, customerPaid: newPaid, customerDue: newDue, status: newDue === 0 ? 'PAID' as const : 'PARTIAL' as const };
           }
-        }
-        return t;
-      });
-
-      return {
-        ...prev,
-        transactions: updatedTxs,
+          const newPaid = t.vendorPaid + amount;
+          const newDue = Math.max(0, t.vendorCost - newPaid);
+          return { ...t, vendorPaid: newPaid, vendorDue: newDue };
+        }),
         partialPayments: [...prev.partialPayments, newPayment],
-      };
-    });
+      }));
+      recordAudit(
+        params.paymentType === 'customer' ? 'Customer Payment Received' : 'Vendor Payment Made',
+        'Payment',
+        newPayment.id,
+        undefined,
+        `${params.paymentType === 'customer' ? 'Received' : 'Paid'} ৳${amount} via ${params.paymentMethod} for Ref ${targetTx.invoiceNumber}`
+      );
+    };
 
-    recordAudit(
-      params.paymentType === 'customer' ? 'Customer Payment Received' : 'Vendor Payment Made',
-      'Payment',
-      newPayment.id,
-      undefined,
-      `${params.paymentType === 'customer' ? 'Received' : 'Paid'} ৳${params.amount} via ${params.paymentMethod} for Ref ${targetTx.invoiceNumber}`
-    );
+    if (USE_SERVER_API) {
+      void api.recordPayment({
+        transactionId: params.transactionId,
+        paymentType: params.paymentType,
+        amount,
+        paymentMethod: params.paymentMethod,
+        note: params.note,
+        reference: params.reference || targetTx.invoiceNumber,
+        paidAt: `${params.date}T${params.time}:00`,
+      }).then(commitLocalPayment).catch((error) => {
+        console.error('Server payment failed:', error);
+        window.alert(error instanceof Error ? error.message : 'Payment could not be saved.');
+      });
+      return;
+    }
+
+    commitLocalPayment();
   };
 
   // Expenses
   const addExpense = (expense: Omit<Expense, 'id' | 'createdBy'>) => {
-    const newExp: Expense = {
-      ...expense,
-      id: `exp_${Date.now()}`,
-      createdBy: currentUser?.fullName || 'Staff',
+    const amount = Number(expense.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      window.alert('Expense amount must be greater than zero.');
+      return;
+    }
+    const saveLocal = (id = `exp_${Date.now()}`) => {
+      const newExp: Expense = { ...expense, amount, id, createdBy: currentUser?.fullName || 'Staff' };
+      setData((prev: any) => ({ ...prev, expenses: [newExp, ...prev.expenses] }));
+      recordAudit('Added Expense', 'Expense', newExp.id, undefined, `Expense: ${newExp.category} - ৳${amount} (${newExp.description}) paid via ${newExp.paymentMethod}`);
     };
-    setData((prev: any) => ({
-      ...prev,
-      expenses: [newExp, ...prev.expenses],
-    }));
-    recordAudit(
-      'Added Expense',
-      'Expense',
-      newExp.id,
-      undefined,
-      `Expense: ${newExp.category} - ৳${newExp.amount} (${newExp.description}) paid via ${newExp.paymentMethod}`
-    );
+    if (USE_SERVER_API) {
+      void api.createExpense(expense).then((result: any) => {
+        const id = result?.expense?.id || `exp_${Date.now()}`;
+        saveLocal(id);
+      }).catch((error) => {
+        console.error('Server expense failed:', error);
+        window.alert(error instanceof Error ? error.message : 'Expense could not be saved.');
+      });
+      return;
+    }
+    saveLocal();
   };
 
   const deleteExpense = (id: string) => {
@@ -958,22 +975,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Fund Transfers
   const addFundTransfer = (transfer: Omit<FundTransfer, 'id' | 'createdBy'>) => {
-    const newTrf: FundTransfer = {
-      ...transfer,
-      id: `trf_${Date.now()}`,
-      createdBy: currentUser?.fullName || 'Staff',
+    const amount = Number(transfer.amount);
+    if (!Number.isFinite(amount) || amount <= 0 || transfer.fromAccount === transfer.toAccount) {
+      window.alert('Transfer must use two different accounts and a positive amount.');
+      return;
+    }
+    const saveLocal = (id = `trf_${Date.now()}`) => {
+      const newTrf: FundTransfer = { ...transfer, amount, id, createdBy: currentUser?.fullName || 'Staff' };
+      setData((prev: any) => ({ ...prev, transfers: [newTrf, ...prev.transfers] }));
+      recordAudit('Fund Transfer', 'Transfer', newTrf.id, undefined, `Transfer ৳${amount} from ${newTrf.fromAccount} to ${newTrf.toAccount} (Reason: ${newTrf.reason})`);
     };
-    setData((prev: any) => ({
-      ...prev,
-      transfers: [newTrf, ...prev.transfers],
-    }));
-    recordAudit(
-      'Fund Transfer',
-      'Transfer',
-      newTrf.id,
-      undefined,
-      `Transfer ৳${newTrf.amount} from ${newTrf.fromAccount} to ${newTrf.toAccount} (Reason: ${newTrf.reason})`
-    );
+    if (USE_SERVER_API) {
+      void api.createFundTransfer(transfer).then((result: any) => {
+        const id = result?.transfer?.id || `trf_${Date.now()}`;
+        saveLocal(id);
+      }).catch((error) => {
+        console.error('Server fund transfer failed:', error);
+        window.alert(error instanceof Error ? error.message : 'Fund transfer could not be saved.');
+      });
+      return;
+    }
+    saveLocal();
   };
 
   const updateOpeningBalance = (method: PaymentMethod, amount: number) => {
