@@ -582,6 +582,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     note: row.note || undefined, createdBy: String(row.created_by_name ?? row.createdBy ?? 'Staff'),
   });
 
+  const refreshLoanAdvanceFinancialState = async () => {
+    if (!USE_SERVER_API) return;
+    const [loanRows, adjustmentRows, txRows, balances] = await Promise.all([
+      api.loanAdvances(),
+      api.loanAdvanceAdjustments(),
+      api.transactions(500),
+      api.accountBalances(),
+    ]);
+    const mappedLoans = (loanRows as any[]).map(mapServerLoanAdvance);
+    const mappedAdjustments = (adjustmentRows as any[]).map(mapServerLoanAdjustment);
+    const mappedTransactions = (txRows as any[]).map((row: any) => ({
+      ...row,
+      id: String(row.id),
+      customerId: String(row.customer_id ?? row.customerId ?? ''),
+      customerName: String(row.customer_name ?? row.customerName ?? ''),
+      customerMobile: String(row.customer_mobile ?? row.customerMobile ?? ''),
+      vendorId: row.vendor_id ? String(row.vendor_id) : undefined,
+      vendorName: row.vendor_name ?? row.vendorName ?? undefined,
+      serviceId: row.service_id ? String(row.service_id) : undefined,
+      serviceName: String(row.service_name ?? row.serviceName ?? ''),
+      invoiceNumber: row.invoice_number ?? row.invoiceNumber,
+      createdAt: row.created_at ?? row.createdAt,
+      updatedAt: row.updated_at ?? row.updatedAt,
+      createdBy: row.created_by ?? row.createdBy,
+      sellingPrice: Number(row.selling_price ?? row.sellingPrice ?? 0),
+      customerPaid: Number(row.customer_paid ?? row.customerPaid ?? 0),
+      customerDue: Number(row.customer_due ?? row.customerDue ?? 0),
+      vendorCost: Number(row.vendor_cost ?? row.vendorCost ?? 0),
+      vendorPaid: Number(row.vendor_paid ?? row.vendorPaid ?? 0),
+      vendorDue: Number(row.vendor_due ?? row.vendorDue ?? 0),
+      grossProfit: Number(row.gross_profit ?? row.grossProfit ?? 0),
+      status: row.status,
+      flightDetails: row.flight_details ? (typeof row.flight_details === 'string' ? JSON.parse(row.flight_details) : row.flight_details) : row.flightDetails,
+    } as Transaction));
+    const raw = (balances as any).balances || {};
+    setServerAccountBalances({
+      Cash: Number(raw.cash || 0), bKash: Number(raw.bkash || 0), Nagad: Number(raw.nagad || 0),
+      Rocket: Number(raw.rocket || 0), Bank: Number(raw.bank || 0), Card: Number(raw.card || 0), Other: Number(raw.other || 0),
+    });
+    setData((prev: any) => ({
+      ...prev,
+      loanAdvances: mappedLoans,
+      loanAdvanceAdjustments: mappedAdjustments,
+      transactions: mappedTransactions,
+    }));
+  };
+
   const addLoanAdvanceAsync = async (record: Omit<LoanAdvanceRecord, 'id' | 'createdBy'>): Promise<LoanAdvanceRecord> => {
     if (!USE_SERVER_API) {
       addLoanAdvance(record);
@@ -591,6 +638,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const result = await api.createLoanAdvance({ ...record, paymentMethod: record.paymentMethod.toLowerCase(), occurredAt });
     const mapped = mapServerLoanAdvance(result.loanAdvance);
     setData((prev: any) => ({ ...prev, loanAdvances: [mapped, ...(prev.loanAdvances || []).filter((x: LoanAdvanceRecord) => x.id !== mapped.id)] }));
+    await refreshLoanAdvanceFinancialState();
     return mapped;
   };
 
@@ -606,6 +654,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const result = await api.updateLoanAdvance(id, { ...updates, paymentMethod: updates.paymentMethod?.toLowerCase() });
     const mapped = mapServerLoanAdvance(result.loanAdvance);
     setData((prev:any)=>({...prev,loanAdvances:(prev.loanAdvances||[]).map((r:LoanAdvanceRecord)=>r.id===id?mapped:r)}));
+    await refreshLoanAdvanceFinancialState();
     return mapped;
   };
 
@@ -619,6 +668,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!USE_SERVER_API) { deleteLoanAdvance(id); return; }
     await api.deleteLoanAdvance(id);
     setData((prev:any)=>({...prev,loanAdvances:(prev.loanAdvances||[]).filter((r:LoanAdvanceRecord)=>r.id!==id)}));
+    await refreshLoanAdvanceFinancialState();
   };
 
   const deleteLoanAdvance = (id: string) => {
@@ -637,6 +687,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loanAdvanceAdjustments:[mappedAdj,...(prev.loanAdvanceAdjustments||[]).filter((a:LoanAdvanceAdjustment)=>a.id!==mappedAdj.id)],
       transactions:prev.transactions.map((t:Transaction)=>t.id===transactionId?{...t,customerPaid:Number(tx.customer_paid??t.customerPaid),customerDue:Number(tx.customer_due??t.customerDue),vendorPaid:Number(tx.vendor_paid??t.vendorPaid),vendorDue:Number(tx.vendor_due??t.vendorDue),status:tx.status}:t)
     }));
+    await refreshLoanAdvanceFinancialState();
     return true;
   };
 
@@ -662,6 +713,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!USE_SERVER_API) return deleteLoanAdvanceAdjustment(id);
     await api.reverseLoanAdvanceAdjustment(id);
     setData((prev:any)=>({...prev,loanAdvanceAdjustments:(prev.loanAdvanceAdjustments||[]).filter((a:LoanAdvanceAdjustment)=>a.id!==id)}));
+    await refreshLoanAdvanceFinancialState();
     return true;
   };
 
