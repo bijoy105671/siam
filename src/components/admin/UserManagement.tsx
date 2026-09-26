@@ -14,6 +14,10 @@ export const UserManagement: React.FC = () => {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'admin' | 'staff'>('staff');
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const [permissions, setPermissions] = useState<UserPermissions>({
     canCreateTransaction: true,
@@ -61,8 +65,8 @@ export const UserManagement: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim() || !fullName.trim() || !password.trim()) {
-      alert('Username, Full Name, and Password are required.');
+    if (!username.trim() || !fullName.trim() || (!editingUser && !password.trim())) {
+      alert(editingUser ? 'Username and Full Name are required.' : 'Username, Full Name, and Password are required.');
       return;
     }
 
@@ -85,7 +89,7 @@ export const UserManagement: React.FC = () => {
         if (editingUser) {
           await api.updateUserServer(editingUser.id, {
             username: username.trim(),
-            password: password.trim(),
+            ...(password.trim() ? { password: password.trim() } : {}),
             fullName: fullName.trim(),
             phone: phone.trim(),
             role,
@@ -239,6 +243,44 @@ export const UserManagement: React.FC = () => {
             </div>
           </div>
         ))}
+      </div>
+
+      {changePasswordOpen && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full border border-slate-200">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+              <h3 className="font-bold text-sm flex items-center gap-2"><Key className="w-4 h-4" /> Change My Password</h3>
+              <button onClick={() => setChangePasswordOpen(false)}><X className="w-5 h-5" /></button>
+            </div>
+            <form className="p-5 space-y-3" onSubmit={async (e) => {
+              e.preventDefault();
+              if (newPassword.length < 8) return alert('New password must be at least 8 characters.');
+              if (newPassword !== confirmPassword) return alert('New passwords do not match.');
+              try {
+                if (USE_SERVER_API) {
+                  await api.changePassword(currentPassword, newPassword);
+                  alert('Password changed successfully. Please use the new password next time you sign in.');
+                } else {
+                  if (currentUser?.password && currentPassword !== currentUser.password) return alert('Current password is incorrect.');
+                  updateUser(currentUser!.id, { password: newPassword });
+                  alert('Password changed successfully.');
+                }
+                setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setChangePasswordOpen(false);
+              } catch (error) { alert(error instanceof Error ? error.message : 'Unable to change password'); }
+            }}>
+              <input type="password" required value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} placeholder="Current password" className="w-full px-3 py-2 text-xs border rounded-lg" />
+              <input type="password" required minLength={8} value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="New password (8+ characters)" className="w-full px-3 py-2 text-xs border rounded-lg" />
+              <input type="password" required minLength={8} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Confirm new password" className="w-full px-3 py-2 text-xs border rounded-lg" />
+              <button type="submit" className="w-full px-4 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg">Change Password</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end">
+        <button onClick={() => setChangePasswordOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 rounded-lg">
+          <Key className="w-4 h-4" /> Change My Password
+        </button>
       </div>
 
       {/* Add / Edit User Modal */}
