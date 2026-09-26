@@ -26,8 +26,8 @@ const initializeDatabase = async () => {
 
 const sendPasswordResetOtp = async (otp: string) => {
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL;
-  if (!apiKey || !from) throw new Error('Password reset email is not configured');
+  const from = 'onboarding@resend.dev';
+  if (!apiKey) throw new Error('Password reset email is not configured. Add RESEND_API_KEY in Render.');
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
