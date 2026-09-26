@@ -9,7 +9,7 @@ const app = express();
 const port = Number(process.env.PORT || 4000);
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) throw new Error('SESSION_SECRET must be set and at least 32 characters');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, options: '-c timezone=Asia/Dhaka', ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined });
 const PgSession = connectPgSimple(session);
 
 app.set('trust proxy', 1);
@@ -177,12 +177,12 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
     const tx = (await client.query('SELECT * FROM transactions WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
     if (!tx) throw new Error('Transaction not found');
     const outstanding = paymentType === 'customer' ? Number(tx.customer_due) : Number(tx.vendor_due);
-    if (value > outstanding) return res.status(400).json({ error: 'Payment exceeds outstanding due', outstanding });
+    if (value > outstanding) throw new Error(`Payment exceeds outstanding due (outstanding: ${outstanding})`);
     const entityId = paymentType === 'customer' ? tx.customer_id : tx.vendor_id;
-    if (!entityId) return res.status(400).json({ error: 'No entity linked to this payment' });
+    if (!entityId) throw new Error('No entity linked to this payment');
     if (paymentType === 'vendor') {
       const balance = await accountBalance(client, method);
-      if (value > balance) return res.status(400).json({ error: 'Insufficient balance for vendor payment', balance });
+      if (value > balance) throw new Error(`Insufficient balance for vendor payment (balance: ${balance})`);
     }
     await client.query('INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [tx.id, paymentType, entityId, value, method, req.session.userId, note || null, reference || null]);
     if (paymentType === 'customer') {
