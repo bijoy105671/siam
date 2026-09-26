@@ -138,7 +138,7 @@ interface AppContextType {
   overdueReminders: (Transaction & { overdueDays: number })[];
 
   // Actions
-  createOneEntry: (input: OneEntryInput) => Transaction;
+  createOneEntry: (input: OneEntryInput) => Transaction;\n  createOneEntryAsync: (input: OneEntryInput) => Promise<Transaction>;
   updateTransaction: (id: string, updates: Partial<Transaction>, changeReason?: string) => void;
   deleteTransaction: (id: string) => void;
   updateFlightStatus: (txId: string, status: TicketStatus, note?: string) => void;
@@ -335,6 +335,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return false;
   };
 
+  const loginAsync = async (username: string, pass: string): Promise<boolean> => {
+    if (!USE_SERVER_API) return login(username, pass);
+    try {
+      const result = await api.login(username.trim(), pass);
+      const u: any = result.user;
+      const mapped: User = {
+        id: String(u.id),
+        username: String(u.username),
+        password: '',
+        fullName: String(u.full_name ?? u.fullName ?? u.username),
+        role: u.role,
+        isActive: u.is_active !== false,
+        createdAt: u.created_at ?? new Date().toISOString(),
+      };
+      setData((prev: any) => ({
+        ...prev,
+        users: [...prev.users.filter((x: User) => x.id !== mapped.id), mapped],
+        currentUserId: mapped.id,
+      }));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const logout = () => {
     if (currentUser) {
       recordAudit('User Logout', 'User', currentUser.id, undefined, `${currentUser.fullName} logged out`);
@@ -471,6 +496,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
     recordAudit('Reversed Loan / Advance Adjustment', 'LoanAdvance', id, undefined, 'Adjustment reversed without cash movement');
     return true;
+  };
+
+  const createOneEntryAsync = async (input: OneEntryInput): Promise<Transaction> => {
+    if (!USE_SERVER_API) return createOneEntry(input);
+    const result = await (await import('../services/apiClient')).createServerOneEntry(input);
+    const tx = result.transaction as Transaction;
+    setData((prev: any) => ({
+      ...prev,
+      transactions: [tx, ...prev.transactions.filter((x: Transaction) => x.id !== tx.id)],
+    }));
+    return tx;
   };
 
   // Customers
@@ -832,7 +868,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       paymentType: params.paymentType,
       entityId: params.paymentType === 'customer' ? targetTx.customerId : (targetTx.vendorId || 'vend_unknown'),
       entityName: params.paymentType === 'customer' ? targetTx.customerName : (targetTx.vendorName || 'Vendor'),
-      amount: params.amount,
+      amount,
       paymentMethod: params.paymentMethod,
       date: params.date,
       time: params.time,
@@ -845,7 +881,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updatedTxs = prev.transactions.map((t: Transaction) => {
         if (t.id === params.transactionId) {
           if (params.paymentType === 'customer') {
-            const newPaid = t.customerPaid + params.amount;
+            const newPaid = t.customerPaid + amount;
             const newDue = Math.max(0, t.sellingPrice - newPaid);
             return {
               ...t,
@@ -854,7 +890,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               status: newDue === 0 ? ('PAID' as const) : ('PARTIAL' as const),
             };
           } else {
-            const newPaid = t.vendorPaid + params.amount;
+            const newPaid = t.vendorPaid + amount;
             const newDue = Math.max(0, t.vendorCost - newPaid);
             return {
               ...t,
