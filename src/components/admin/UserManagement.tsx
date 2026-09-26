@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Shield, Plus, Edit, Trash2, Key, Check, X, UserCheck } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { User, UserPermissions } from '../../types';
+import { api, USE_SERVER_API } from '../../services/apiClient';
 
 export const UserManagement: React.FC = () => {
   const { users, addUser, updateUser, deleteUser, currentUser } = useApp();
@@ -58,61 +59,76 @@ export const UserManagement: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !fullName.trim() || !password.trim()) {
       alert('Username, Full Name, and Password are required.');
       return;
     }
 
-    if (editingUser) {
-      updateUser(editingUser.id, {
-        username: username.trim(),
-        password: password.trim(),
-        fullName: fullName.trim(),
-        phone: phone.trim(),
-        role,
-        permissions:
-          role === 'admin'
-            ? {
-                canCreateTransaction: true,
-                canEditTransaction: true,
-                canDeleteTransaction: true,
-                canManageExpenses: true,
-                canManageTransfers: true,
-                canManageSettings: true,
-                canViewAudit: true,
-                canBackupRestore: true,
-                canManageUsers: true,
-              }
-            : permissions,
-      });
-    } else {
-      addUser({
-        username: username.trim(),
-        password: password.trim(),
-        fullName: fullName.trim(),
-        phone: phone.trim(),
-        role,
-        isActive: true,
-        permissions:
-          role === 'admin'
-            ? {
-                canCreateTransaction: true,
-                canEditTransaction: true,
-                canDeleteTransaction: true,
-                canManageExpenses: true,
-                canManageTransfers: true,
-                canManageSettings: true,
-                canViewAudit: true,
-                canBackupRestore: true,
-                canManageUsers: true,
-              }
-            : permissions,
-      });
-    }
+    const effectivePermissions = role === 'admin'
+      ? {
+          canCreateTransaction: true,
+          canEditTransaction: true,
+          canDeleteTransaction: true,
+          canManageExpenses: true,
+          canManageTransfers: true,
+          canManageSettings: true,
+          canViewAudit: true,
+          canBackupRestore: true,
+          canManageUsers: true,
+        }
+      : permissions;
 
-    setIsModalOpen(false);
+    try {
+      if (USE_SERVER_API) {
+        if (editingUser) {
+          await api.updateUserServer(editingUser.id, {
+            username: username.trim(),
+            password: password.trim(),
+            fullName: fullName.trim(),
+            phone: phone.trim(),
+            role,
+            permissions: effectivePermissions,
+          });
+        } else {
+          await api.createUser({
+            username: username.trim(),
+            password: password.trim(),
+            fullName: fullName.trim(),
+            phone: phone.trim(),
+            role,
+            permissions: effectivePermissions,
+          });
+        }
+        window.location.reload();
+        return;
+      }
+
+      if (editingUser) {
+        updateUser(editingUser.id, {
+          username: username.trim(),
+          password: password.trim(),
+          fullName: fullName.trim(),
+          phone: phone.trim(),
+          role,
+          permissions: effectivePermissions,
+        });
+      } else {
+        addUser({
+          username: username.trim(),
+          password: password.trim(),
+          fullName: fullName.trim(),
+          phone: phone.trim(),
+          role,
+          isActive: true,
+          permissions: effectivePermissions,
+        });
+      }
+      setIsModalOpen(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to save user');
+    }
   };
 
   return (
@@ -171,8 +187,18 @@ export const UserManagement: React.FC = () => {
                 </button>
                 {u.id !== currentUser?.id && users.length > 1 && (
                   <button
-                    onClick={() => {
-                      if (confirm(`Delete user ${u.fullName}?`)) deleteUser(u.id);
+                    onClick={async () => {
+                      if (!confirm(`Deactivate user ${u.fullName}?`)) return;
+                      try {
+                        if (USE_SERVER_API) {
+                          await api.deactivateUser(u.id);
+                          window.location.reload();
+                        } else {
+                          deleteUser(u.id);
+                        }
+                      } catch (error) {
+                        alert(error instanceof Error ? error.message : 'Unable to deactivate user');
+                      }
                     }}
                     className="p-1 text-slate-400 hover:text-rose-600 rounded"
                   >
