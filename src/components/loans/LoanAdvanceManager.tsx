@@ -5,7 +5,7 @@ import { LoanAdvanceDirection, LoanAdvanceKind, LoanAdvancePartyType, PaymentMet
 import { formatCurrency } from '../../utils/formatters';
 
 export const LoanAdvanceManager: React.FC = () => {
-  const { customers, vendors, loanAdvances, loanAdvanceAdjustments, transactions, addLoanAdvance, updateLoanAdvance, deleteLoanAdvance, adjustLoanAdvance, deleteLoanAdvanceAdjustment, addCustomerAsync, addVendorAsync } = useApp();
+  const { customers, vendors, loanAdvances, loanAdvanceAdjustments, transactions, addLoanAdvance, addLoanAdvanceAsync, updateLoanAdvance, updateLoanAdvanceAsync, deleteLoanAdvance, deleteLoanAdvanceAsync, adjustLoanAdvance, adjustLoanAdvanceAsync, deleteLoanAdvanceAdjustment, deleteLoanAdvanceAdjustmentAsync, addCustomerAsync, addVendorAsync } = useApp();
   const [partyType, setPartyType] = useState<LoanAdvancePartyType>('customer');
   const [partyId, setPartyId] = useState('');
   const [kind, setKind] = useState<LoanAdvanceKind>('advance');
@@ -67,7 +67,7 @@ export const LoanAdvanceManager: React.FC = () => {
     setPaymentMethod('Cash'); setNote(''); setReference(''); setEditingId(null);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const value = Number(amount);
     if (!partyId || !selectedParty || value <= 0) {
@@ -80,9 +80,11 @@ export const LoanAdvanceManager: React.FC = () => {
       paymentMethod, date: now.toISOString().split('T')[0], time: now.toTimeString().slice(0, 5),
       note: note.trim() || undefined, reference: reference.trim() || undefined,
     };
-    if (editingId) updateLoanAdvance(editingId, payload);
-    else addLoanAdvance(payload);
-    reset();
+    try {
+      if (editingId) await updateLoanAdvanceAsync(editingId, payload);
+      else await addLoanAdvanceAsync(payload);
+      reset();
+    } catch (err) { alert(err instanceof Error ? err.message : 'Could not save loan/advance.'); }
   };
 
   const startEdit = (id: string) => {
@@ -177,9 +179,7 @@ export const LoanAdvanceManager: React.FC = () => {
     }
 
     const noteValue = window.prompt('Adjustment note (optional):', '') || undefined;
-    const ok = adjustLoanAdvance(loanAdvanceId, tx.id, value, noteValue);
-    alert(ok ? 'Loan / Advance adjusted successfully.' :
-      'Adjustment could not be completed. Please check the available amount and due.');
+    adjustLoanAdvanceAsync(loanAdvanceId, tx.id, value, noteValue).then(() => alert('Loan / Advance adjusted successfully.')).catch(err => alert(err instanceof Error ? err.message : 'Adjustment could not be completed.'));
   };
 
   const totals = useMemo(() => {
@@ -258,7 +258,7 @@ export const LoanAdvanceManager: React.FC = () => {
               <td className="p-3">{tx?.invoiceNumber || a.transactionId}</td>
               <td className="p-3 text-right font-bold text-emerald-600">{formatCurrency(a.amount)}</td>
               <td className="p-3 text-slate-500">{a.note || '—'}</td>
-              <td className="p-3 text-right"><button onClick={() => { if (confirm('Reverse this adjustment? No cash will be moved.')) deleteLoanAdvanceAdjustment(a.id); }} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded" title="Reverse adjustment"><RotateCcw className="w-3.5 h-3.5"/></button></td>
+              <td className="p-3 text-right"><button onClick={() => { if (confirm('Reverse this adjustment? No cash will be moved.')) void deleteLoanAdvanceAdjustmentAsync(a.id).catch(err => alert(err instanceof Error ? err.message : 'Adjustment reversal failed')); }} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded" title="Reverse adjustment"><RotateCcw className="w-3.5 h-3.5"/></button></td>
             </tr>;
           })}{!adjustmentRows.length && <tr><td colSpan={6} className="p-8 text-center text-slate-400">No adjustments yet.</td></tr>}</tbody>
         </table></div>
