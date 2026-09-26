@@ -241,6 +241,7 @@ const STORAGE_KEY = 'siam_air_business_data_v3_clean';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load state from localStorage or initial clean data
+  const [serverAccountBalances, setServerAccountBalances] = useState<AccountBalances | null>(null);
   const [data, setData] = useState(() => {
     // Purge previous version sample storage keys if present
     try {
@@ -306,6 +307,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const currentUser = useMemo(() => {
     return data.users.find((u: User) => u.id === data.currentUserId) || (USE_SERVER_API ? null : data.users[0]) || null;
   }, [data.users, data.currentUserId]);
+
+  useEffect(() => {
+    if (!USE_SERVER_API || !currentUser) return;
+    let cancelled = false;
+    const mapBalances = (raw: Record<string, number>): AccountBalances => ({
+      Cash: Number(raw.cash || 0), bKash: Number(raw.bkash || 0), Nagad: Number(raw.nagad || 0),
+      Rocket: Number(raw.rocket || 0), Bank: Number(raw.bank || 0), Card: Number(raw.card || 0), Other: Number(raw.other || 0),
+    });
+    Promise.all([api.loanAdvances(), apiRequestForLoanAdjustments(), api.accountBalances()])
+      .then(([loanRows, adjustmentRows, balances]) => {
+        if (cancelled) return;
+        setData((prev: any) => ({
+          ...prev,
+          loanAdvances: (loanRows as any[]).map(mapServerLoanAdvance),
+          loanAdvanceAdjustments: (adjustmentRows as any[]).map(mapServerLoanAdjustment),
+        }));
+        setServerAccountBalances(mapBalances(balances.balances || {}));
+      })
+      .catch((err) => console.error('Server accounting refresh failed:', err));
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
+
+  const apiRequestForLoanAdjustments = async () => {
+    return apiRequestRawLoanAdjustments();
+  };
+
+  const apiRequestRawLoanAdjustments = async () => {
+    const response = await fetch('/api/loan-advances/adjustments', { credentials: 'include' });
+    if (!response.ok) throw new Error('Unable to load loan/advance adjustments');
+    return response.json();
+  };
 
   const recordAudit = (
     action: string,
@@ -1478,6 +1510,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // CALCULATIONS FOR ACCOUNT BALANCES
   // Formula: Opening + Customer payments received - Vendor payments - Expenses + Transfers In - Transfers Out
   const accountBalances: AccountBalances = useMemo(() => {
+    if (USE_SERVER_API && serverAccountBalances) return serverAccountBalances;
     const balances: AccountBalances = {
       Cash: data.openingBalances?.Cash || 0,
       bKash: data.openingBalances?.bKash || 0,
@@ -1523,7 +1556,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return balances;
-  }, [data.openingBalances, data.partialPayments, data.expenses, data.transfers, data.loanAdvances]);
+  }, [data.openingBalances, data.partialPayments, data.expenses, data.transfers, data.loanAdvances, serverAccountBalances]);
 
   // TOTAL AVAILABLE MONEY = Cash + bKash + Nagad + Rocket + Bank + Other
   // Customer due must NOT be added. Vendor payable must NOT be deducted.
