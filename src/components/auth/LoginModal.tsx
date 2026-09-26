@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Shield, KeyRound, UserRound, X, Eye, EyeOff, Mail, LockKeyhole, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { USE_SERVER_API } from '../../services/apiClient';
+import { api, USE_SERVER_API } from '../../services/apiClient';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -23,6 +23,22 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const [resetConfirm, setResetConfirm] = useState('');
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [businessIdentity, setBusinessIdentity] = useState({
+    name: 'SIAM AIR & DIGITAL SERVICE',
+    tagline: 'Travel Agency · Visa · Passport · Digital',
+    logoUrl: '',
+  });
+
+  useEffect(() => {
+    if (!isOpen || !USE_SERVER_API) return;
+    let cancelled = false;
+    api.publicSettings()
+      .then(({ settings }) => {
+        if (!cancelled) setBusinessIdentity(prev => ({ ...prev, ...settings }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -104,8 +120,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           <div className="absolute -bottom-20 -left-12 h-40 w-40 rounded-full bg-sky-300/10" />
           <div className="relative">
             <div className="mb-5 flex items-center justify-between">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur-sm">
-                <Shield className="h-6 w-6" />
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur-sm">
+                {businessIdentity.logoUrl ? <img src={businessIdentity.logoUrl} alt={businessIdentity.name} className="h-full w-full object-contain p-1" /> : <Shield className="h-6 w-6" />}
               </div>
               <button
                 type="button"
@@ -116,7 +132,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/70">SIAM AIR & DIGITAL SERVICE</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/70">{businessIdentity.name}</div>
+            <p className="mt-1 text-xs font-semibold text-white/70">{businessIdentity.tagline}</p>
             <h2 className="mt-1 text-2xl font-extrabold tracking-tight">Welcome Back</h2>
             <p className="mt-1 text-sm text-white/80">Sign in securely to manage your business.</p>
           </div>
