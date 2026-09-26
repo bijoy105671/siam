@@ -24,6 +24,8 @@ export const ExpenseManager: React.FC = () => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [time, setTime] = useState(new Date().toTimeString().split(' ')[0].substring(0, 5));
   const [note, setNote] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Filters
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -37,7 +39,7 @@ export const ExpenseManager: React.FC = () => {
 
   const totalExpenseFiltered = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const numAmount = Number(amount) || 0;
     if (numAmount <= 0) {
@@ -49,20 +51,28 @@ export const ExpenseManager: React.FC = () => {
       return;
     }
 
-    addExpense({
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      await addExpense({
       category: selectedCategory,
       description: description.trim(),
       amount: numAmount,
       paymentMethod,
       date,
       time,
-      note: note.trim(),
-    });
+        note: note.trim(),
+      });
 
-    setDescription('');
+      setDescription('');
     setAmount('');
-    setNote('');
-    setIsModalOpen(false);
+      setNote('');
+      setIsModalOpen(false);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Expense could not be recorded. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -345,11 +355,15 @@ export const ExpenseManager: React.FC = () => {
                   >
                     Cancel
                   </button>
+                  {submitError && (
+                    <div className="text-[11px] text-rose-600 font-medium max-w-[220px]">{submitError}</div>
+                  )}
                   <button
                     type="submit"
-                    className="px-5 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs cursor-pointer"
+                    disabled={isSubmitting}
+                    className="px-5 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed rounded-lg shadow-xs cursor-pointer"
                   >
-                    Save & Deduct Account
+                    {isSubmitting ? 'Saving…' : 'Save & Deduct Account'}
                   </button>
                 </div>
               </div>
