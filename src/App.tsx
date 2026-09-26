@@ -20,6 +20,7 @@ import { PaymentModal } from './components/common/PaymentModal';
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { LoginModal } from './components/auth/LoginModal';
 import { SecurityOtpModal } from './components/auth/SecurityOtpModal';
+import { TransactionRecycleBin } from './components/admin/TransactionRecycleBin';
 import { InvoiceVerificationPage } from './components/verification/InvoiceVerificationPage';
 import { Customer, Transaction, Vendor } from './types';
 import { USE_SERVER_API } from './services/apiClient';
@@ -255,7 +256,7 @@ const MainLayout: React.FC = () => {
 
           {currentView === 'audit' && <AdminSettings defaultTab="audit" />}
 
-          {currentView === 'backup' && <AdminSettings defaultTab="backup" />}
+          {currentView === 'backup' && <AdminSettings defaultTab="backup" />}\n\n          {currentView === 'recycle_bin' && <TransactionRecycleBin />}
 
           {currentView === 'verify_portal' && (
             <InvoiceVerificationPage onBackToApp={() => setCurrentView('dashboard')} />
