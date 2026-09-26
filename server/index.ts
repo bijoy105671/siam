@@ -360,25 +360,29 @@ app.get('/api/dashboard', auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
-                       COALESCE(SUM(CASE WHEN gross_profit > 0 THEN gross_profit ELSE 0 END),0) gross_profit,
-                       COALESCE(SUM(CASE WHEN gross_profit < 0 THEN ABS(gross_profit) ELSE 0 END),0) loss
-                FROM transactions WHERE deleted_at IS NULL AND status <> $1`, ['CANCELLED']),
+                       COALESCE(SUM(selling_price - vendor_cost),0) signed_gross_profit
+                FROM transactions
+                WHERE deleted_at IS NULL AND status <> $1`, ['CANCELLED']),
     pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL'),
     pool.query('SELECT COALESCE(SUM(customer_due),0) + COALESCE((SELECT SUM(opening_due) FROM customers),0) customer_receivable FROM transactions WHERE deleted_at IS NULL AND status <> $1', ['CANCELLED']),
     pool.query('SELECT COALESCE(SUM(vendor_due),0) + COALESCE((SELECT SUM(opening_payable) FROM vendors),0) vendor_payable FROM transactions WHERE deleted_at IS NULL AND status <> $1', ['CANCELLED']),
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
-                       COALESCE(SUM(CASE WHEN gross_profit > 0 THEN gross_profit ELSE 0 END),0) gross_profit,
-                       COALESCE(SUM(CASE WHEN gross_profit < 0 THEN ABS(gross_profit) ELSE 0 END),0) loss
-                FROM transactions WHERE deleted_at IS NULL AND status <> $1 AND date = CURRENT_DATE`, ['CANCELLED']),
-    pool.query("SELECT COALESCE(SUM(amount),0) total_received FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND payment_type='customer' AND p.reversed_at IS NULL AND paid_at::date = CURRENT_DATE"),
-    pool.query("SELECT COALESCE(SUM(amount),0) total_vendor_payment FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND payment_type='vendor' AND p.reversed_at IS NULL AND paid_at::date = CURRENT_DATE"),
+                       COALESCE(SUM(selling_price - vendor_cost),0) signed_gross_profit
+                FROM transactions
+                WHERE deleted_at IS NULL AND status <> $1 AND date = CURRENT_DATE`, ['CANCELLED']),
+    pool.query("SELECT COALESCE(SUM(p.amount),0) total_received FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND t.status <> 'CANCELLED' AND p.payment_type='customer' AND p.reversed_at IS NULL AND paid_at::date = CURRENT_DATE"),
+    pool.query("SELECT COALESCE(SUM(p.amount),0) total_vendor_payment FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND t.status <> 'CANCELLED' AND p.payment_type='vendor' AND p.reversed_at IS NULL AND paid_at::date = CURRENT_DATE"),
     pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL AND occurred_at::date = CURRENT_DATE')
   ]);
-  const todayGrossProfit = Number(todaySales.rows[0].gross_profit || 0);
-  const todayLoss = Number(todaySales.rows[0].loss || 0);
+  const signedGrossProfit = Number(sales.rows[0].signed_gross_profit || 0);
+  const grossProfit = Math.max(0, signedGrossProfit);
+  const loss = Math.max(0, -signedGrossProfit);
+  const todaySignedGrossProfit = Number(todaySales.rows[0].signed_gross_profit || 0);
+  const todayGrossProfit = Math.max(0, todaySignedGrossProfit);
+  const todayLoss = Math.max(0, -todaySignedGrossProfit);
   const todayExpense = Number(todayExpenses.rows[0].total_expense || 0);
   res.json({
-    sales: sales.rows[0],
+    sales: { ...sales.rows[0], gross_profit: grossProfit, loss },
     expenses: expenses.rows[0],
     customerReceivable: Number(customerDue.rows[0].customer_receivable || 0),
     vendorPayable: Number(vendorDue.rows[0].vendor_payable || 0),
