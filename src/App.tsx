@@ -163,6 +163,10 @@ const MainLayout: React.FC = () => {
             <Dashboard
               onOpenNewEntry={() => setCurrentView('new_entry')}
               onOpenTransfer={() => setIsTransferModalOpen(true)}
+              onOpenCustomerDue={() => setCurrentView('transactions')}
+              onOpenVendorDue={() => setCurrentView('transactions')}
+              onOpenCustomerProfiles={() => setCurrentView('customers')}
+              onOpenVendorProfiles={() => setCurrentView('vendors')}
               onOpenExpense={() => setCurrentView('expenses')}
               onViewAllTransactions={() => setCurrentView('transactions')}
               onViewAllFlights={() => setCurrentView('flights')}
