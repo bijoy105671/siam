@@ -100,6 +100,7 @@ interface AppContextType {
   currentUser: User | null;
   users: User[];
   login: (username: string, password: string) => boolean;
+  loginAsync: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   addUser: (user: Omit<User, 'id' | 'createdAt'>) => void;
   updateUser: (id: string, updates: Partial<User>) => void;
