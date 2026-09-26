@@ -1433,15 +1433,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       window.alert('Transfer must use two different accounts and a positive amount.');
       return;
     }
+    const validPaymentMethods: PaymentMethod[] = ['Cash', 'bKash', 'Nagad', 'Rocket', 'Bank', 'Card', 'Other'];
+    if (!validPaymentMethods.includes(transfer.fromAccount) || !validPaymentMethods.includes(transfer.toAccount)) {
+      window.alert('Please select valid source and destination accounts.');
+      return;
+    }
+    if (!transfer.reason?.trim()) {
+      window.alert('Transfer reason is required.');
+      return;
+    }
+
     const saveLocal = (id = `trf_${Date.now()}`) => {
       const newTrf: FundTransfer = { ...transfer, amount, id, createdBy: currentUser?.fullName || 'Staff' };
       setData((prev: any) => ({ ...prev, transfers: [newTrf, ...prev.transfers] }));
       recordAudit('Fund Transfer', 'Transfer', newTrf.id, undefined, `Transfer ৳${amount} from ${newTrf.fromAccount} to ${newTrf.toAccount} (Reason: ${newTrf.reason})`);
     };
     if (USE_SERVER_API) {
-      void api.createFundTransfer(transfer).then((result: any) => {
+      void api.createFundTransfer(transfer).then(async (result: any) => {
         const id = result?.transfer?.id || `trf_${Date.now()}`;
         saveLocal(id);
+        try {
+          const [balances, dashboard] = await Promise.all([api.accountBalances(), api.dashboard()]);
+          const raw = balances.balances || {};
+          setServerAccountBalances({
+            Cash: Number(raw.cash || 0), bKash: Number(raw.bkash || 0), Nagad: Number(raw.nagad || 0),
+            Rocket: Number(raw.rocket || 0), Bank: Number(raw.bank || 0), Card: Number(raw.card || 0), Other: Number(raw.other || 0),
+          });
+          const t = dashboard.today || {} as any;
+          setServerTodaySummary({
+            totalSales: Number(t.total_sales || 0), totalReceived: Number(t.total_received || 0),
+            totalExpense: Number(t.total_expense || 0), totalVendorPayment: Number(t.total_vendor_payment || 0),
+            grossProfit: Number(t.gross_profit || 0), loss: Number(t.loss || 0), netProfit: Number(t.net_profit || 0),
+          });
+        } catch (refreshError) {
+          console.error('Fund transfer balance refresh failed:', refreshError);
+        }
       }).catch((error) => {
         console.error('Server fund transfer failed:', error);
         window.alert(error instanceof Error ? error.message : 'Fund transfer could not be saved.');
