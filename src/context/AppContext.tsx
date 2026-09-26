@@ -335,7 +335,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ]);
 
       const serverUser = sessionResult.user as Partial<User> | null;
-      if (!serverUser?.username) return;
+      if (!serverUser?.username) {
+        setData((prev: any) => ({ ...prev, currentUserId: '' }));
+        return;
+      }
 
       const mapCustomer = (row: any): Customer => ({
         id: String(row.id),
@@ -436,7 +439,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Auth helper
   const currentUser = useMemo(() => {
-    return data.users.find((u: User) => u.id === data.currentUserId) || data.users[0] || null;
+    if (USE_SERVER_API && !data.currentUserId) return null;
+    return data.users.find((u: User) => u.id === data.currentUserId) || (!USE_SERVER_API ? data.users[0] : null) || null;
   }, [data.users, data.currentUserId]);
 
   const recordAudit = (
@@ -482,10 +486,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const result = await api.login(username, pass);
       const serverUser = result.user as Partial<User> | null;
       if (!serverUser?.username) return false;
-      const localMatch = data.users.find(
-        (u: User) => u.username.toLowerCase() === String(serverUser.username).toLowerCase()
-      );
-      setData((prev: any) => ({ ...prev, currentUserId: localMatch?.id || prev.currentUserId }));
+      await hydrateServerSession();
       return true;
     } catch (error) {
       console.error('Server login failed:', error);
