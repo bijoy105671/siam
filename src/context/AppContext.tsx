@@ -43,6 +43,7 @@ import {
   User,
   Vendor,
   LoanAdvanceRecord,
+  LoanAdvanceAdjustment,
 } from '../types';
 import {
   decryptDatabasePayload,
@@ -113,6 +114,7 @@ interface AppContextType {
   expenses: Expense[];
   transfers: FundTransfer[];
   loanAdvances: LoanAdvanceRecord[];
+  loanAdvanceAdjustments: LoanAdvanceAdjustment[];
   auditLogs: AuditLog[];
   settings: BusinessSettings;
   openingBalances: Record<PaymentMethod, number>;
@@ -165,6 +167,8 @@ interface AppContextType {
   addLoanAdvance: (record: Omit<LoanAdvanceRecord, 'id' | 'createdBy'>) => void;
   updateLoanAdvance: (id: string, updates: Partial<LoanAdvanceRecord>) => void;
   deleteLoanAdvance: (id: string) => void;
+  adjustLoanAdvance: (loanAdvanceId: string, transactionId: string, amount: number, note?: string) => boolean;
+  deleteLoanAdvanceAdjustment: (id: string) => boolean;
 
   updateOpeningBalance: (method: PaymentMethod, amount: number) => void;
   updateSettings: (settings: Partial<BusinessSettings>) => void;
@@ -246,6 +250,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           backupSchedule: parsed.backupSchedule || INITIAL_BACKUP_SCHEDULE,
           backupLogs: parsed.backupLogs || INITIAL_BACKUP_LOGS,
           loanAdvances: parsed.loanAdvances || [],
+          loanAdvanceAdjustments: parsed.loanAdvanceAdjustments || [],
         };
       } catch (e) {
         console.error('Failed to parse stored business data:', e);
@@ -264,6 +269,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       expenses: INITIAL_EXPENSES,
       transfers: INITIAL_TRANSFERS,
       loanAdvances: [],
+      loanAdvanceAdjustments: [],
       auditLogs: INITIAL_AUDIT_LOGS,
       openingBalances: INITIAL_OPENING_BALANCES,
       backupSchedule: INITIAL_BACKUP_SCHEDULE,
@@ -385,6 +391,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteLoanAdvance = (id: string) => {
     setData((prev: any) => ({ ...prev, loanAdvances: (prev.loanAdvances || []).filter((r: LoanAdvanceRecord) => r.id !== id) }));
     recordAudit('Deleted Loan / Advance', 'LoanAdvance', id, undefined, 'Loan / advance record deleted');
+  };
+
+  const adjustLoanAdvance = (loanAdvanceId: string, transactionId: string, amount: number, note?: string): boolean => {
+    const record = (data.loanAdvances || []).find((r: LoanAdvanceRecord) => r.id === loanAdvanceId);
+    const tx = data.transactions.find((t: Transaction) => t.id === transactionId);
+    if (!record || !tx || amount <= 0) return false;
+
+    const sameParty = record.partyType === 'customer'
+      ? tx.customerId === record.partyId
+      : tx.vendorId === record.partyId;
+    if (!sameParty) return false;
+
+    const adjusted = (data.loanAdvanceAdjustments || [])
+      .filter((a: LoanAdvanceAdjustment) => a.loanAdvanceId === loanAdvanceId)
+      .reduce((sum: number, a: LoanAdvanceAdjustment) => sum + a.amount, 0);
+    const available = Math.max(0, record.amount - adjusted);
+    const targetDue = record.partyType === 'customer' ? Math.max(0, tx.customerDue) : Math.max(0, tx.vendorDue);
+    const applied = Math.min(amount, available, targetDue);
+    if (applied <= 0) return false;
+
+    const now = new Date();
+    const adjustment: LoanAdvanceAdjustment = {
+      id: 'laa_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      loanAdvanceId,
+      transactionId,
+      partyType: record.partyType,
+      partyId: record.partyId,
+      amount: applied,
+      date: now.toISOString().split('T')[0],
+      time: now.toTimeString().split(' ')[0].substring(0, 5),
+      note: note?.trim() || undefined,
+      createdBy: currentUser?.fullName || 'Staff',
+    };
+
+    setData((prev: any) => ({
+      ...prev,
+      loanAdvanceAdjustments: [...(prev.loanAdvanceAdjustments || []), adjustment],
+      transactions: prev.transactions.map((t: Transaction) => {
+        if (t.id !== transactionId) return t;
+        if (record.partyType === 'customer') {
+          const paid = t.customerPaid + applied;
+          return { ...t, customerPaid: paid, customerDue: Math.max(0, t.sellingPrice - paid), status: t.vendorDue === 0 && t.sellingPrice > 0 && t.customerDue <= applied ? 'PAID' : 'PARTIAL', updatedAt: now.toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
+        }
+        const paid = t.vendorPaid + applied;
+        return { ...t, vendorPaid: paid, vendorDue: Math.max(0, t.vendorCost - paid), updatedAt: now.toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
+      }),
+    }));
+    recordAudit('Adjusted Loan / Advance', 'LoanAdvance', adjustment.id, undefined,
+      record.partyName + ' → ' + tx.invoiceNumber + ' ৳' + applied);
+    return true;
+  };
+
+  const deleteLoanAdvanceAdjustment = (id: string): boolean => {
+    const adjustment = (data.loanAdvanceAdjustments || []).find((a: LoanAdvanceAdjustment) => a.id === id);
+    const tx = adjustment ? data.transactions.find((t: Transaction) => t.id === adjustment.transactionId) : undefined;
+    if (!adjustment || !tx) return false;
+    setData((prev: any) => ({
+      ...prev,
+      loanAdvanceAdjustments: (prev.loanAdvanceAdjustments || []).filter((a: LoanAdvanceAdjustment) => a.id !== id),
+      transactions: prev.transactions.map((t: Transaction) => {
+        if (t.id !== adjustment.transactionId) return t;
+        if (adjustment.partyType === 'customer') {
+          const paid = Math.max(0, t.customerPaid - adjustment.amount);
+          const due = Math.max(0, t.sellingPrice - paid);
+          return { ...t, customerPaid: paid, customerDue: due, status: due === 0 && t.sellingPrice > 0 ? 'PAID' : paid > 0 ? 'PARTIAL' : 'DUE', updatedAt: new Date().toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
+        }
+        const paid = Math.max(0, t.vendorPaid - adjustment.amount);
+        return { ...t, vendorPaid: paid, vendorDue: Math.max(0, t.vendorCost - paid), updatedAt: new Date().toISOString(), updatedBy: currentUser?.fullName || 'Staff' };
+      }),
+    }));
+    recordAudit('Reversed Loan / Advance Adjustment', 'LoanAdvance', id, undefined, 'Adjustment reversed without cash movement');
+    return true;
   };
 
   // Customers
@@ -1203,6 +1281,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...parsed,
           backupSchedule: parsed.backupSchedule || INITIAL_BACKUP_SCHEDULE,
           backupLogs: parsed.backupLogs || INITIAL_BACKUP_LOGS,
+          loanAdvanceAdjustments: parsed.loanAdvanceAdjustments || [],
         });
         recordAudit('Restored Backup', 'Settings', 'restore', undefined, 'Restored database from backup file');
         return true;
@@ -1228,6 +1307,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       expenses: [],
       transfers: [],
       loanAdvances: [],
+      loanAdvanceAdjustments: [],
       auditLogs: [],
       openingBalances: {
         Cash: 0,
@@ -1264,6 +1344,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       expenses: DEMO_EXPENSES,
       transfers: DEMO_TRANSFERS,
       loanAdvances: [],
+      loanAdvanceAdjustments: [],
       auditLogs: DEMO_AUDIT_LOGS,
       openingBalances: DEMO_OPENING_BALANCES,
       backupSchedule: data.backupSchedule || INITIAL_BACKUP_SCHEDULE,
@@ -1325,7 +1406,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return balances;
-  }, [data.openingBalances, data.partialPayments, data.expenses, data.transfers]);
+  }, [data.openingBalances, data.partialPayments, data.expenses, data.transfers, data.loanAdvances]);
 
   // TOTAL AVAILABLE MONEY = Cash + bKash + Nagad + Rocket + Bank + Other
   // Customer due must NOT be added. Vendor payable must NOT be deducted.
