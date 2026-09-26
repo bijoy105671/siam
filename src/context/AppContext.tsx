@@ -100,7 +100,7 @@ interface AppContextType {
   currentUser: User | null;
   users: User[];
   login: (username: string, password: string) => boolean;
-  logout: () => void;
+  logout: () => Promise<void>;
   addUser: (user: Omit<User, 'id' | 'createdAt'>) => void;
   updateUser: (id: string, updates: Partial<User>) => void;
   deleteUser: (id: string) => void;
@@ -523,13 +523,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const logout = () => {
+  const logout = async (): Promise<void> => {
+    if (USE_SERVER_API) {
+      try {
+        await api.logout();
+      } catch (error) {
+        console.error('Server logout failed:', error);
+        window.alert(error instanceof Error ? error.message : 'Sign out failed. Please try again.');
+        return;
+      }
+    }
     if (currentUser) {
       recordAudit('User Logout', 'User', currentUser.id, undefined, `${currentUser.fullName} logged out`);
     }
-    // Switch to first staff or guest
-    const otherUser = data.users.find((u: User) => u.id !== data.currentUserId) || data.users[0];
-    setData((prev: any) => ({ ...prev, currentUserId: otherUser?.id }));
+    // Clear the active session locally. In production the server session is destroyed above.
+    setData((prev: any) => ({ ...prev, currentUserId: undefined }));
   };
 
   const addUser = (user: Omit<User, 'id' | 'createdAt'>) => {
