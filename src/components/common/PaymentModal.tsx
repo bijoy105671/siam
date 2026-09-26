@@ -47,13 +47,13 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
     try {
       await addPartialPayment({
-      transactionId: transaction.id,
-      paymentType,
-      amount: numAmount,
-      paymentMethod: method,
-      date: todayStr,
-      time: timeStr,
-      note: note || `Partial payment for Ref: ${transaction.invoiceNumber}`,
+        transactionId: transaction.id,
+        paymentType,
+        amount: numAmount,
+        paymentMethod: method,
+        date: todayStr,
+        time: timeStr,
+        note: note || `Partial payment for Ref: ${transaction.invoiceNumber}`,
         reference: transaction.invoiceNumber,
       });
       setRecordedAmount(numAmount);
@@ -63,9 +63,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     } finally {
       setIsSubmitting(false);
     }
-
-    /*
-    setIsSuccess(true);
   };
 
   const remainingAfterPayment = Math.max(0, maxDue - recordedAmount);
