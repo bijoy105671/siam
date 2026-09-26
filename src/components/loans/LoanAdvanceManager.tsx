@@ -5,7 +5,7 @@ import { LoanAdvanceDirection, LoanAdvanceKind, LoanAdvancePartyType, PaymentMet
 import { formatCurrency } from '../../utils/formatters';
 
 export const LoanAdvanceManager: React.FC = () => {
-  const { customers, vendors, loanAdvances, loanAdvanceAdjustments, transactions, addLoanAdvance, updateLoanAdvance, deleteLoanAdvance, adjustLoanAdvance, deleteLoanAdvanceAdjustment } = useApp();
+  const { customers, vendors, loanAdvances, loanAdvanceAdjustments, transactions, addLoanAdvance, updateLoanAdvance, deleteLoanAdvance, adjustLoanAdvance, deleteLoanAdvanceAdjustment, addCustomer, addVendor } = useApp();
   const [partyType, setPartyType] = useState<LoanAdvancePartyType>('customer');
   const [partyId, setPartyId] = useState('');
   const [kind, setKind] = useState<LoanAdvanceKind>('advance');
@@ -15,6 +15,49 @@ export const LoanAdvanceManager: React.FC = () => {
   const [note, setNote] = useState('');
   const [reference, setReference] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [profileModal, setProfileModal] = useState<'customer' | 'vendor' | null>(null);
+  const [profileName, setProfileName] = useState('');
+  const [profileMobile, setProfileMobile] = useState('');
+  const [profileWhatsapp, setProfileWhatsapp] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [profileAddress, setProfileAddress] = useState('');
+  const [profileNid, setProfileNid] = useState('');
+  const [profilePassport, setProfilePassport] = useState('');
+  const [profilePassportExpiry, setProfilePassportExpiry] = useState('');
+  const [profileCompany, setProfileCompany] = useState('');
+  const [profileAccountInfo, setProfileAccountInfo] = useState('');
+  const [profileOpeningBalance, setProfileOpeningBalance] = useState<number | ''>(0);
+
+  const openProfileModal = (type: 'customer' | 'vendor') => {
+    setProfileModal(type);
+    setProfileName(''); setProfileMobile(''); setProfileWhatsapp(''); setProfileEmail('');
+    setProfileAddress(''); setProfileNid(''); setProfilePassport(''); setProfilePassportExpiry('');
+    setProfileCompany(''); setProfileAccountInfo(''); setProfileOpeningBalance(0);
+  };
+  const closeProfileModal = () => setProfileModal(null);
+  const saveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profileName.trim()) { alert('Name is required.'); return; }
+    if (profileModal === 'customer') {
+      const created = addCustomer({
+        name: profileName.trim(), mobile: profileMobile.trim(),
+        whatsapp: profileWhatsapp.trim() || profileMobile.trim(), email: profileEmail.trim(),
+        address: profileAddress.trim(), nid: profileNid.trim(),
+        passportNumber: profilePassport.trim(), passportExpiry: profilePassportExpiry || undefined,
+        openingDue: Number(profileOpeningBalance) || 0,
+      });
+      setPartyType('customer'); setPartyId(created.id);
+    } else if (profileModal === 'vendor') {
+      const created = addVendor({
+        name: profileName.trim(), company: profileCompany.trim(), mobile: profileMobile.trim(),
+        whatsapp: profileWhatsapp.trim() || profileMobile.trim(), email: profileEmail.trim(),
+        address: profileAddress.trim(), accountInfo: profileAccountInfo.trim(),
+        openingPayable: Number(profileOpeningBalance) || 0,
+      });
+      setPartyType('vendor'); setPartyId(created.id);
+    }
+    closeProfileModal();
+  };
 
   const parties = partyType === 'customer' ? customers : vendors;
   const selectedParty = parties.find((p) => p.id === partyId);
@@ -160,7 +203,15 @@ export const LoanAdvanceManager: React.FC = () => {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div><label className="block text-xs font-medium mb-1">Party</label><select value={partyType} onChange={e => {setPartyType(e.target.value as LoanAdvancePartyType);setPartyId('')}} className="w-full px-3 py-2 text-xs border rounded-lg"><option value="customer">Customer</option><option value="vendor">Vendor</option></select></div>
-          <div><label className="block text-xs font-medium mb-1">{partyType === 'customer' ? 'Customer' : 'Vendor'}</label><select required value={partyId} onChange={e => setPartyId(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg"><option value="">Select {partyType}</option>{parties.map(p => <option key={p.id} value={p.id}>{p.name}{'mobile' in p && p.mobile ? ' — ' + p.mobile : ''}</option>)}</select></div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-medium">{partyType === 'customer' ? 'Customer' : 'Vendor'}</label>
+              <button type="button" onClick={() => openProfileModal(partyType)} className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1"><Plus className="w-3 h-3"/> Add {partyType === 'customer' ? 'Customer' : 'Vendor'}</button>
+            </div>
+            <select required value={partyId} onChange={e => setPartyId(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg">
+              <option value="">Select {partyType}</option>{parties.map(p => <option key={p.id} value={p.id}>{p.name}{'mobile' in p && p.mobile ? ' — ' + p.mobile : ''}</option>)}
+            </select>
+          </div>
           <div><label className="block text-xs font-medium mb-1">Type</label><select value={kind} onChange={e => setKind(e.target.value as LoanAdvanceKind)} className="w-full px-3 py-2 text-xs border rounded-lg"><option value="advance">Advance Payment</option><option value="loan">Loan</option></select></div>
           <div><label className="block text-xs font-medium mb-1">Direction</label><select value={direction} onChange={e => setDirection(e.target.value as LoanAdvanceDirection)} className="w-full px-3 py-2 text-xs border rounded-lg"><option value="received">Received (+ Account)</option><option value="given">Given (- Account)</option></select></div>
           <div><label className="block text-xs font-medium mb-1">Amount (৳)</label><input required min="0" type="number" value={amount} onChange={e => setAmount(e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-3 py-2 text-base font-bold border rounded-lg" placeholder="0"/></div>
@@ -207,6 +258,34 @@ export const LoanAdvanceManager: React.FC = () => {
           })}{!adjustmentRows.length && <tr><td colSpan={6} className="p-8 text-center text-slate-400">No adjustments yet.</td></tr>}</tbody>
         </table></div>
       </div>
+
+      {profileModal && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden border border-slate-200">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+              <div><h3 className="font-bold text-sm">Add {profileModal === 'customer' ? 'Customer' : 'Vendor'} Profile</h3><p className="text-[10px] text-slate-300 mt-0.5">Saved to the main list and selected here automatically.</p></div>
+              <button type="button" onClick={closeProfileModal} className="text-slate-400 hover:text-white"><X className="w-5 h-5"/></button>
+            </div>
+            <form onSubmit={saveProfile} className="p-5 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="block text-xs font-medium mb-1">Name *</label><input required value={profileName} onChange={e=>setProfileName(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg"/></div>
+                {profileModal === 'vendor' && <div><label className="block text-xs font-medium mb-1">Company</label><input value={profileCompany} onChange={e=>setProfileCompany(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg"/></div>}
+                <div><label className="block text-xs font-medium mb-1">Mobile</label><input value={profileMobile} onChange={e=>setProfileMobile(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg"/></div>
+                <div><label className="block text-xs font-medium mb-1">WhatsApp</label><input value={profileWhatsapp} onChange={e=>setProfileWhatsapp(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg"/></div>
+                <div><label className="block text-xs font-medium mb-1">Email</label><input type="email" value={profileEmail} onChange={e=>setProfileEmail(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg"/></div>
+                <div><label className="block text-xs font-medium mb-1">{profileModal === 'customer' ? 'Opening Due' : 'Opening Payable'} (৳)</label><input type="number" min="0" value={profileOpeningBalance} onChange={e=>setProfileOpeningBalance(e.target.value===''?'':Number(e.target.value))} className="w-full px-3 py-2 text-xs font-bold border rounded-lg"/></div>
+                <div className="sm:col-span-2"><label className="block text-xs font-medium mb-1">Address</label><input value={profileAddress} onChange={e=>setProfileAddress(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg"/></div>
+                {profileModal === 'customer' ? <>
+                  <div><label className="block text-xs font-medium mb-1">NID</label><input value={profileNid} onChange={e=>setProfileNid(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg"/></div>
+                  <div><label className="block text-xs font-medium mb-1">Passport Number</label><input value={profilePassport} onChange={e=>setProfilePassport(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg"/></div>
+                  <div><label className="block text-xs font-medium mb-1">Passport Expiry</label><input type="date" value={profilePassportExpiry} onChange={e=>setProfilePassportExpiry(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg"/></div>
+                </> : <div className="sm:col-span-2"><label className="block text-xs font-medium mb-1">Bank / Account Info</label><input value={profileAccountInfo} onChange={e=>setProfileAccountInfo(e.target.value)} className="w-full px-3 py-2 text-xs border rounded-lg"/></div>}
+              </div>
+              <div className="pt-3 border-t flex justify-end gap-2"><button type="button" onClick={closeProfileModal} className="px-4 py-2 text-xs rounded-lg border text-slate-600">Cancel</button><button type="submit" className="px-5 py-2 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700">Save & Select</button></div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
         <div className="font-semibold text-xs mb-2">Party Net Position</div>
