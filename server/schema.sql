@@ -1,6 +1,3 @@
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS deleted_by uuid REFERENCES users(id);
-CREATE INDEX IF NOT EXISTS idx_transactions_deleted_at ON transactions(deleted_at);
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS users (
@@ -46,9 +43,7 @@ CREATE TABLE IF NOT EXISTS vendors (
   account_info text,
   opening_payable numeric(14,2) NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  deleted_at timestamptz,
-  deleted_by uuid REFERENCES users(id)
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 ALTER TABLE vendors ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
@@ -86,8 +81,14 @@ CREATE TABLE IF NOT EXISTS transactions (
   status text NOT NULL DEFAULT 'DUE',
   notes text,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz,
+  deleted_by uuid REFERENCES users(id)
 );
+
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS deleted_by uuid REFERENCES users(id);
+CREATE INDEX IF NOT EXISTS idx_transactions_deleted_at ON transactions(deleted_at);
 
 CREATE TABLE IF NOT EXISTS payments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
