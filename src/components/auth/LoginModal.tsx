@@ -107,6 +107,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                     <input value={resetUsername} onChange={e => setResetUsername(e.target.value)} placeholder="Admin username" required autoComplete="username" className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg" />
                     {error && <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700">{error}</div>}
                     <button type="button" onClick={requestResetOtp} disabled={isSubmitting} className="w-full py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg">{isSubmitting ? 'Sending OTP...' : 'Send OTP to Email'}</button>
+                  </div>
                 ) : (
                   <div className="space-y-4">
                     <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">OTP sent to <b>bijoy105671@gmail.com</b>. It expires in 10 minutes.</div>
@@ -116,7 +117,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                     {error && <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700">{error}</div>}
                     <button type="button" onClick={verifyReset} disabled={isSubmitting} className="w-full py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg">{isSubmitting ? 'Resetting Password...' : 'Verify OTP & Reset Password'}</button>
                     <button type="button" onClick={() => { setResetStep('request'); setResetOtp(''); setError(''); }} className="w-full text-xs text-slate-500">Resend OTP / Use another username</button>
-                  </form>
+                  </div>
                 )}
               </div>
             </div>
