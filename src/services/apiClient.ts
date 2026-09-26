@@ -118,6 +118,18 @@ export const api = {
     apiRequest<{ ok: boolean }>(`/api/fund-transfers/${encodeURIComponent(id)}/reverse`, { method: 'POST' }),
   accountBalances: () =>
     apiRequest<{ balances: Record<string, number>; total: number }>('/api/accounts/balances'),
+  loanAdvances: () => apiRequest<unknown[]>('/api/loan-advances'),
+  loanAdvanceAdjustments: () => apiRequest<unknown[]>('/api/loan-advances/adjustments'),
+  createLoanAdvance: (input: Record<string, any>) =>
+    apiRequest<{ loanAdvance: unknown }>('/api/loan-advances', { method: 'POST', body: JSON.stringify(input) }),
+  updateLoanAdvance: (id: string, input: Record<string, any>) =>
+    apiRequest<{ loanAdvance: unknown }>(`/api/loan-advances/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  deleteLoanAdvance: (id: string) =>
+    apiRequest<{ ok: boolean }>(`/api/loan-advances/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  adjustLoanAdvance: (id: string, input: Record<string, any>) =>
+    apiRequest<{ adjustment: unknown; transaction: unknown }>(`/api/loan-advances/${encodeURIComponent(id)}/adjust`, { method: 'POST', body: JSON.stringify(input) }),
+  reverseLoanAdvanceAdjustment: (id: string) =>
+    apiRequest<{ ok: boolean }>(`/api/loan-advance-adjustments/${encodeURIComponent(id)}/reverse`, { method: 'POST' }),
   openingBalances: () =>
     apiRequest<unknown[]>('/api/opening-balances'),
   customerLedger: (id: string) =>
