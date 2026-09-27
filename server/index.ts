@@ -654,37 +654,53 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
     const tx = (await client.query('SELECT * FROM transactions WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [req.params.id])).rows[0];
     if (!tx) throw new Error('Transaction not found');
     const body = req.body ?? {};
-    const allowed = ['reminderDate','reminderTime','reminderStatus','reminderNote'];
-    const hasReminder = allowed.some((k) => Object.prototype.hasOwnProperty.call(body, k));
+    const hasReminder = ['reminderDate','reminderTime','reminderStatus','reminderNote'].some((k) => Object.prototype.hasOwnProperty.call(body, k));
     const hasFlightStatus = body.flightStatus !== undefined;
     const hasService = body.serviceId !== undefined;
     const hasVendor = body.vendorId !== undefined;
     const hasVendorCost = body.vendorCost !== undefined;
     const hasSellingPrice = body.sellingPrice !== undefined;
     const hasCustomerDue = body.customerDue !== undefined;
-    if (!hasReminder && !hasFlightStatus && !hasService && !hasVendor && !hasVendorCost && !hasSellingPrice && !hasCustomerDue) throw new Error('No supported transaction update supplied');
+    const hasCustomerPaid = body.customerPaid !== undefined;
+    if (!hasReminder && !hasFlightStatus && !hasService && !hasVendor && !hasVendorCost && !hasSellingPrice && !hasCustomerDue && !hasCustomerPaid) {
+      throw new Error('No supported transaction update supplied');
+    }
+
     const previous = { ...tx };
     let flightDetails = tx.flight_details;
     let serviceId = tx.service_id;
     let vendorId = tx.vendor_id;
     let vendorCost = Number(tx.vendor_cost || 0);
     let sellingPrice = Number(tx.selling_price || 0);
+    let customerPaid = Number(tx.customer_paid || 0);
     let customerDue = Number(tx.customer_due || 0);
-    if (hasSellingPrice || hasCustomerDue) {
-      if (hasSellingPrice) {
-        sellingPrice = Number(body.sellingPrice);
-        if (!Number.isFinite(sellingPrice) || sellingPrice < 0) throw new Error('Selling price must be a valid non-negative number');
-      }
-      if (hasCustomerDue) {
-        customerDue = Number(body.customerDue);
-        if (!Number.isFinite(customerDue) || customerDue < 0) throw new Error('Customer due must be a valid non-negative number');
-      }
-      if (hasSellingPrice && !hasCustomerDue) customerDue = Math.max(0, sellingPrice - Number(tx.customer_paid || 0));
-      if (!hasSellingPrice && hasCustomerDue) sellingPrice = Number(tx.customer_paid || 0) + customerDue;
-      if (sellingPrice < Number(tx.customer_paid || 0)) throw new Error('Selling price cannot be lower than customer paid amount');
-      const expectedDue = Math.max(0, sellingPrice - Number(tx.customer_paid || 0));
-      if (Math.abs(expectedDue - customerDue) > 0.01) throw new Error('Selling price and customer due do not match customer paid amount');
+    const oldCustomerPaid = customerPaid;
+
+    if (hasCustomerPaid) {
+      customerPaid = Number(body.customerPaid);
+      if (!Number.isFinite(customerPaid) || customerPaid < 0) throw new Error('Customer paid must be a valid non-negative number');
     }
+    if (hasSellingPrice) {
+      sellingPrice = Number(body.sellingPrice);
+      if (!Number.isFinite(sellingPrice) || sellingPrice < 0) throw new Error('Selling price must be a valid non-negative number');
+    }
+    if (hasCustomerDue) {
+      customerDue = Number(body.customerDue);
+      if (!Number.isFinite(customerDue) || customerDue < 0) throw new Error('Customer due must be a valid non-negative number');
+    }
+    if (hasSellingPrice || hasCustomerPaid || hasCustomerDue) {
+      if (!hasSellingPrice && !hasCustomerDue) {
+        customerDue = Math.max(0, sellingPrice - customerPaid);
+      } else if (hasSellingPrice && !hasCustomerDue) {
+        customerDue = Math.max(0, sellingPrice - customerPaid);
+      } else if (!hasSellingPrice && hasCustomerDue) {
+        sellingPrice = customerPaid + customerDue;
+      }
+      if (sellingPrice < customerPaid) throw new Error('Selling price cannot be lower than customer paid amount');
+      const expectedDue = Math.max(0, sellingPrice - customerPaid);
+      if (Math.abs(expectedDue - customerDue) > 0.01) throw new Error('Selling price, customer paid and customer due do not match');
+    }
+
     if (hasService) {
       const requestedServiceId = body.serviceId ? String(body.serviceId) : null;
       if (requestedServiceId) {
@@ -693,6 +709,7 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
       }
       serviceId = requestedServiceId;
     }
+
     if (hasVendor) {
       const requestedVendorId = body.vendorId ? String(body.vendorId) : null;
       if (requestedVendorId) {
@@ -701,6 +718,7 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
       }
       vendorId = requestedVendorId;
     }
+
     if (hasVendorCost) {
       vendorCost = Number(body.vendorCost);
       if (!Number.isFinite(vendorCost) || vendorCost < 0) throw new Error('Vendor cost must be a valid non-negative number');
@@ -708,6 +726,7 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
     if (hasVendorCost && vendorCost < Number(tx.vendor_paid || 0)) {
       throw new Error('Vendor cost cannot be lower than vendor paid amount');
     }
+
     if (hasFlightStatus) {
       if (!flightDetails) throw new Error('Transaction has no flight details');
       const details = typeof flightDetails === 'string' ? JSON.parse(flightDetails) : flightDetails;
@@ -722,6 +741,58 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
       });
       flightDetails = details;
     }
+
+    if (hasCustomerPaid && customerPaid !== oldCustomerPaid) {
+      const difference = customerPaid - oldCustomerPaid;
+      if (difference > 0) {
+        const fallbackMethod = await client.query(
+          "SELECT payment_method FROM payments WHERE transaction_id=$1 AND payment_type='customer' AND reversed_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1",
+          [tx.id]
+        );
+        const method = String(body.customerPaymentMethod || fallbackMethod.rows[0]?.payment_method || 'cash').toLowerCase();
+        if (!ACCOUNT_METHODS.has(method)) throw new Error('Invalid customer payment method for payment correction');
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [method]);
+        const balance = await accountBalance(client, method);
+        if (difference > balance) throw new Error(`Insufficient balance for additional customer payment (balance: ${balance})`);
+        const payment = (await client.query(
+          "INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,'customer',$2,$3,$4,$5,$6,$7) RETURNING *",
+          [tx.id, tx.customer_id, difference, method, req.session.userId, body.paymentNote || 'Admin historical payment correction', body.paymentReference || null]
+        )).rows[0];
+        await addAccountEntry(client, method, difference, 'customer_payment_correction', tx.id, req.session.userId!, body.paymentNote || 'Admin historical payment correction', payment.id);
+        await audit(client, req.session.userId!, 'CUSTOMER_PAYMENT_ADDED_BY_ADMIN_CORRECTION', 'Payment', payment.id, null, payment);
+      } else {
+        let remaining = Math.abs(difference);
+        const payments = (await client.query(
+          "SELECT * FROM payments WHERE transaction_id=$1 AND payment_type='customer' AND reversed_at IS NULL ORDER BY created_at DESC, id DESC FOR UPDATE",
+          [tx.id]
+        )).rows;
+        const totalHistorical = payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+        if (remaining > totalHistorical + 0.01) throw new Error('Customer paid correction exceeds historical customer payments');
+
+        for (const payment of payments) {
+          if (remaining <= 0.01) break;
+          const amount = Number(payment.amount || 0);
+          const reduceBy = Math.min(amount, remaining);
+          const entries = (await client.query(
+            'SELECT * FROM account_entries WHERE payment_id=$1 AND reversed_at IS NULL FOR UPDATE',
+            [payment.id]
+          )).rows;
+          if (entries.length !== 1) throw new Error('Historical customer payment accounting entry is missing or ambiguous');
+          if (reduceBy >= amount - 0.01) {
+            await client.query('UPDATE account_entries SET reversed_at=now() WHERE payment_id=$1 AND reversed_at IS NULL', [payment.id]);
+            await client.query('UPDATE payments SET reversed_at=now(), reversed_by=$1 WHERE id=$2', [req.session.userId, payment.id]);
+            await audit(client, req.session.userId!, 'CUSTOMER_PAYMENT_REVERSED_BY_ADMIN_CORRECTION', 'Payment', payment.id, payment, { reversedAt: new Date().toISOString(), correction: true });
+          } else {
+            const newAmount = amount - reduceBy;
+            await client.query('UPDATE payments SET amount=$1 WHERE id=$2', [newAmount, payment.id]);
+            await client.query('UPDATE account_entries SET amount=amount-$1 WHERE payment_id=$2 AND reversed_at IS NULL', [reduceBy, payment.id]);
+            await audit(client, req.session.userId!, 'CUSTOMER_PAYMENT_AMOUNT_CORRECTED_BY_ADMIN', 'Payment', payment.id, payment, { ...payment, amount: newAmount });
+          }
+          remaining -= reduceBy;
+        }
+      }
+    }
+
     const result = await client.query(
       `UPDATE transactions
        SET reminder_date=CASE WHEN $1::boolean THEN $2::date ELSE reminder_date END,
@@ -734,8 +805,9 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
            vendor_cost=CASE WHEN $16::boolean THEN $17::numeric ELSE vendor_cost END,
            vendor_due=CASE WHEN $16::boolean THEN GREATEST(0,$17::numeric-vendor_paid) ELSE vendor_due END,
            selling_price=CASE WHEN $18::boolean THEN $19::numeric ELSE selling_price END,
-           customer_due=CASE WHEN $18::boolean THEN $20::numeric ELSE customer_due END,
-           status=CASE WHEN $18::boolean THEN CASE WHEN $20::numeric=0 THEN 'PAID' WHEN customer_paid>0 THEN 'PARTIAL' ELSE 'DUE' END ELSE status END,
+           customer_paid=CASE WHEN $21::boolean THEN $22::numeric ELSE customer_paid END,
+           customer_due=CASE WHEN ($18::boolean OR $21::boolean) THEN $20::numeric ELSE customer_due END,
+           status=CASE WHEN ($18::boolean OR $21::boolean) THEN CASE WHEN $20::numeric=0 THEN 'PAID' WHEN $22::numeric>0 THEN 'PARTIAL' ELSE 'DUE' END ELSE status END,
            gross_profit=CASE WHEN $16::boolean OR $18::boolean THEN (CASE WHEN $18::boolean THEN $19::numeric ELSE selling_price END) - (CASE WHEN $16::boolean THEN $17::numeric ELSE vendor_cost END) ELSE gross_profit END,
            updated_at=now()
        WHERE id=$11
@@ -750,17 +822,20 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
         hasService, serviceId,
         hasVendor, vendorId,
         hasVendorCost, vendorCost,
-        hasSellingPrice || hasCustomerDue, sellingPrice, customerDue
+        hasSellingPrice || hasCustomerDue || hasCustomerPaid, sellingPrice, customerDue,
+        hasCustomerPaid, customerPaid
       ]
     );
+
     if (hasVendor && String(vendorId || '') !== String(tx.vendor_id || '')) {
       await client.query(
-        'UPDATE payments SET entity_id=$1 WHERE transaction_id=$2 AND payment_type=\'vendor\' AND reversed_at IS NULL',
+        "UPDATE payments SET entity_id=$1 WHERE transaction_id=$2 AND payment_type='vendor' AND reversed_at IS NULL",
         [vendorId, tx.id]
       );
     }
-    const event = hasVendor || hasVendorCost || hasService || hasSellingPrice || hasCustomerDue
-      ? 'TRANSACTION_LINKS_UPDATED'
+
+    const event = hasVendor || hasVendorCost || hasService || hasSellingPrice || hasCustomerDue || hasCustomerPaid
+      ? 'TRANSACTION_FINANCIAL_LINKS_UPDATED'
       : hasFlightStatus
         ? 'FLIGHT_STATUS_UPDATED'
         : 'REMINDER_UPDATED';
@@ -770,7 +845,9 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
   } catch (e) {
     await client.query('ROLLBACK');
     res.status(400).json({ error: e instanceof Error ? e.message : 'Transaction update failed' });
-  } finally { client.release(); }
+  } finally {
+    client.release();
+  }
 });
 
 app.get('/api/admin/recycle-bin', criticalAdminOnly, async (_req, res) => {
