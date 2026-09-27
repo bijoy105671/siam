@@ -64,9 +64,14 @@ export const api = {
   health: () => apiRequest<{ ok: boolean }>('/api/health'),
   me: () => apiRequest<{ user: unknown }>('/api/auth/me'),
   login: (username: string, password: string) =>
-    apiRequest<{ user: unknown }>('/api/auth/login', {
+    apiRequest<{ user?: unknown; requiresOtp?: boolean; challengeId?: string; message?: string }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
+    }),
+  verifyLoginOtp: (challengeId: string, otp: string) =>
+    apiRequest<{ user: unknown }>('/api/auth/verify-login-otp', {
+      method: 'POST',
+      body: JSON.stringify({ challengeId, otp }),
     }),
   logout: () => apiRequest<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
   changePassword: (currentPassword: string, newPassword: string) =>
