@@ -339,33 +339,101 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => { cancelled = true; };
   }, [currentUser?.id]);
 
-  // Keep CURRENT BALANCE — ALL ACCOUNTS fresh from PostgreSQL without requiring logout/login.
+  // Keep all server-backed data fresh so balances and ledgers never depend on stale login state.
   useEffect(() => {
     if (!USE_SERVER_API || !currentUser) return;
     let cancelled = false;
     let refreshing = false;
-    const refreshBalance = async () => {
+
+    const refreshLiveData = async () => {
       if (cancelled || refreshing || document.visibilityState === 'hidden') return;
       refreshing = true;
       try {
-        const balances = await api.accountBalances();
+        const [balances, dashboard, customerRows, vendorRows, transactionRows, loanRows, adjustmentRows] = await Promise.all([
+          api.accountBalances(),
+          api.dashboard(),
+          api.customers(),
+          api.vendors(),
+          api.transactions(500),
+          api.loanAdvances(),
+          api.loanAdvanceAdjustments(),
+        ]);
         if (cancelled) return;
-        const raw = balances.balances || {};
-        setServerAccountBalances({
-          Cash: Number(raw.cash || 0), bKash: Number(raw.bkash || 0), Nagad: Number(raw.nagad || 0),
-          Rocket: Number(raw.rocket || 0), Bank: Number(raw.bank || 0), Card: Number(raw.card || 0), Other: Number(raw.other || 0),
+
+        const mappedBalances: AccountBalances = {
+          Cash: Number((balances.balances || {}).cash || 0),
+          bKash: Number((balances.balances || {}).bkash || 0),
+          Nagad: Number((balances.balances || {}).nagad || 0),
+          Rocket: Number((balances.balances || {}).rocket || 0),
+          Bank: Number((balances.balances || {}).bank || 0),
+          Card: Number((balances.balances || {}).card || 0),
+          Other: Number((balances.balances || {}).other || 0),
+        };
+        const t = dashboard.today || {} as any;
+        setServerAccountBalances(mappedBalances);
+        setServerTodaySummary({
+          totalSales: Number(t.total_sales || 0),
+          totalReceived: Number(t.total_received || 0),
+          totalExpense: Number(t.total_expense || 0),
+          totalVendorPayment: Number(t.total_vendor_payment || 0),
+          grossProfit: Number(t.gross_profit || 0),
+          loss: Number(t.loss || 0),
+          netProfit: Number(t.net_profit || 0),
         });
+
+        const mapCustomer = (row: any): Customer => ({
+          id: String(row.id), name: String(row.name || ''), mobile: String(row.mobile || ''),
+          whatsapp: row.whatsapp || undefined, email: row.email || undefined, address: row.address || undefined,
+          nid: row.nid || undefined, passportNumber: row.passport_number ?? row.passportNumber ?? undefined,
+          passportExpiry: row.passport_expiry ?? row.passportExpiry ?? undefined, photo: row.photo || undefined,
+          notes: row.notes || undefined, openingDue: Number(row.opening_due || 0),
+          createdAt: row.created_at || new Date().toISOString(),
+        });
+        const mapVendor = (row: any): Vendor => ({
+          id: String(row.id), name: String(row.name || ''), company: row.company || undefined,
+          mobile: row.mobile || '', whatsapp: row.whatsapp || undefined, email: row.email || undefined,
+          address: row.address || undefined, accountInfo: row.account_info ?? row.accountInfo ?? undefined,
+          openingPayable: Number(row.opening_payable || 0), createdAt: row.created_at || new Date().toISOString(),
+        });
+        const mappedTransactions = (transactionRows as any[]).map((row) => {
+          const mapped = (typeof row === 'object' && row) ? row : {};
+          return {
+            ...mapped,
+            id: String(mapped.id), customerId: String(mapped.customer_id ?? mapped.customerId ?? ''),
+            customerName: String(mapped.customer_name ?? mapped.customerName ?? ''), customerMobile: String(mapped.customer_mobile ?? mapped.customerMobile ?? ''),
+            vendorId: mapped.vendor_id ? String(mapped.vendor_id) : undefined, vendorName: mapped.vendor_name ?? mapped.vendorName ?? undefined,
+            serviceId: mapped.service_id ? String(mapped.service_id) : undefined, serviceName: String(mapped.service_name ?? mapped.serviceName ?? ''),
+            invoiceNumber: mapped.invoice_number ?? mapped.invoiceNumber, createdAt: mapped.created_at ?? mapped.createdAt,
+            updatedAt: mapped.updated_at ?? mapped.updatedAt, createdBy: mapped.created_by ?? mapped.createdBy,
+            sellingPrice: Number(mapped.selling_price ?? mapped.sellingPrice ?? 0), customerPaid: Number(mapped.customer_paid ?? mapped.customerPaid ?? 0),
+            customerDue: Number(mapped.customer_due ?? mapped.customerDue ?? 0), vendorCost: Number(mapped.vendor_cost ?? mapped.vendorCost ?? 0),
+            vendorPaid: Number(mapped.vendor_paid ?? mapped.vendorPaid ?? 0), vendorDue: Number(mapped.vendor_due ?? mapped.vendorDue ?? 0),
+            grossProfit: Number(mapped.gross_profit ?? mapped.grossProfit ?? 0),
+            flightDetails: mapped.flight_details ? (typeof mapped.flight_details === 'string' ? JSON.parse(mapped.flight_details) : mapped.flight_details) : mapped.flightDetails,
+            reminderDate: mapped.reminder_date ?? mapped.reminderDate, reminderTime: mapped.reminder_time ?? mapped.reminderTime,
+            reminderStatus: mapped.reminder_status ?? mapped.reminderStatus, reminderNote: mapped.reminder_note ?? mapped.reminderNote,
+          } as Transaction;
+        });
+        setData((prev: any) => ({
+          ...prev,
+          customers: (customerRows as any[]).map(mapCustomer),
+          vendors: (vendorRows as any[]).map(mapVendor),
+          transactions: mappedTransactions,
+          loanAdvances: (loanRows as any[]).map(mapServerLoanAdvance),
+          loanAdvanceAdjustments: (adjustmentRows as any[]).map(mapServerLoanAdjustment),
+        }));
       } catch (error) {
-        console.error('Live account balance refresh failed:', error);
+        console.error('Live server refresh failed:', error);
       } finally {
         refreshing = false;
       }
     };
-    void refreshBalance();
-    const timer = window.setInterval(refreshBalance, 15000);
-    const handleFocus = () => { void refreshBalance(); };
-    const handleVisibility = () => { if (document.visibilityState === 'visible') void refreshBalance(); };
-    const handleOnline = () => { void refreshBalance(); };
+
+    void refreshLiveData();
+    const timer = window.setInterval(refreshLiveData, 15000);
+    const handleFocus = () => { void refreshLiveData(); };
+    const handleVisibility = () => { if (document.visibilityState === 'visible') void refreshLiveData(); };
+    const handleOnline = () => { void refreshLiveData(); };
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('online', handleOnline);
@@ -2230,3 +2298,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         users: data.users,
         login,
+        logout,
+        addUser,
+        updateUser,
+        deleteUser,
+        customers: data.customers,
+        vendors: data.vendors,
+        services: data.services,
+        expenseCategories: data.expenseCategories,
+        transactions: data.transactions,
+        partialPayments: data.partialPayments,
+        expenses: data.expenses,
+        transfers: data.transfers,
+        loanAdvances: data.loanAdvances || [],
+        loanAdvanceAdjustments: data.loanAdvanceAdjustments || [],
+        auditLogs: data.auditLogs,
+        settings: data.settings,
+        openingBalances: data.openingBalances,
+        accountBalances,
+        totalAvailableMoney,
+        totalCustomerReceivable,
+        totalVendorPayable,
+        todaySummary,
+        upcomingFlights,
+        todayReminders,
+        overdueReminders,
+        createOneEntry,
+        createOneEntryAsync,
+        updateTransaction,
+        deleteTransaction,
+        updateFlightStatus,
+        addPartialPayment,
+        addCustomer,
+        addCustomerAsync,
+        updateCustomer,
+        addVendor,
+        addVendorAsync,
+        updateVendor,
+        addExpense,
+        deleteExpense,
+        updateExpenseCategories,
+        addFundTransfer,
+        addLoanAdvance,
+        addLoanAdvanceAsync,
+        updateLoanAdvance,
+        updateLoanAdvanceAsync,
+        deleteLoanAdvance,
+        deleteLoanAdvanceAsync,
+        adjustLoanAdvance,
+        adjustLoanAdvanceAsync,
+        deleteLoanAdvanceAdjustment,
+        deleteLoanAdvanceAdjustmentAsync,
+        updateOpeningBalance,
+        updateSettings,
+        updateServices,
+        completeReminder,
+        snoozeReminder,
+        backupSchedule: data.backupSchedule || INITIAL_BACKUP_SCHEDULE,
+        backupLogs: data.backupLogs || INITIAL_BACKUP_LOGS,
+        updateBackupSchedule,
+        triggerEncryptedBackup,
+        restoreFromEncryptedBackup,
+        testBackupDestination,
+        deleteBackupLog,
+        clearBackupLogs,
+        exportBackup,
+        importBackup,
+        clearAllInputData,
+        loadDemoSampleData,
+        resetToSampleData,
+        getCustomerLedger,
+        getVendorLedger,
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = () => {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useApp must be used within AppProvider');
+  return ctx;
+};
