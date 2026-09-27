@@ -74,7 +74,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   // This makes Today/Yesterday/Custom work consistently on phone and desktop.
   const normalizeTransactionDate = (value: unknown) => {
     if (typeof value !== 'string') return '';
-    const match = value.trim().match(/^(\\d{4}-\\d{2}-\\d{2})/);
+    const match = value.trim().match(/^(\d{4}-\d{2}-\d{2})/);
     return match ? match[1] : value.trim();
   };
 
