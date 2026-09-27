@@ -659,10 +659,12 @@ app.patch('/api/transactions/:id', historicalChangeAdminOnly, async (req, res) =
     const hasService = body.serviceId !== undefined;
     const hasVendor = body.vendorId !== undefined;
     const hasVendorCost = body.vendorCost !== undefined;
+    const hasVendorPaid = body.vendorPaid !== undefined;
+    const hasVendorDue = body.vendorDue !== undefined;
     const hasSellingPrice = body.sellingPrice !== undefined;
     const hasCustomerDue = body.customerDue !== undefined;
     const hasCustomerPaid = body.customerPaid !== undefined;
-    if (!hasReminder && !hasFlightStatus && !hasService && !hasVendor && !hasVendorCost && !hasSellingPrice && !hasCustomerDue && !hasCustomerPaid) {
+    if (!hasReminder && !hasFlightStatus && !hasService && !hasVendor && !hasVendorCost && !hasVendorPaid && !hasVendorDue && !hasSellingPrice && !hasCustomerDue && !hasCustomerPaid) {
       throw new Error('No supported transaction update supplied');
     }
 
@@ -671,6 +673,9 @@ app.patch('/api/transactions/:id', historicalChangeAdminOnly, async (req, res) =
     let serviceId = tx.service_id;
     let vendorId = tx.vendor_id;
     let vendorCost = Number(tx.vendor_cost || 0);
+    let vendorPaid = Number(tx.vendor_paid || 0);
+    let vendorDue = Number(tx.vendor_due || 0);
+    const oldVendorPaid = vendorPaid;
     let sellingPrice = Number(tx.selling_price || 0);
     let customerPaid = Number(tx.customer_paid || 0);
     let customerDue = Number(tx.customer_due || 0);
@@ -723,8 +728,25 @@ app.patch('/api/transactions/:id', historicalChangeAdminOnly, async (req, res) =
       vendorCost = Number(body.vendorCost);
       if (!Number.isFinite(vendorCost) || vendorCost < 0) throw new Error('Vendor cost must be a valid non-negative number');
     }
-    if (hasVendorCost && vendorCost < Number(tx.vendor_paid || 0)) {
-      throw new Error('Vendor cost cannot be lower than vendor paid amount');
+    if (hasVendorPaid) {
+      vendorPaid = Number(body.vendorPaid);
+      if (!Number.isFinite(vendorPaid) || vendorPaid < 0) throw new Error('Vendor paid must be a valid non-negative number');
+    }
+    if (hasVendorDue) {
+      vendorDue = Number(body.vendorDue);
+      if (!Number.isFinite(vendorDue) || vendorDue < 0) throw new Error('Vendor due must be a valid non-negative number');
+    }
+    if (hasVendorCost || hasVendorPaid || hasVendorDue) {
+      if (!hasVendorCost && !hasVendorDue) {
+        vendorDue = Math.max(0, vendorCost - vendorPaid);
+      } else if (hasVendorCost && !hasVendorDue) {
+        vendorDue = Math.max(0, vendorCost - vendorPaid);
+      } else if (!hasVendorCost && hasVendorDue) {
+        vendorCost = vendorPaid + vendorDue;
+      }
+      if (vendorCost < vendorPaid) throw new Error('Vendor cost cannot be lower than vendor paid amount');
+      const expectedVendorDue = Math.max(0, vendorCost - vendorPaid);
+      if (Math.abs(expectedVendorDue - vendorDue) > 0.01) throw new Error('Vendor cost, vendor paid and vendor due do not match');
     }
 
     if (hasFlightStatus) {
@@ -740,6 +762,57 @@ app.patch('/api/transactions/:id', historicalChangeAdminOnly, async (req, res) =
         note: body.note ? String(body.note) : `Status changed from ${oldStatus} to ${details.ticketStatus}`,
       });
       flightDetails = details;
+    }
+
+    if (hasVendorPaid && vendorPaid !== oldVendorPaid) {
+      const difference = vendorPaid - oldVendorPaid;
+      if (!vendorId && vendorPaid > 0) throw new Error('Vendor must be linked before recording vendor paid amount');
+      if (difference > 0) {
+        const fallbackMethod = await client.query(
+          "SELECT payment_method FROM payments WHERE transaction_id=$1 AND payment_type='vendor' AND reversed_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1",
+          [tx.id]
+        );
+        const method = String(body.vendorPaymentMethod || fallbackMethod.rows[0]?.payment_method || 'cash').toLowerCase();
+        if (!ACCOUNT_METHODS.has(method)) throw new Error('Invalid vendor payment method for payment correction');
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [method]);
+        const balance = await accountBalance(client, method);
+        if (difference > balance) throw new Error(`Insufficient balance for vendor payment correction (balance: ${balance})`);
+        const payment = (await client.query(
+          "INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,'vendor',$2,$3,$4,$5,$6,$7) RETURNING *",
+          [tx.id, vendorId, difference, method, req.session.userId, body.paymentNote || 'Admin historical vendor payment correction', body.paymentReference || null]
+        )).rows[0];
+        await addAccountEntry(client, method, -difference, 'vendor_payment_correction', tx.id, req.session.userId!, body.paymentNote || 'Admin historical vendor payment correction', payment.id);
+        await audit(client, req.session.userId!, 'VENDOR_PAYMENT_ADDED_BY_ADMIN_CORRECTION', 'Payment', payment.id, null, payment);
+      } else {
+        let remaining = Math.abs(difference);
+        const payments = (await client.query(
+          "SELECT * FROM payments WHERE transaction_id=$1 AND payment_type='vendor' AND reversed_at IS NULL ORDER BY created_at DESC, id DESC FOR UPDATE",
+          [tx.id]
+        )).rows;
+        const totalHistorical = payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+        if (remaining > totalHistorical + 0.01) throw new Error('Vendor paid correction exceeds historical vendor payments');
+        for (const payment of payments) {
+          if (remaining <= 0.01) break;
+          const amount = Number(payment.amount || 0);
+          const reduceBy = Math.min(amount, remaining);
+          const entries = (await client.query(
+            'SELECT * FROM account_entries WHERE payment_id=$1 AND reversed_at IS NULL FOR UPDATE',
+            [payment.id]
+          )).rows;
+          if (entries.length !== 1) throw new Error('Historical vendor payment accounting entry is missing or ambiguous');
+          if (reduceBy >= amount - 0.01) {
+            await client.query('UPDATE account_entries SET reversed_at=now() WHERE payment_id=$1 AND reversed_at IS NULL', [payment.id]);
+            await client.query('UPDATE payments SET reversed_at=now(), reversed_by=$1 WHERE id=$2', [req.session.userId, payment.id]);
+            await audit(client, req.session.userId!, 'VENDOR_PAYMENT_REVERSED_BY_ADMIN_CORRECTION', 'Payment', payment.id, payment, { reversedAt: new Date().toISOString(), correction: true });
+          } else {
+            const newAmount = amount - reduceBy;
+            await client.query('UPDATE payments SET amount=$1 WHERE id=$2', [newAmount, payment.id]);
+            await client.query('UPDATE account_entries SET amount=amount+$1 WHERE payment_id=$2 AND reversed_at IS NULL', [reduceBy, payment.id]);
+            await audit(client, req.session.userId!, 'VENDOR_PAYMENT_AMOUNT_CORRECTED_BY_ADMIN', 'Payment', payment.id, payment, { ...payment, amount: newAmount });
+          }
+          remaining -= reduceBy;
+        }
+      }
     }
 
     if (hasCustomerPaid && customerPaid !== oldCustomerPaid) {
@@ -803,12 +876,13 @@ app.patch('/api/transactions/:id', historicalChangeAdminOnly, async (req, res) =
            service_id=CASE WHEN $12::boolean THEN $13::uuid ELSE service_id END,
            vendor_id=CASE WHEN $14::boolean THEN $15::uuid ELSE vendor_id END,
            vendor_cost=CASE WHEN $16::boolean THEN $17::numeric ELSE vendor_cost END,
-           vendor_due=CASE WHEN $16::boolean THEN GREATEST(0,$17::numeric-vendor_paid) ELSE vendor_due END,
-           selling_price=CASE WHEN $18::boolean THEN $19::numeric ELSE selling_price END,
-           customer_paid=CASE WHEN $21::boolean THEN $22::numeric ELSE customer_paid END,
-           customer_due=CASE WHEN ($18::boolean OR $21::boolean) THEN $20::numeric ELSE customer_due END,
-           status=CASE WHEN ($18::boolean OR $21::boolean) THEN CASE WHEN $20::numeric=0 THEN 'PAID' WHEN $22::numeric>0 THEN 'PARTIAL' ELSE 'DUE' END ELSE status END,
-           gross_profit=CASE WHEN $16::boolean OR $18::boolean THEN (CASE WHEN $18::boolean THEN $19::numeric ELSE selling_price END) - (CASE WHEN $16::boolean THEN $17::numeric ELSE vendor_cost END) ELSE gross_profit END,
+           vendor_paid=CASE WHEN $18::boolean THEN $19::numeric ELSE vendor_paid END,
+           vendor_due=CASE WHEN ($16::boolean OR $18::boolean OR $20::boolean) THEN $21::numeric ELSE vendor_due END,
+           selling_price=CASE WHEN $22::boolean THEN $23::numeric ELSE selling_price END,
+           customer_paid=CASE WHEN $25::boolean THEN $26::numeric ELSE customer_paid END,
+           customer_due=CASE WHEN ($22::boolean OR $25::boolean) THEN $24::numeric ELSE customer_due END,
+           status=CASE WHEN ($22::boolean OR $25::boolean) THEN CASE WHEN $24::numeric=0 THEN 'PAID' WHEN $26::numeric>0 THEN 'PARTIAL' ELSE 'DUE' END ELSE status END,
+           gross_profit=CASE WHEN $16::boolean OR $22::boolean THEN (CASE WHEN $22::boolean THEN $23::numeric ELSE selling_price END) - (CASE WHEN $16::boolean THEN $17::numeric ELSE vendor_cost END) ELSE gross_profit END,
            updated_at=now()
        WHERE id=$11
        RETURNING *`,
@@ -822,6 +896,8 @@ app.patch('/api/transactions/:id', historicalChangeAdminOnly, async (req, res) =
         hasService, serviceId,
         hasVendor, vendorId,
         hasVendorCost, vendorCost,
+        hasVendorPaid, vendorPaid,
+        hasVendorDue, vendorDue,
         hasSellingPrice || hasCustomerDue || hasCustomerPaid, sellingPrice, customerDue,
         hasCustomerPaid, customerPaid
       ]
@@ -834,7 +910,7 @@ app.patch('/api/transactions/:id', historicalChangeAdminOnly, async (req, res) =
       );
     }
 
-    const event = hasVendor || hasVendorCost || hasService || hasSellingPrice || hasCustomerDue || hasCustomerPaid
+    const event = hasVendor || hasVendorCost || hasVendorPaid || hasVendorDue || hasService || hasSellingPrice || hasCustomerDue || hasCustomerPaid
       ? 'TRANSACTION_FINANCIAL_LINKS_UPDATED'
       : hasFlightStatus
         ? 'FLIGHT_STATUS_UPDATED'
