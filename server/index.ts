@@ -752,8 +752,8 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
         const method = String(body.customerPaymentMethod || fallbackMethod.rows[0]?.payment_method || 'cash').toLowerCase();
         if (!ACCOUNT_METHODS.has(method)) throw new Error('Invalid customer payment method for payment correction');
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [method]);
-        const balance = await accountBalance(client, method);
-        if (difference > balance) throw new Error(`Insufficient balance for additional customer payment (balance: ${balance})`);
+        // Customer payment is money received by the business, so it increases the selected account.
+        // Do not compare it against the account's existing balance.
         const payment = (await client.query(
           "INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,'customer',$2,$3,$4,$5,$6,$7) RETURNING *",
           [tx.id, tx.customer_id, difference, method, req.session.userId, body.paymentNote || 'Admin historical payment correction', body.paymentReference || null]
