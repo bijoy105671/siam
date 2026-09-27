@@ -503,22 +503,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!USE_SERVER_API) return login(username, pass);
     try {
       const result = await api.login(username.trim(), pass);
-      const u: any = result.user;
-      const mapped: User = {
-        id: String(u.id),
-        username: String(u.username),
-        password: '',
-        fullName: String(u.full_name ?? u.fullName ?? u.username),
-        role: u.role,
-        isActive: u.is_active !== false,
-        createdAt: u.created_at ?? new Date().toISOString(),
-      };
-      setData((prev: any) => ({
-        ...prev,
-        users: [...prev.users.filter((x: User) => x.id !== mapped.id), mapped],
-        currentUserId: mapped.id,
-      }));
-      return true;
+      if (result.requiresOtp && result.challengeId) {
+        if (typeof window === 'undefined') return false;
+        const verifiedUser = await new Promise<any>((resolve, reject) => {
+          const onVerified = (event: Event) => {
+            const detail = (event as CustomEvent).detail || {};
+            if (detail.challengeId !== result.challengeId) return;
+            cleanup();
+            resolve(detail.user);
+          };
+          const onCancelled = (event: Event) => {
+            const detail = (event as CustomEvent).detail || {};
+            if (detail.challengeId !== result.challengeId) return;
+            cleanup();
+            reject(new Error(detail.message || 'Login OTP verification cancelled.'));
+          };
+          const cleanup = () => {
+            window.removeEventListener('siam:login-otp-verified', onVerified);
+            window.removeEventListener('siam:login-otp-cancelled', onCancelled);
+          };
+          window.addEventListener('siam:login-otp-verified', onVerified);
+          window.addEventListener('siam:login-otp-cancelled', onCancelled);
+          window.dispatchEvent(new CustomEvent('siam:login-otp-required', {
+            detail: { challengeId: result.challengeId, message: result.message }
+          }));
+        });
+        const u: any = verifiedUser;
+        const mapped: User = {
+          id: String(u.id),
+          username: String(u.username),
+          password: '',
+          fullName: String(u.full_name ?? u.fullName ?? u.username),
+          role: u.role,
+          isActive: u.is_active !== false,
+          createdAt: u.created_at ?? new Date().toISOString(),
+        };
+        setData((prev: any) => ({
+          ...prev,
+          users: [...prev.users.filter((x: User) => x.id !== mapped.id), mapped],
+          currentUserId: mapped.id,
+        }));
+        return true;
+      }
+      return false;
     } catch {
       return false;
     }
