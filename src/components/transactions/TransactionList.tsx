@@ -32,7 +32,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   paymentFocus = null,
   onOpenPayment,
 }) => {
-  const { transactions, services, deleteTransaction, updateTransaction, currentUser } = useApp();
+  const { transactions, services, vendors, deleteTransaction, updateTransaction, currentUser } = useApp();
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,6 +46,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [editReminderDate, setEditReminderDate] = useState('');
   const [editReminderTime, setEditReminderTime] = useState('');
   const [editNote, setEditNote] = useState('');
+  const [editServiceId, setEditServiceId] = useState('');
+  const [editVendorId, setEditVendorId] = useState('');
+  const [editVendorCost, setEditVendorCost] = useState<number | ''>('');
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Filtering logic
@@ -364,6 +367,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
                       <td className="py-3 px-4">
                         <div className="font-semibold text-slate-800 font-sans">{tx.serviceName}</div>
+                        {tx.vendorName && <div className="text-[10px] text-amber-700 font-sans">↳ Vendor: {tx.vendorName}</div>}
                         {tx.flightDetails && (
                           <div className="text-[11px] text-blue-600 flex items-center gap-1 font-mono">
                             <Plane className="w-3 h-3 inline" />
@@ -453,6 +457,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                 setEditReminderDate(tx.reminderDate || '');
                                 setEditReminderTime(tx.reminderTime || '');
                                 setEditNote(tx.reminderNote || '');
+                                 setEditServiceId(tx.serviceId || '');
+                                 setEditVendorId(tx.vendorId || '');
+                                 setEditVendorCost(tx.vendorCost ?? '');
                               }}
                               className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                               title="Edit Transaction (Admin + OTP)"
@@ -517,6 +524,35 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                 </div>
               </div>
 
+              <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 space-y-3">
+                <div className="text-[10px] uppercase tracking-wider font-bold text-blue-900">Customer ↔ Service ↔ Vendor Link</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Customer Service</span>
+                    <select value={editServiceId} onChange={(e) => setEditServiceId(e.target.value)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">No service linked</option>
+                      {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Vendor / Consolidator</span>
+                    <select value={editVendorId} onChange={(e) => setEditVendorId(e.target.value)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">No vendor linked</option>
+                      {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}{v.company ? ' · ' + v.company : ''}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <label className="block">
+                  <span className="block text-[10px] font-semibold text-slate-700 mb-1">Vendor Cost</span>
+                  <input type="number" min="0" value={editVendorCost} onChange={(e) => setEditVendorCost(e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-3 py-2.5 text-xs font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </label>
+                <div className="grid grid-cols-2 gap-3 text-[10px]">
+                  <div className="rounded-lg bg-white border border-slate-200 p-2"><span className="text-slate-500 block">Vendor Paid</span><strong className="text-slate-800">{formatCurrency(editingTransaction.vendorPaid)}</strong></div>
+                  <div className="rounded-lg bg-white border border-slate-200 p-2"><span className="text-slate-500 block">Vendor Due</span><strong className="text-amber-700">{formatCurrency(Math.max(0, Number(editVendorCost || 0) - Number(editingTransaction.vendorPaid || 0)))}</strong></div>
+                </div>
+                <p className="text-[10px] text-blue-800">The customer, service and vendor now stay linked on the same transaction for quick search and ledger tracing.</p>
+              </div>
+
               {editingTransaction.flightDetails && (
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Flight Ticket Status</label>
@@ -567,6 +603,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         reminderTime: editReminderTime || null,
                         reminderStatus: editReminderDate ? 'pending' : null,
                         reminderNote: editNote || null,
+                        serviceId: editServiceId || null,
+                        vendorId: editVendorId || null,
+                        vendorCost: Number(editVendorCost || 0),
                         ...(editingTransaction.flightDetails ? { flightStatus: editFlightStatus } : {}),
                       }, 'Admin transaction edit');
                       setEditingTransaction(null);
