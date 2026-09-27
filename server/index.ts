@@ -1434,6 +1434,57 @@ app.post('/api/expenses', auth, async (req, res) => {
   finally { client.release(); }
 });
 
+app.patch('/api/expenses/:id', adminOnly, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const expense = (await client.query('SELECT * FROM expenses WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!expense) throw new Error('Expense not found');
+    if (expense.reversed_at) throw new Error('Reversed expense cannot be edited');
+
+    const category = String(req.body?.category ?? expense.category).trim();
+    const description = String(req.body?.description ?? expense.description).trim();
+    const amount = Number(req.body?.amount ?? expense.amount);
+    const method = String(req.body?.paymentMethod ?? expense.payment_method).toLowerCase();
+    const note = req.body?.note === undefined ? expense.note : String(req.body.note || '').trim() || null;
+    const date = String(req.body?.date || '').trim();
+    const time = String(req.body?.time || '').trim();
+    if (!category || !description || !Number.isFinite(amount) || amount <= 0) throw new Error('Valid category, description and positive amount are required');
+    if (!ACCOUNT_METHODS.has(method)) throw new Error('Invalid payment method');
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Invalid expense date');
+    if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Invalid expense time');
+
+    const oldAmount = Number(expense.amount);
+    const oldMethod = String(expense.payment_method).toLowerCase();
+    const oldBalance = await accountBalance(client, oldMethod);
+    const oldEntry = (await client.query('SELECT id FROM account_entries WHERE expense_id=$1 AND reversed_at IS NULL ORDER BY id DESC LIMIT 1', [expense.id])).rows[0];
+    if (oldEntry) await client.query('UPDATE account_entries SET reversed_at=now() WHERE id=$1', [oldEntry.id]);
+
+    if (method === oldMethod) {
+      const delta = amount - oldAmount;
+      if (delta > 0) {
+        const balanceAfterReversal = oldBalance + oldAmount;
+        if (delta > balanceAfterReversal) throw new Error('Insufficient balance for updated expense');
+      }
+    } else {
+      const newBalance = await accountBalance(client, method);
+      if (amount > newBalance) throw new Error('Insufficient balance in selected account for updated expense');
+    }
+
+    const expenseUpdated = (await client.query(
+      'UPDATE expenses SET category=$1, description=$2, amount=$3, payment_method=$4, note=$5, occurred_at=CASE WHEN $6 <> '''' THEN $6::timestamp ELSE occurred_at END WHERE id=$7 RETURNING *',
+      [category, description, amount, method, note, date && time ? date + ' ' + time : '', expense.id]
+    )).rows[0];
+    await addAccountEntry(client, method, -amount, 'expense', expense.id, req.session.userId!, description, undefined, expense.id);
+    await audit(client, req.session.userId!, 'EXPENSE_UPDATED', 'Expense', expense.id, expense, expenseUpdated);
+    await client.query('COMMIT');
+    res.json({ expense: expenseUpdated });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Expense update failed' });
+  } finally { client.release(); }
+});
+
 app.post('/api/expenses/:id/reverse', adminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
