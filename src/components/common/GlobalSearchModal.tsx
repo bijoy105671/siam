@@ -66,13 +66,14 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
         const inCustomer = t.customerName.toLowerCase().includes(trimmed) || t.customerMobile.includes(trimmed);
         const inInvoice = t.invoiceNumber.toLowerCase().includes(trimmed);
         const inService = t.serviceName.toLowerCase().includes(trimmed);
+        const inVendor = Boolean(t.vendorName && t.vendorName.toLowerCase().includes(trimmed));
         const inFlight =
           t.flightDetails &&
           (t.flightDetails.pnr.toLowerCase().includes(trimmed) ||
             t.flightDetails.ticketNumber.toLowerCase().includes(trimmed) ||
             t.flightDetails.route.toLowerCase().includes(trimmed) ||
             t.flightDetails.flightNumber.toLowerCase().includes(trimmed));
-        return inCustomer || inInvoice || inService || inFlight;
+        return inCustomer || inInvoice || inService || inVendor || inFlight;
       }).slice(0, 6)
     : [];
 
@@ -147,7 +148,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                           )}
                         </div>
                         <div className="text-[11px] text-slate-500 font-mono">
-                          {formatDate(tx.date)} · Service: {tx.serviceName} · Amount: {formatCurrency(tx.sellingPrice)}
+                          {formatDate(tx.date)} · Service: {tx.serviceName} {tx.vendorName ? `· Vendor: ${tx.vendorName}` : ''} · Amount: {formatCurrency(tx.sellingPrice)}
                         </div>
                       </div>
                     </div>
