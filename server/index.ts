@@ -657,9 +657,38 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
     const allowed = ['reminderDate','reminderTime','reminderStatus','reminderNote'];
     const hasReminder = allowed.some((k) => Object.prototype.hasOwnProperty.call(body, k));
     const hasFlightStatus = body.flightStatus !== undefined;
-    if (!hasReminder && !hasFlightStatus) throw new Error('No supported transaction update supplied');
+    const hasService = body.serviceId !== undefined;
+    const hasVendor = body.vendorId !== undefined;
+    const hasVendorCost = body.vendorCost !== undefined;
+    if (!hasReminder && !hasFlightStatus && !hasService && !hasVendor && !hasVendorCost) throw new Error('No supported transaction update supplied');
     const previous = { ...tx };
     let flightDetails = tx.flight_details;
+    let serviceId = tx.service_id;
+    let vendorId = tx.vendor_id;
+    let vendorCost = Number(tx.vendor_cost || 0);
+    if (hasService) {
+      const requestedServiceId = body.serviceId ? String(body.serviceId) : null;
+      if (requestedServiceId) {
+        const service = (await client.query('SELECT id FROM services WHERE id=$1', [requestedServiceId])).rows[0];
+        if (!service) throw new Error('Selected service not found');
+      }
+      serviceId = requestedServiceId;
+    }
+    if (hasVendor) {
+      const requestedVendorId = body.vendorId ? String(body.vendorId) : null;
+      if (requestedVendorId) {
+        const vendor = (await client.query('SELECT id FROM vendors WHERE id=$1', [requestedVendorId])).rows[0];
+        if (!vendor) throw new Error('Selected vendor not found');
+      }
+      vendorId = requestedVendorId;
+    }
+    if (hasVendorCost) {
+      vendorCost = Number(body.vendorCost);
+      if (!Number.isFinite(vendorCost) || vendorCost < 0) throw new Error('Vendor cost must be a valid non-negative number');
+    }
+    if (hasVendorCost && vendorCost < Number(tx.vendor_paid || 0)) {
+      throw new Error('Vendor cost cannot be lower than vendor paid amount');
+    }
     if (hasFlightStatus) {
       if (!flightDetails) throw new Error('Transaction has no flight details');
       const details = typeof flightDetails === 'string' ? JSON.parse(flightDetails) : flightDetails;
@@ -681,6 +710,11 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
            reminder_status=CASE WHEN $5::boolean THEN $6 ELSE reminder_status END,
            reminder_note=CASE WHEN $7::boolean THEN $8 ELSE reminder_note END,
            flight_details=CASE WHEN $9::boolean THEN $10::jsonb ELSE flight_details END,
+           service_id=CASE WHEN $12::boolean THEN $13::uuid ELSE service_id END,
+           vendor_id=CASE WHEN $14::boolean THEN $15::uuid ELSE vendor_id END,
+           vendor_cost=CASE WHEN $16::boolean THEN $17::numeric ELSE vendor_cost END,
+           vendor_due=CASE WHEN $16::boolean THEN GREATEST(0,$17::numeric-vendor_paid) ELSE vendor_due END,
+           gross_profit=CASE WHEN $16::boolean THEN selling_price-$17::numeric ELSE gross_profit END,
            updated_at=now()
        WHERE id=$11
        RETURNING *`,
@@ -690,10 +724,24 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
         body.reminderStatus !== undefined, body.reminderStatus || null,
         body.reminderNote !== undefined, body.reminderNote || null,
         hasFlightStatus, hasFlightStatus ? JSON.stringify(flightDetails) : null,
-        tx.id
+        tx.id,
+        hasService, serviceId,
+        hasVendor, vendorId,
+        hasVendorCost, vendorCost
       ]
     );
-    await audit(client, req.session.userId!, hasFlightStatus ? 'FLIGHT_STATUS_UPDATED' : 'REMINDER_UPDATED', 'Transaction', tx.id, previous, result.rows[0]);
+    if (hasVendor && String(vendorId || '') !== String(tx.vendor_id || '')) {
+      await client.query(
+        'UPDATE payments SET entity_id=$1 WHERE transaction_id=$2 AND payment_type=\'vendor\' AND reversed_at IS NULL',
+        [vendorId, tx.id]
+      );
+    }
+    const event = hasVendor || hasVendorCost || hasService
+      ? 'TRANSACTION_LINKS_UPDATED'
+      : hasFlightStatus
+        ? 'FLIGHT_STATUS_UPDATED'
+        : 'REMINDER_UPDATED';
+    await audit(client, req.session.userId!, event, 'Transaction', tx.id, previous, result.rows[0]);
     await client.query('COMMIT');
     res.json({ transaction: result.rows[0] });
   } catch (e) {
