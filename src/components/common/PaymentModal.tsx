@@ -155,6 +155,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 <span className="text-slate-500">Current Outstanding Due:</span>
                 <span className="font-bold text-rose-600">{formatCurrency(maxDue)}</span>
               </div>
+              <div className="mt-2 rounded-lg bg-white border border-blue-200 p-2 text-[10px] font-sans">
+                <strong className="text-blue-800">Payment will create a new payment transaction record.</strong>
+                <div className="text-slate-500 mt-0.5">Customer payment ↑ selected account balance · Vendor payment ↓ selected account balance</div>
+              </div>
             </div>
 
             {/* Payment Amount */}
@@ -211,8 +215,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               </select>
               <div className="text-[10px] text-slate-500 mt-1">
                 {paymentType === 'customer'
-                  ? `Will increase ${method} balance automatically.`
-                  : `Will decrease ${method} balance automatically.`}
+                  ? `Customer payment: ${method} balance will increase immediately.`
+                  : `Vendor payment: ${method} balance will decrease immediately.`}
               </div>
             </div>
 
@@ -246,7 +250,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 disabled={isSubmitting}
                 className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed rounded-lg shadow-xs cursor-pointer"
               >
-                {isSubmitting ? 'Recording…' : 'Confirm & Record'}
+                {isSubmitting ? 'Saving Payment…' : paymentType === 'customer' ? 'Receive Customer Payment' : 'Pay Vendor & Record'}
               </button>
             </div>
           </form>
