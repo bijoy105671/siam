@@ -95,11 +95,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!username.trim() || !password) {
+      setError('Username and password are required.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const success = await loginAsync(username.trim(), password);
       if (success) onClose();
-      else setError('Invalid username or password. Please try again.');
+      else setError('Sign in could not be completed.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign in failed. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -112,6 +118,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       const success = await loginAsync(uName, pass);
       if (success) onClose();
       else setError('Server authentication failed.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Server authentication failed.');
     } finally {
       setIsSubmitting(false);
     }
