@@ -485,11 +485,11 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                           )}
                         </td>
                         <td className="py-3 px-4 text-right font-bold tabular-nums text-slate-400">—</td>
-                        <td className="py-3 px-4 text-right font-bold tabular-nums ${isCustomerPayment ? 'text-emerald-700' : 'text-slate-400'}">
+                        <td className={`py-3 px-4 text-right font-bold tabular-nums ${isCustomerPayment ? 'text-emerald-700' : 'text-slate-400'}`}>
                           {isCustomerPayment ? `+${formatCurrency(amount)}` : '—'}
                         </td>
                         <td className="py-3 px-4 text-right font-bold tabular-nums text-slate-400">—</td>
-                        <td className="py-3 px-4 text-right font-bold tabular-nums ${!isCustomerPayment ? 'text-rose-700' : 'text-slate-400'}">
+                        <td className={`py-3 px-4 text-right font-bold tabular-nums ${!isCustomerPayment ? 'text-rose-700' : 'text-slate-400'}`}>
                           {!isCustomerPayment ? `-${formatCurrency(amount)}` : '—'}
                         </td>
                         <td className="py-3 px-4 text-center">
