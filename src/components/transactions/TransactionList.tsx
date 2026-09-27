@@ -50,6 +50,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [editServiceId, setEditServiceId] = useState('');
   const [editVendorId, setEditVendorId] = useState('');
   const [editVendorCost, setEditVendorCost] = useState<number | ''>('');
+  const [editVendorPaid, setEditVendorPaid] = useState<number | ''>('');
+  const [editVendorPaymentMethod, setEditVendorPaymentMethod] = useState<PaymentMethod>('Cash');
+  const [editVendorDue, setEditVendorDue] = useState<number | ''>('');
   const [editSellingPrice, setEditSellingPrice] = useState<number | ''>('');
   const [editCustomerPaid, setEditCustomerPaid] = useState<number | ''>('');
   const [editCustomerPaymentMethod, setEditCustomerPaymentMethod] = useState<PaymentMethod>('Cash');
@@ -618,10 +621,46 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                     </select>
                   </label>
                 </div>
-                <label className="block">
-                  <span className="block text-[10px] font-semibold text-slate-700 mb-1">Vendor Cost</span>
-                  <input type="number" min="0" value={editVendorCost} onChange={(e) => setEditVendorCost(e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Vendor Cost</span>
+                    <input type="number" min="0" value={editVendorCost} onChange={(e) => {
+                      const next = e.target.value === '' ? '' : Number(e.target.value);
+                      setEditVendorCost(next);
+                      if (next !== '') setEditVendorDue(Math.max(0, Number(next) - Number(editVendorPaid || 0)));
+                    }} className="w-full px-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Vendor Paid (Historical / Partial)</span>
+                    <input type="number" min="0" value={editVendorPaid} onChange={(e) => {
+                      const next = e.target.value === '' ? '' : Number(e.target.value);
+                      setEditVendorPaid(next);
+                      if (next !== '') setEditVendorDue(Math.max(0, Number(editVendorCost || 0) - Number(next)));
+                    }} className="w-full px-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Vendor Payment Method (when Paid increases)</span>
+                    <select value={editVendorPaymentMethod} onChange={(e) => setEditVendorPaymentMethod(e.target.value as PaymentMethod)} className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-amber-500">
+                      <option value="Cash">Cash</option>
+                      <option value="bKash">bKash</option>
+                      <option value="Nagad">Nagad</option>
+                      <option value="Rocket">Rocket</option>
+                      <option value="Bank">Bank</option>
+                      <option value="Card">Card</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Vendor Due</span>
+                    <input type="number" min="0" value={editVendorDue} onChange={(e) => {
+                      const next = e.target.value === '' ? '' : Number(e.target.value);
+                      setEditVendorDue(next);
+                      if (next !== '') setEditVendorCost(Number(editVendorPaid || 0) + Number(next));
+                    }} className="w-full px-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                  </label>
+                </div>
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   {editingTransaction.customerDue > 0 && (
                     <button
@@ -635,7 +674,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                       <DollarSign className="w-3.5 h-3.5" /> Pay Customer Due
                     </button>
                   )}
-                  {editingTransaction.vendorDue > 0 && editVendorId && (
+                  {Number(editVendorDue || 0) > 0 && editVendorId && (
                     <button
                       type="button"
                       onClick={() => {
@@ -707,6 +746,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         serviceId: editServiceId || null,
                         vendorId: editVendorId || null,
                         vendorCost: Number(editVendorCost || 0),
+                        vendorPaid: Number(editVendorPaid || 0),
+                        vendorDue: Number(editVendorDue || 0),
+                        vendorPaymentMethod: editVendorPaymentMethod,
                         sellingPrice: Number(editSellingPrice || 0),
                         customerPaid: Number(editCustomerPaid || 0),
                         customerPaymentMethod: editCustomerPaymentMethod,
