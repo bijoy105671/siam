@@ -121,6 +121,8 @@ export const api = {
     apiRequest<{ ok: boolean }>(`/api/payments/${encodeURIComponent(id)}/reverse`, { method: 'POST' }),
   reverseExpense: (id: string) =>
     apiRequest<{ ok: boolean }>(`/api/expenses/${encodeURIComponent(id)}/reverse`, { method: 'POST' }),
+  updateExpense: (id: string, input: Record<string, any>) =>
+    apiRequest<{ expense: unknown }>(`/api/expenses/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   reverseFundTransfer: (id: string) =>
     apiRequest<{ ok: boolean }>(`/api/fund-transfers/${encodeURIComponent(id)}/reverse`, { method: 'POST' }),
   accountBalances: () =>
