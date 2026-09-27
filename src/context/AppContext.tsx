@@ -1351,7 +1351,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Partial Payment
-  const addPartialPayment = (params: {
+  const addPartialPayment = async (params: {
     transactionId: string;
     paymentType: 'customer' | 'vendor';
     amount: number;
@@ -1362,7 +1362,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     reference?: string;
   }) => {
     const targetTx = data.transactions.find((t: Transaction) => t.id === params.transactionId);
-    if (!targetTx) return;
+    if (!targetTx) throw new Error('Transaction not found.');
     const amount = Number(params.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
       window.alert('Payment amount must be greater than zero.');
@@ -1440,7 +1440,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     if (USE_SERVER_API) {
-      void api.recordPayment({
+      await api.recordPayment({
         transactionId: params.transactionId,
         paymentType: params.paymentType,
         amount,
@@ -1448,8 +1448,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         note: params.note,
         reference: params.reference || targetTx.invoiceNumber,
         paidAt: `${params.date}T${params.time}:00`,
-      }).then(async () => {
-        commitLocalPayment();
+      });
+      commitLocalPayment();
+      try {
         try {
           const [rows, balances, dashboard] = await Promise.all([
             api.transactions(500),
@@ -1500,10 +1501,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } catch (refreshError) {
           console.error('Payment transaction refresh failed:', refreshError);
         }
-      }).catch((error) => {
+      } catch (error) {
         console.error('Server payment failed:', error);
-        window.alert(error instanceof Error ? error.message : 'Payment could not be saved.');
-      });
+        throw error instanceof Error ? error : new Error('Payment could not be saved.');
+      }
       return;
     }
 
