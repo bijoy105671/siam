@@ -660,12 +660,31 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
     const hasService = body.serviceId !== undefined;
     const hasVendor = body.vendorId !== undefined;
     const hasVendorCost = body.vendorCost !== undefined;
-    if (!hasReminder && !hasFlightStatus && !hasService && !hasVendor && !hasVendorCost) throw new Error('No supported transaction update supplied');
+    const hasSellingPrice = body.sellingPrice !== undefined;
+    const hasCustomerDue = body.customerDue !== undefined;
+    if (!hasReminder && !hasFlightStatus && !hasService && !hasVendor && !hasVendorCost && !hasSellingPrice && !hasCustomerDue) throw new Error('No supported transaction update supplied');
     const previous = { ...tx };
     let flightDetails = tx.flight_details;
     let serviceId = tx.service_id;
     let vendorId = tx.vendor_id;
     let vendorCost = Number(tx.vendor_cost || 0);
+    let sellingPrice = Number(tx.selling_price || 0);
+    let customerDue = Number(tx.customer_due || 0);
+    if (hasSellingPrice || hasCustomerDue) {
+      if (hasSellingPrice) {
+        sellingPrice = Number(body.sellingPrice);
+        if (!Number.isFinite(sellingPrice) || sellingPrice < 0) throw new Error('Selling price must be a valid non-negative number');
+      }
+      if (hasCustomerDue) {
+        customerDue = Number(body.customerDue);
+        if (!Number.isFinite(customerDue) || customerDue < 0) throw new Error('Customer due must be a valid non-negative number');
+      }
+      if (hasSellingPrice && !hasCustomerDue) customerDue = Math.max(0, sellingPrice - Number(tx.customer_paid || 0));
+      if (!hasSellingPrice && hasCustomerDue) sellingPrice = Number(tx.customer_paid || 0) + customerDue;
+      if (sellingPrice < Number(tx.customer_paid || 0)) throw new Error('Selling price cannot be lower than customer paid amount');
+      const expectedDue = Math.max(0, sellingPrice - Number(tx.customer_paid || 0));
+      if (Math.abs(expectedDue - customerDue) > 0.01) throw new Error('Selling price and customer due do not match customer paid amount');
+    }
     if (hasService) {
       const requestedServiceId = body.serviceId ? String(body.serviceId) : null;
       if (requestedServiceId) {
@@ -714,7 +733,10 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
            vendor_id=CASE WHEN $14::boolean THEN $15::uuid ELSE vendor_id END,
            vendor_cost=CASE WHEN $16::boolean THEN $17::numeric ELSE vendor_cost END,
            vendor_due=CASE WHEN $16::boolean THEN GREATEST(0,$17::numeric-vendor_paid) ELSE vendor_due END,
-           gross_profit=CASE WHEN $16::boolean THEN selling_price-$17::numeric ELSE gross_profit END,
+           selling_price=CASE WHEN $18::boolean THEN $19::numeric ELSE selling_price END,
+           customer_due=CASE WHEN $18::boolean THEN $20::numeric ELSE customer_due END,
+           status=CASE WHEN $18::boolean THEN CASE WHEN $20::numeric=0 THEN 'PAID' WHEN customer_paid>0 THEN 'PARTIAL' ELSE 'DUE' END ELSE status END,
+           gross_profit=CASE WHEN $16::boolean OR $18::boolean THEN (CASE WHEN $18::boolean THEN $19::numeric ELSE selling_price END) - (CASE WHEN $16::boolean THEN $17::numeric ELSE vendor_cost END) ELSE gross_profit END,
            updated_at=now()
        WHERE id=$11
        RETURNING *`,
@@ -727,7 +749,8 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
         tx.id,
         hasService, serviceId,
         hasVendor, vendorId,
-        hasVendorCost, vendorCost
+        hasVendorCost, vendorCost,
+        hasSellingPrice || hasCustomerDue, sellingPrice, customerDue
       ]
     );
     if (hasVendor && String(vendorId || '') !== String(tx.vendor_id || '')) {
@@ -736,7 +759,7 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
         [vendorId, tx.id]
       );
     }
-    const event = hasVendor || hasVendorCost || hasService
+    const event = hasVendor || hasVendorCost || hasService || hasSellingPrice || hasCustomerDue
       ? 'TRANSACTION_LINKS_UPDATED'
       : hasFlightStatus
         ? 'FLIGHT_STATUS_UPDATED'
