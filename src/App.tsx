@@ -22,6 +22,7 @@ import { PaymentModal } from './components/common/PaymentModal';
 import { DuePaymentManager } from './components/payments/DuePaymentManager';
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { LoginModal } from './components/auth/LoginModal';
+import { SecurityOtpModal } from './components/auth/SecurityOtpModal';
 import { InvoiceVerificationPage } from './components/verification/InvoiceVerificationPage';
 import { Customer, Transaction, Vendor } from './types';
 import { USE_SERVER_API } from './services/apiClient';
@@ -361,6 +362,7 @@ const MainLayout: React.FC = () => {
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
       />
+      <SecurityOtpModal />
     </div>
   );
 };
