@@ -3,7 +3,6 @@ import { Calculator, Plane, Ticket, X, RotateCcw, ArrowRight } from 'lucide-reac
 import { Dashboard as ExistingDashboard } from './DashboardLegacy';
 
 type Props = React.ComponentProps<typeof ExistingDashboard>;
-
 type CalcMode = 'net' | 'reissue' | 'refund';
 
 const num = (v: string) => Number.parseFloat(v) || 0;
@@ -33,25 +32,36 @@ export const Dashboard: React.FC<Props> = (props) => {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <button type="button" onClick={props.onOpenNewEntry} className="group text-left rounded-2xl p-5 sm:p-6 bg-gradient-to-br from-blue-600 via-blue-600 to-indigo-700 text-white shadow-lg shadow-blue-600/20 hover:shadow-xl transition-all active:scale-[0.99] cursor-pointer">
-          <div className="flex items-start justify-between gap-4">
-            <span className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center"><Plane className="w-6 h-6" /></span>
-            <ArrowRight className="w-5 h-5 opacity-70 group-hover:translate-x-1 transition-transform" />
-          </div>
-          <div className="mt-5 text-lg sm:text-xl font-bold">PNR CREATION &amp; E-TICKET</div>
-          <div className="mt-1 text-sm text-blue-100">Create booking/service entry, passenger details, PNR and invoice/e-ticket from One Entry.</div>
-          <div className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold"><Ticket className="w-4 h-4" /> OPEN PNR CREATION</div>
+      {/* Compact Quick Actions */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <button
+          type="button"
+          onClick={props.onOpenNewEntry}
+          className="group flex items-center gap-3 rounded-xl border border-blue-200 bg-white px-3.5 py-3 text-left shadow-sm hover:border-blue-400 hover:bg-blue-50/40 transition-all active:scale-[0.99] cursor-pointer"
+        >
+          <span className="w-9 h-9 shrink-0 rounded-lg bg-blue-600 text-white flex items-center justify-center">
+            <Plane className="w-4.5 h-4.5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-slate-900">PNR CREATION &amp; E-TICKET</span>
+            <span className="block text-[11px] text-slate-500 mt-0.5">Open One Entry / New Entry</span>
+          </span>
+          <ArrowRight className="w-4 h-4 text-blue-500 group-hover:translate-x-0.5 transition-transform" />
         </button>
 
-        <button type="button" onClick={() => setCalculatorOpen(true)} className="group text-left rounded-2xl p-5 sm:p-6 bg-gradient-to-br from-emerald-600 via-emerald-600 to-teal-700 text-white shadow-lg shadow-emerald-600/20 hover:shadow-xl transition-all active:scale-[0.99] cursor-pointer">
-          <div className="flex items-start justify-between gap-4">
-            <span className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center"><Calculator className="w-6 h-6" /></span>
-            <ArrowRight className="w-5 h-5 opacity-70 group-hover:translate-x-1 transition-transform" />
-          </div>
-          <div className="mt-5 text-lg sm:text-xl font-bold">FARE CALCULATOR</div>
-          <div className="mt-1 text-sm text-emerald-100">Net Fare, Reissue and Refund calculations in a compact mobile-friendly calculator.</div>
-          <div className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold"><Calculator className="w-4 h-4" /> OPEN CALCULATOR</div>
+        <button
+          type="button"
+          onClick={() => setCalculatorOpen(true)}
+          className="group flex items-center gap-3 rounded-xl border border-emerald-200 bg-white px-3.5 py-3 text-left shadow-sm hover:border-emerald-400 hover:bg-emerald-50/40 transition-all active:scale-[0.99] cursor-pointer"
+        >
+          <span className="w-9 h-9 shrink-0 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
+            <Calculator className="w-4.5 h-4.5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-slate-900">FARE CALCULATOR</span>
+            <span className="block text-[11px] text-slate-500 mt-0.5">Net Fare · Reissue · Refund</span>
+          </span>
+          <ArrowRight className="w-4 h-4 text-emerald-500 group-hover:translate-x-0.5 transition-transform" />
         </button>
       </div>
 
