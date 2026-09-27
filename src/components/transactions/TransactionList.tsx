@@ -49,6 +49,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [editServiceId, setEditServiceId] = useState('');
   const [editVendorId, setEditVendorId] = useState('');
   const [editVendorCost, setEditVendorCost] = useState<number | ''>('');
+  const [editSellingPrice, setEditSellingPrice] = useState<number | ''>('');
+  const [editCustomerDue, setEditCustomerDue] = useState<number | ''>('');
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Filtering logic
@@ -460,6 +462,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                  setEditServiceId(tx.serviceId || '');
                                  setEditVendorId(tx.vendorId || '');
                                  setEditVendorCost(tx.vendorCost ?? '');
+                                 setEditSellingPrice(tx.sellingPrice ?? '');
+                                 setEditCustomerDue(tx.customerDue ?? '');
                               }}
                               className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                               title="Edit Transaction (Admin + OTP)"
@@ -513,15 +517,31 @@ export const TransactionList: React.FC<TransactionListProps> = ({
             </div>
 
             <div className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
-                  <span className="text-[10px] text-slate-500 block">Selling Price</span>
-                  <strong className="text-sm text-slate-900">{formatCurrency(editingTransaction.sellingPrice)}</strong>
+              <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-3 space-y-3">
+                <div className="text-[10px] uppercase tracking-wider font-bold text-rose-900">Admin Price Correction</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Selling Price</span>
+                    <input type="number" min="0" value={editSellingPrice} onChange={(e) => {
+                      const next = e.target.value === '' ? '' : Number(e.target.value);
+                      setEditSellingPrice(next);
+                      if (next !== '') setEditCustomerDue(Math.max(0, Number(next) - Number(editingTransaction.customerPaid || 0)));
+                    }} className="w-full px-3 py-2.5 text-sm font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Customer Due</span>
+                    <input type="number" min="0" value={editCustomerDue} onChange={(e) => {
+                      const next = e.target.value === '' ? '' : Number(e.target.value);
+                      setEditCustomerDue(next);
+                      if (next !== '') setEditSellingPrice(Number(editingTransaction.customerPaid || 0) + Number(next));
+                    }} className="w-full px-3 py-2.5 text-sm font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </label>
                 </div>
-                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
-                  <span className="text-[10px] text-slate-500 block">Customer Due</span>
-                  <strong className="text-sm text-rose-600">{formatCurrency(editingTransaction.customerDue)}</strong>
+                <div className="grid grid-cols-2 gap-3 text-[10px]">
+                  <div className="rounded-lg bg-white border border-slate-200 p-2"><span className="text-slate-500 block">Customer Paid</span><strong>{formatCurrency(editingTransaction.customerPaid)}</strong></div>
+                  <div className="rounded-lg bg-white border border-slate-200 p-2"><span className="text-slate-500 block">Calculated Due</span><strong className="text-rose-600">{formatCurrency(Math.max(0, Number(editSellingPrice || 0) - Number(editingTransaction.customerPaid || 0)))}</strong></div>
                 </div>
+                <p className="text-[10px] text-rose-800">Admin price corrections do not create a new cash/bank payment. Customer Paid remains unchanged; Selling Price and Due stay mathematically linked.</p>
               </div>
 
               <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 space-y-3">
@@ -606,6 +626,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         serviceId: editServiceId || null,
                         vendorId: editVendorId || null,
                         vendorCost: Number(editVendorCost || 0),
+                        sellingPrice: Number(editSellingPrice || 0),
+                        customerDue: Number(editCustomerDue || 0),
                         ...(editingTransaction.flightDetails ? { flightStatus: editFlightStatus } : {}),
                       }, 'Admin transaction edit');
                       setEditingTransaction(null);
