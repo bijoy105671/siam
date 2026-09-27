@@ -33,7 +33,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   paymentFocus = null,
   onOpenPayment,
 }) => {
-  const { transactions, services, vendors, addVendorAsync, deleteTransaction, updateTransaction, currentUser } = useApp();
+  const { transactions, partialPayments, services, vendors, addVendorAsync, deleteTransaction, updateTransaction, currentUser } = useApp();
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -82,9 +82,59 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     return match ? match[1] : value.trim();
   };
 
-  const filteredTransactions = transactions.filter((tx) => {
+  type DisplayTransaction = Transaction & {
+    recordType?: 'sale' | 'payment';
+    paymentType?: 'customer' | 'vendor';
+    paymentAmount?: number;
+    paymentMethodDisplay?: string;
+    paymentReference?: string;
+  };
+
+  // Due settlements are real accounting/payment transactions, but they are
+  // deliberately kept outside the sales transaction table in the database.
+  // Here we add them only to the All Transactions display so they can be
+  // audited without affecting Sales, Profit, or invoice totals.
+  const displayTransactions: DisplayTransaction[] = [
+    ...transactions.map((tx) => ({ ...tx, recordType: 'sale' as const })),
+    ...partialPayments.map((p) => ({
+      id: p.id,
+      invoiceNumber: p.reference || `PAY-${p.id.slice(0, 8)}`,
+      date: p.date,
+      time: p.time,
+      createdBy: p.recordedBy,
+      customerId: p.paymentType === 'customer' ? p.entityId : '',
+      customerName: p.paymentType === 'customer' ? p.entityName : '—',
+      customerMobile: '',
+      serviceId: '',
+      serviceName: p.paymentType === 'customer' ? 'Customer Due Payment' : 'Vendor Due Payment',
+      sellingPrice: 0,
+      customerPaid: 0,
+      customerDue: 0,
+      customerPaymentMethod: p.paymentType === 'customer' ? p.paymentMethod : 'Cash',
+      vendorId: p.paymentType === 'vendor' ? p.entityId : undefined,
+      vendorName: p.paymentType === 'vendor' ? p.entityName : undefined,
+      vendorCost: 0,
+      vendorPaid: 0,
+      vendorDue: 0,
+      vendorPaymentMethod: p.paymentType === 'vendor' ? p.paymentMethod : undefined,
+      grossProfit: 0,
+      status: 'PAID' as const,
+      notes: p.note,
+      recordType: 'payment' as const,
+      paymentType: p.paymentType,
+      paymentAmount: Number(p.amount || 0),
+      paymentMethodDisplay: p.paymentMethod,
+      paymentReference: p.reference || undefined,
+    })),
+  ].sort((a, b) => {
+    const dateCompare = normalizeTransactionDate(b.date).localeCompare(normalizeTransactionDate(a.date));
+    if (dateCompare !== 0) return dateCompare;
+    return String(b.time || '').localeCompare(String(a.time || ''));
+  });
+
+  const filteredTransactions = displayTransactions.filter((tx) => {
     const transactionDate = normalizeTransactionDate(tx.date);
-    // 1. Text Search (Customer, Vendor, Invoice, PNR, Ticket, Service)
+    // 1. Text Search (Customer, Vendor, Invoice, PNR, Ticket, Service, Payment Reference)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const match =
@@ -93,6 +143,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
         tx.invoiceNumber.toLowerCase().includes(q) ||
         tx.serviceName.toLowerCase().includes(q) ||
         (tx.vendorName && tx.vendorName.toLowerCase().includes(q)) ||
+        (tx.paymentReference && tx.paymentReference.toLowerCase().includes(q)) ||
+        (tx.paymentMethodDisplay && tx.paymentMethodDisplay.toLowerCase().includes(q)) ||
         (tx.flightDetails &&
           (tx.flightDetails.pnr.toLowerCase().includes(q) ||
             tx.flightDetails.ticketNumber.toLowerCase().includes(q) ||
@@ -101,11 +153,15 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       if (!match) return false;
     }
 
-    // 2. Service filter
-    if (serviceFilter !== 'all' && tx.serviceId !== serviceFilter) return false;
-
-    // 3. Status filter
-    if (statusFilter !== 'all' && tx.status !== statusFilter) return false;
+    // Payment records are displayed in All Transactions, but never treated as
+    // sales/service rows for service or payment-status filtering.
+    if (tx.recordType === 'payment') {
+      if (serviceFilter !== 'all') return false;
+      if (statusFilter !== 'all') return false;
+    } else {
+      if (serviceFilter !== 'all' && tx.serviceId !== serviceFilter) return false;
+      if (statusFilter !== 'all' && tx.status !== statusFilter) return false;
+    }
 
     // 4. Date filter
     if (dateRange === 'today') {
@@ -391,6 +447,63 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                 </tr>
               ) : (
                 filteredTransactions.map((tx) => {
+                  if (tx.recordType === 'payment') {
+                    const isCustomerPayment = tx.paymentType === 'customer';
+                    const amount = Number(tx.paymentAmount || 0);
+                    return (
+                      <tr key={tx.id} className={isCustomerPayment ? 'bg-emerald-50/60' : 'bg-rose-50/60'}>
+                        <td className="py-3 px-4">
+                          <div className={`font-bold font-mono ${isCustomerPayment ? 'text-emerald-800' : 'text-rose-800'}`}>
+                            {tx.invoiceNumber}
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-mono">
+                            {formatDate(tx.date)} {formatTime(tx.time)}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 font-sans">
+                          <div className={`font-semibold ${isCustomerPayment ? 'text-emerald-800' : 'text-rose-800'}`}>
+                            {isCustomerPayment ? tx.customerName : '—'}
+                          </div>
+                          <div className="text-[10px] text-slate-500">Payment Transaction</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className={`font-semibold font-sans ${isCustomerPayment ? 'text-emerald-700' : 'text-rose-700'}`}>
+                            {isCustomerPayment ? 'Customer Due Payment' : 'Vendor Due Payment'}
+                          </div>
+                          <div className="text-[10px] text-slate-500">
+                            {tx.paymentReference ? `Ref: ${tx.paymentReference}` : 'Settlement against due balance'}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          {!isCustomerPayment && tx.vendorName ? (
+                            <div>
+                              <div className="font-medium text-rose-800 font-sans">{tx.vendorName}</div>
+                              <div className="text-[10px] text-slate-500">{tx.paymentMethodDisplay}</div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 font-sans">{isCustomerPayment ? tx.paymentMethodDisplay : '—'}</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold tabular-nums text-slate-400">—</td>
+                        <td className="py-3 px-4 text-right font-bold tabular-nums ${isCustomerPayment ? 'text-emerald-700' : 'text-slate-400'}">
+                          {isCustomerPayment ? `+${formatCurrency(amount)}` : '—'}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold tabular-nums text-slate-400">—</td>
+                        <td className="py-3 px-4 text-right font-bold tabular-nums ${!isCustomerPayment ? 'text-rose-700' : 'text-slate-400'}">
+                          {!isCustomerPayment ? `-${formatCurrency(amount)}` : '—'}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${isCustomerPayment ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-rose-100 text-rose-800 border-rose-200'}`}>
+                            {isCustomerPayment ? 'DUE PAID' : 'VENDOR PAID'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right font-sans text-[10px] text-slate-500">
+                          {tx.paymentMethodDisplay} · {tx.paymentReference || 'No reference'}
+                        </td>
+                      </tr>
+                    );
+                  }
+
                   const statusStyle = getTransactionStatusColor(tx.status);
                   const hasDue = tx.customerDue > 0;
                   const vendorHasDue = tx.vendorDue > 0;
