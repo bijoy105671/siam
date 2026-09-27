@@ -1380,7 +1380,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(params.time)) {
+    const normalizedPaymentTime = String(params.time || '').trim().slice(0, 5);
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(normalizedPaymentTime)) {
       window.alert('Please enter a valid payment time.');
       return;
     }
@@ -1410,7 +1411,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         amount,
         paymentMethod: params.paymentMethod,
         date: params.date,
-        time: params.time,
+        time: normalizedPaymentTime,
         recordedBy: currentUser?.fullName || 'Staff',
         note: params.note,
         reference: params.reference || targetTx.invoiceNumber,
@@ -1447,7 +1448,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         paymentMethod: params.paymentMethod,
         note: params.note,
         reference: params.reference || targetTx.invoiceNumber,
-        paidAt: `${params.date}T${params.time}:00`,
+        paidAt: `${params.date}T${normalizedPaymentTime}:00`,
       });
       commitLocalPayment();
       try {
