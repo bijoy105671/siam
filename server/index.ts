@@ -61,6 +61,26 @@ const sendPasswordResetOtp = async (otp: string) => {
   }
 };
 
+const sendSecurityOtp = async (otp: string) => {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = 'onboarding@resend.dev';
+  if (!apiKey) throw new Error('Historical change security email is not configured. Add RESEND_API_KEY in Render.');
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from,
+      to: [PASSWORD_RESET_EMAIL],
+      subject: 'SIAM AIR & DIGITAL SERVICE — Historical Transaction Edit/Correction OTP',
+      html: '<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:14px"><h2 style="margin:0 0 8px">Historical Transaction Edit / Correction</h2><p>This OTP is being requested because an administrator is attempting to edit or correct historical transaction/accounting information in SIAM AIR & DIGITAL SERVICE.</p><p>Your one-time verification code is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#fff7ed;border-radius:10px">' + otp + '</div><p><b>This is NOT a password reset.</b> No password has been changed or reset by this email.</p><p style="color:#64748b">This OTP expires in 10 minutes. Enter it in the Historical Transaction Edit/Correction verification window to continue.</p><p style="color:#64748b">If you did not attempt a historical transaction change, ignore this email and review your account security.</p><p style="margin-bottom:0"><b>SIAM AIR & DIGITAL SERVICE</b></p></div>'
+    })
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error('Email provider rejected the historical change OTP request: ' + body.slice(0, 300));
+  }
+};
+
 const sendLoginOtp = async (otp: string) => {
   const apiKey = process.env.RESEND_API_KEY;
   const from = 'onboarding@resend.dev';
@@ -117,8 +137,8 @@ const historicalChangeAdminOnly = async (req: express.Request, res: express.Resp
       await pool.query('CREATE TABLE IF NOT EXISTS security_otps (id UUID PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, otp_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now())');
       await pool.query('UPDATE security_otps SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [req.session.userId]);
       await pool.query("INSERT INTO security_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval '10 minutes')", [randomUUID(), req.session.userId, hashOtp(otp)]);
-      await sendPasswordResetOtp(otp);
-      return res.status(428).json({ error: 'SECURITY_OTP_REQUIRED', message: 'A security OTP was sent to the recovery email. Enter it to continue this historical change.' });
+      await sendSecurityOtp(otp);
+      return res.status(428).json({ error: 'SECURITY_OTP_REQUIRED', message: 'A historical transaction edit/correction security OTP was sent to the recovery email. Enter it to continue.' });
     }
     next();
   } catch (e) {
