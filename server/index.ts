@@ -980,7 +980,17 @@ app.post('/api/admin/recycle-bin/:id/restore', adminOnly, async (req, res) => {
 
 app.get('/api/transactions', auth, async (req, res) => {
   const limit = Math.min(Number(req.query.limit || 100), 500);
-  const { rows } = await pool.query('SELECT t.*, c.name customer_name, c.mobile customer_mobile, s.name service_name, v.name vendor_name FROM transactions t JOIN customers c ON c.id=t.customer_id LEFT JOIN services s ON s.id=t.service_id LEFT JOIN vendors v ON v.id=t.vendor_id WHERE t.deleted_at IS NULL ORDER BY t.date DESC, t.time DESC LIMIT $1', [limit]);
+  const { rows } = await pool.query(`
+    SELECT t.*, c.name customer_name, c.mobile customer_mobile, s.name service_name, v.name vendor_name,
+      (SELECT p.payment_method FROM payments p WHERE p.transaction_id=t.id AND p.payment_type='customer' AND p.reversed_at IS NULL ORDER BY p.created_at DESC, p.id DESC LIMIT 1) AS customer_payment_method,
+      (SELECT p.payment_method FROM payments p WHERE p.transaction_id=t.id AND p.payment_type='vendor' AND p.reversed_at IS NULL ORDER BY p.created_at DESC, p.id DESC LIMIT 1) AS vendor_payment_method
+    FROM transactions t
+    JOIN customers c ON c.id=t.customer_id
+    LEFT JOIN services s ON s.id=t.service_id
+    LEFT JOIN vendors v ON v.id=t.vendor_id
+    WHERE t.deleted_at IS NULL
+    ORDER BY t.date DESC, t.time DESC LIMIT $1
+  `, [limit]);
   res.json(rows);
 });
 
