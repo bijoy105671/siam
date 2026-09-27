@@ -195,7 +195,7 @@ const MainLayout: React.FC = () => {
           {currentView === 'pnr' && (
             <PnrCreation
               onClose={() => setCurrentView('dashboard')}
-              onViewInvoice={(tx) => setActiveInvoiceTx(tx)}
+              onClose={() => setCurrentView('dashboard')}
             />
           )}
 
