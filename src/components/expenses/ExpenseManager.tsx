@@ -229,9 +229,9 @@ export const ExpenseManager: React.FC = () => {
                           }
                         }}
                         className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                        title="Edit Expense"
+                        title="Delete Expense"
                       >
-                        {currentUser?.role === 'admin' && <Pencil className="w-4 h-4" />}
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </td>
                   </tr>
