@@ -39,6 +39,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [recordFilter, setRecordFilter] = useState<'all' | 'sale' | 'customer_payment' | 'vendor_payment'>('all');
   const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -153,8 +154,12 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       if (!match) return false;
     }
 
-    // Payment records are displayed in All Transactions, but never treated as
-    // sales/service rows for service or payment-status filtering.
+    // Record type filter keeps SALES visually distinct from due-settlement/payment records.
+    if (recordFilter === 'sale' && tx.recordType !== 'sale') return false;
+    if (recordFilter === 'customer_payment' && !(tx.recordType === 'payment' && tx.paymentType === 'customer')) return false;
+    if (recordFilter === 'vendor_payment' && !(tx.recordType === 'payment' && tx.paymentType === 'vendor')) return false;
+
+    // Payment records are displayed in All Transactions, but are not service/sale rows.
     if (tx.recordType === 'payment') {
       if (serviceFilter !== 'all') return false;
       if (statusFilter !== 'all') return false;
@@ -211,6 +216,22 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       console.error('Unable to open transaction editor:', error);
       window.alert('Edit window could not be opened. Please refresh and try again.');
     }
+  };
+
+  // PDF Export: opens a clean A4 print report so desktop and mobile browsers can Save as PDF.
+  const handleExportPDF = () => {
+    const escapeHtml = (value: unknown) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const rows = filteredTransactions.map((t) => {
+      if (t.recordType === 'payment') {
+        const customer = t.paymentType === 'customer';
+        return '<tr class="payment ' + (customer ? 'customer-payment' : 'vendor-payment') + '"><td>' + escapeHtml(t.invoiceNumber) + '<br><small>' + escapeHtml(t.date) + ' ' + escapeHtml(t.time) + '</small></td><td>' + escapeHtml(customer ? t.customerName : t.vendorName) + '</td><td>' + escapeHtml(customer ? 'CUSTOMER DUE PAYMENT' : 'VENDOR DUE PAYMENT') + '</td><td>—</td><td>' + escapeHtml(formatCurrency(Number(t.paymentAmount || 0))) + '</td><td>—</td><td>—</td><td>' + escapeHtml(t.paymentMethodDisplay) + '</td></tr>';
+      }
+      return '<tr class="sale-row"><td><strong>' + escapeHtml(t.invoiceNumber) + '</strong><br><small>' + escapeHtml(t.date) + ' ' + escapeHtml(t.time) + '</small></td><td>' + escapeHtml(t.customerName) + '<br><small>' + escapeHtml(t.customerMobile) + '</small></td><td><strong>' + escapeHtml(t.serviceName) + '</strong><br><small>' + escapeHtml(t.flightDetails?.route || '') + (t.flightDetails?.pnr ? ' · PNR: ' + escapeHtml(t.flightDetails.pnr) : '') + '</small></td><td>' + escapeHtml(t.vendorName || '—') + '<br><small>Cost: ' + escapeHtml(formatCurrency(t.vendorCost)) + '</small></td><td class="money sale-money">' + escapeHtml(formatCurrency(t.sellingPrice)) + '</td><td class="money paid-money">' + escapeHtml(formatCurrency(t.customerPaid)) + '</td><td class="money due-money">' + escapeHtml(formatCurrency(t.customerDue)) + '</td><td class="money profit-money">' + escapeHtml(formatCurrency(t.grossProfit)) + '</td></tr>';
+    }).join('');
+    const report = '<!doctype html><html><head><meta charset="utf-8"><title>SIAM AIR — Transactions Report</title><style>@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#172033;font-size:9px;margin:0}.head{border-bottom:2px solid #15803d;padding-bottom:8px;margin-bottom:10px}.brand{font-size:18px;font-weight:800}.sub{color:#475569;margin-top:2px}.meta{margin-top:7px;font-size:8px;color:#64748b}.summary{display:flex;gap:16px;border:1px solid #cbd5e1;padding:7px;margin-bottom:10px}.summary b{font-size:10px}table{width:100%;border-collapse:collapse}th{background:#e2e8f0;text-align:left;font-size:8px;text-transform:uppercase;padding:5px;border:1px solid #cbd5e1}td{padding:5px;border:1px solid #e2e8f0;vertical-align:top}.sale-row{background:#fff}.sale-money{font-weight:800}.paid-money,.profit-money{color:#047857;font-weight:700}.due-money{color:#be123c;font-weight:700}.payment td{font-weight:700}.customer-payment{background:#ecfdf5;color:#065f46}.vendor-payment{background:#fff1f2;color:#9f1239}small{color:#64748b;font-weight:400}footer{margin-top:8px;text-align:right;color:#64748b;font-size:7px}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><div class="head"><div class="brand">SIAM AIR AND DIGITAL SERVICE</div><div class="sub">Business Transactions & Accounting Report</div><div class="meta">Generated: ' + escapeHtml(new Date().toLocaleString()) + ' · Records: ' + filteredTransactions.length + '</div></div><div class="summary"><span>Sales: <b>' + escapeHtml(formatCurrency(totalSales)) + '</b></span><span>Customer Paid: <b>' + escapeHtml(formatCurrency(totalPaid)) + '</b></span><span>Customer Due: <b>' + escapeHtml(formatCurrency(totalDue)) + '</b></span><span>Gross Profit: <b>' + escapeHtml(formatCurrency(totalProfit)) + '</b></span></div><table><thead><tr><th>Invoice / Date</th><th>Customer / Vendor</th><th>Service / Record</th><th>Vendor / Cost</th><th>Sale</th><th>Paid</th><th>Due</th><th>Profit / Payment Method</th></tr></thead><tbody>' + rows + '</tbody></table><footer>SIAM AIR AND DIGITAL SERVICE · All service in one doors</footer><script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>';
+    const popup = window.open('', '_blank', 'width=1200,height=800');
+    if (!popup) { window.alert('Please allow pop-ups to export the PDF report.'); return; }
+    popup.document.open(); popup.document.write(report); popup.document.close();
   };
 
   // CSV Export
@@ -277,6 +298,15 @@ export const TransactionList: React.FC<TransactionListProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportPDF}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-white bg-slate-800 hover:bg-slate-900 border border-slate-800 rounded-lg shadow-xs transition-colors cursor-pointer"
+            title="Export filtered transactions as A4 PDF"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Export PDF</span>
+          </button>
+
           <button
             onClick={handleExportCSV}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-xs transition-colors cursor-pointer"
@@ -366,6 +396,17 @@ export const TransactionList: React.FC<TransactionListProps> = ({
         {/* Secondary Filters row */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
           <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={recordFilter}
+              onChange={(e) => setRecordFilter(e.target.value as 'all' | 'sale' | 'customer_payment' | 'vendor_payment')}
+              className="px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white focus:outline-none"
+            >
+              <option value="all">All Records</option>
+              <option value="sale">🟢 SALES ONLY</option>
+              <option value="customer_payment">Customer Due Paid</option>
+              <option value="vendor_payment">Vendor Due Paid</option>
+            </select>
+
             <select
               value={serviceFilter}
               onChange={(e) => setServiceFilter(e.target.value)}
@@ -516,6 +557,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                       }`}
                     >
                       <td className="py-3 px-4">
+                                                <div className="flex items-center gap-1.5 mb-1">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 text-[9px] font-extrabold tracking-wide">SALE</span>
+                          <span className="text-[10px] text-slate-400">Service Transaction</span>
+                        </div>
                         <div className="font-bold text-slate-900 font-mono">{tx.invoiceNumber}</div>
                         <div className="text-[11px] text-slate-500 font-mono">
                           {formatDate(tx.date)} {formatTime(tx.time)}
