@@ -165,6 +165,7 @@ interface AppContextType {
   updateVendor: (id: string, vend: Partial<Vendor>) => void;
 
   addExpense: (expense: Omit<Expense, 'id' | 'createdBy'>) => void;
+  updateExpense: (id: string, updates: Partial<Expense>) => Promise<void>;
   deleteExpense: (id: string) => void;
   updateExpenseCategories: (cats: ExpenseCategory[]) => void;
 
@@ -1589,6 +1590,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     saveLocal();
+  };
+
+  const updateExpense = async (id: string, updates: Partial<Expense>) => {
+    if (!currentUser || currentUser.role !== 'admin') {
+      window.alert('Only administrators can edit expenses.');
+      return;
+    }
+    const existing = data.expenses.find((e: Expense) => e.id === id);
+    if (!existing) throw new Error('Expense not found');
+    if (USE_SERVER_API) {
+      try {
+        const result: any = await api.updateExpense(id, updates);
+        const row = result?.expense;
+        const updated: Expense = {
+          ...existing,
+          ...updates,
+          ...(row ? {
+            category: row.category,
+            description: row.description,
+            amount: Number(row.amount),
+            paymentMethod: String(row.payment_method || existing.paymentMethod).toLowerCase() === 'bkash' ? 'bKash' :
+              String(row.payment_method || existing.paymentMethod).toLowerCase() === 'nagad' ? 'Nagad' :
+              String(row.payment_method || existing.paymentMethod).toLowerCase() === 'rocket' ? 'Rocket' :
+              String(row.payment_method || existing.paymentMethod).toLowerCase() === 'bank' ? 'Bank' :
+              String(row.payment_method || existing.paymentMethod).toLowerCase() === 'card' ? 'Card' :
+              String(row.payment_method || existing.paymentMethod).toLowerCase() === 'other' ? 'Other' : 'Cash',
+            note: row.note || undefined,
+          } : {}),
+        };
+        setData((prev: any) => ({ ...prev, expenses: prev.expenses.map((e: Expense) => e.id === id ? updated : e) }));
+        const [balances, dashboard] = await Promise.all([api.accountBalances(), api.dashboard()]);
+        const raw = balances.balances || {};
+        setServerAccountBalances({ Cash:Number(raw.cash||0),bKash:Number(raw.bkash||0),Nagad:Number(raw.nagad||0),Rocket:Number(raw.rocket||0),Bank:Number(raw.bank||0),Card:Number(raw.card||0),Other:Number(raw.other||0) });
+        const t=dashboard.today||{} as any;
+        setServerTodaySummary({ totalSales:Number(t.total_sales||0),totalReceived:Number(t.total_received||0),totalExpense:Number(t.total_expense||0),totalVendorPayment:Number(t.total_vendor_payment||0),grossProfit:Number(t.gross_profit||0),loss:Number(t.loss||0),netProfit:Number(t.net_profit||0) });
+        recordAudit('Updated Expense', 'Expense', id, JSON.stringify(existing), JSON.stringify(updated));
+        return;
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : 'Expense could not be updated.');
+        throw error;
+      }
+    }
+    setData((prev: any) => ({ ...prev, expenses: prev.expenses.map((e: Expense) => e.id === id ? { ...e, ...updates } : e) }));
   };
 
   const deleteExpense = (id: string) => {
