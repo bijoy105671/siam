@@ -613,21 +613,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (result.requiresOtp && result.challengeId) {
         if (typeof window === 'undefined') return false;
         const verifiedUser = await new Promise<any>((resolve, reject) => {
-          const onVerified = (event: Event) => {
-            const detail = (event as CustomEvent).detail || {};
-            if (detail.challengeId !== result.challengeId) return;
-            cleanup();
-            resolve(detail.user);
-          };
-          const onCancelled = (event: Event) => {
-            const detail = (event as CustomEvent).detail || {};
-            if (detail.challengeId !== result.challengeId) return;
-            cleanup();
-            reject(new Error(detail.message || 'Login OTP verification cancelled.'));
-          };
+          let settled = false;
           const cleanup = () => {
             window.removeEventListener('siam:login-otp-verified', onVerified);
             window.removeEventListener('siam:login-otp-cancelled', onCancelled);
+          };
+          const finish = (fn: () => void) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            fn();
+          };
+          const onVerified = (event: Event) => {
+            const detail = (event as CustomEvent).detail || {};
+            if (String(detail.challengeId || '') !== String(result.challengeId)) return;
+            finish(() => resolve(detail.user));
+          };
+          const onCancelled = (event: Event) => {
+            const detail = (event as CustomEvent).detail || {};
+            if (String(detail.challengeId || '') !== String(result.challengeId)) return;
+            finish(() => reject(new Error(detail.message || 'Login OTP verification cancelled.')));
           };
           window.addEventListener('siam:login-otp-verified', onVerified);
           window.addEventListener('siam:login-otp-cancelled', onCancelled);
@@ -653,8 +658,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return true;
       }
       return false;
-    } catch {
-      return false;
+    } catch (error) {
+      console.error('Login failed:', error);
+      window.dispatchEvent(new CustomEvent('siam:login-error', {
+        detail: { message: error instanceof Error ? error.message : 'Login failed. Please try again.' }
+      }));
+      throw error;
     }
   };
 
