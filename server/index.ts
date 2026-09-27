@@ -1472,7 +1472,7 @@ app.patch('/api/expenses/:id', adminOnly, async (req, res) => {
     }
 
     const expenseUpdated = (await client.query(
-      'UPDATE expenses SET category=$1, description=$2, amount=$3, payment_method=$4, note=$5, occurred_at=CASE WHEN $6 <> '''' THEN $6::timestamp ELSE occurred_at END WHERE id=$7 RETURNING *',
+      "UPDATE expenses SET category=$1, description=$2, amount=$3, payment_method=$4, note=$5, occurred_at=CASE WHEN $6 <> '' THEN $6::timestamp ELSE occurred_at END WHERE id=$7 RETURNING *",
       [category, description, amount, method, note, date && time ? date + ' ' + time : '', expense.id]
     )).rows[0];
     await addAccountEntry(client, method, -amount, 'expense', expense.id, req.session.userId!, description, undefined, expense.id);
