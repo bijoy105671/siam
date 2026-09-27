@@ -1014,6 +1014,39 @@ app.get('/api/transactions', auth, async (req, res) => {
   res.json(rows);
 });
 
+app.get('/api/payment-records', auth, async (_req, res) => {
+  const { rows } = await pool.query(`
+    SELECT
+      p.id,
+      p.transaction_id,
+      p.payment_type,
+      p.entity_id,
+      p.amount,
+      p.payment_method,
+      p.note,
+      p.reference,
+      p.paid_at,
+      p.paid_at::date::text AS paid_date,
+      to_char(p.paid_at AT TIME ZONE 'Asia/Dhaka', 'HH24:MI') AS paid_time,
+      t.invoice_number,
+      COALESCE(u.full_name, u.username, 'Staff') AS recorded_by_name,
+      CASE
+        WHEN p.payment_type='customer' THEN c.name
+        WHEN p.payment_type='vendor' THEN v.name
+        ELSE ''
+      END AS entity_name
+    FROM payments p
+    JOIN transactions t ON t.id=p.transaction_id
+    LEFT JOIN users u ON u.id=p.recorded_by
+    LEFT JOIN customers c ON c.id=p.entity_id AND p.payment_type='customer'
+    LEFT JOIN vendors v ON v.id=p.entity_id AND p.payment_type='vendor'
+    WHERE p.reversed_at IS NULL AND t.deleted_at IS NULL
+    ORDER BY p.paid_at DESC, p.id DESC
+    LIMIT 1000
+  `);
+  res.json(rows);
+});
+
 const ACCOUNT_METHODS = new Set(['cash','bkash','nagad','rocket','bank','card','other']);
 
 const accountBalance = async (client: Pool | PoolClient, account: string) => {
@@ -1048,7 +1081,9 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
       const balance = await accountBalance(client, method);
       if (value > balance) throw new Error(`Insufficient balance for vendor payment (balance: ${balance})`);
     }
-    const payment = (await client.query('INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [tx.id, paymentType, entityId, value, method, req.session.userId, note || null, reference || null])).rows[0];
+    const paidAt = req.body?.paidAt ? new Date(String(req.body.paidAt)) : new Date();
+    if (Number.isNaN(paidAt.getTime())) throw new Error('Invalid payment date/time');
+    const payment = (await client.query('INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference,paid_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *', [tx.id, paymentType, entityId, value, method, req.session.userId, note || null, reference || null, paidAt])).rows[0];
     if (paymentType === 'customer') {
       const due = outstanding - value;
       await client.query('UPDATE transactions SET customer_paid=customer_paid+$1, customer_due=$2, status=$3, updated_at=now() WHERE id=$4', [value, due, due === 0 ? 'PAID' : 'PARTIAL', tx.id]);
@@ -1060,7 +1095,7 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
     }
     await audit(client, req.session.userId!, 'PAYMENT_RECORDED', 'Transaction', tx.id, tx, { paymentType, amount: value, paymentMethod: method });
     await client.query('COMMIT');
-    res.json({ ok: true });
+    res.json({ ok: true, payment: { id: payment.id, transactionId: payment.transaction_id, paymentType: payment.payment_type, entityId: payment.entity_id, amount: Number(payment.amount), paymentMethod: payment.payment_method, paidAt: payment.paid_at, note: payment.note, reference: payment.reference } });
   } catch (e) {
     await client.query('ROLLBACK');
     res.status(400).json({ error: e instanceof Error ? e.message : 'Payment failed' });
