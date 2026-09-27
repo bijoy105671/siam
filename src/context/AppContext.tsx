@@ -349,12 +349,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (cancelled || refreshing || document.visibilityState === 'hidden') return;
       refreshing = true;
       try {
-        const [balances, dashboard, customerRows, vendorRows, transactionRows, loanRows, adjustmentRows] = await Promise.all([
+        const [balances, dashboard, customerRows, vendorRows, transactionRows, paymentRows, loanRows, adjustmentRows] = await Promise.all([
           api.accountBalances(),
           api.dashboard(),
           api.customers(),
           api.vendors(),
           api.transactions(500),
+          api.paymentRecords(),
           api.loanAdvances(),
           api.loanAdvanceAdjustments(),
         ]);
@@ -395,6 +396,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           address: row.address || undefined, accountInfo: row.account_info ?? row.accountInfo ?? undefined,
           openingPayable: Number(row.opening_payable || 0), createdAt: row.created_at || new Date().toISOString(),
         });
+        const mappedPayments: PartialPayment[] = (paymentRows as any[]).map((row) => ({
+          id: String(row.id),
+          transactionId: String(row.transaction_id ?? row.transactionId ?? ''),
+          paymentType: row.payment_type === 'vendor' ? 'vendor' : 'customer',
+          entityId: String(row.entity_id ?? ''),
+          entityName: String(row.entity_name ?? ''),
+          amount: Number(row.amount || 0),
+          paymentMethod: String(row.payment_method || 'cash').toLowerCase() === 'bkash' ? 'bKash' :
+            String(row.payment_method || 'cash').toLowerCase() === 'nagad' ? 'Nagad' :
+            String(row.payment_method || 'cash').toLowerCase() === 'rocket' ? 'Rocket' :
+            String(row.payment_method || 'cash').toLowerCase() === 'bank' ? 'Bank' :
+            String(row.payment_method || 'cash').toLowerCase() === 'card' ? 'Card' :
+            String(row.payment_method || 'cash').toLowerCase() === 'other' ? 'Other' : 'Cash',
+          date: String(row.paid_date || ''),
+          time: String(row.paid_time || '00:00'),
+          recordedBy: String(row.recorded_by_name || 'Staff'),
+          note: row.note || undefined,
+          reference: row.reference || row.invoice_number || undefined,
+        }));
+
         const mappedTransactions = (transactionRows as any[]).map((row) => {
           const mapped = (typeof row === 'object' && row) ? row : {};
           return {
@@ -419,6 +440,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           customers: (customerRows as any[]).map(mapCustomer),
           vendors: (vendorRows as any[]).map(mapVendor),
           transactions: mappedTransactions,
+          partialPayments: mappedPayments,
           loanAdvances: (loanRows as any[]).map(mapServerLoanAdvance),
           loanAdvanceAdjustments: (adjustmentRows as any[]).map(mapServerLoanAdjustment),
         }));
@@ -1453,8 +1475,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       commitLocalPayment();
       try {
         try {
-          const [rows, balances, dashboard] = await Promise.all([
+          const [rows, paymentRows, balances, dashboard] = await Promise.all([
             api.transactions(500),
+            api.paymentRecords(),
             api.accountBalances(),
             api.dashboard(),
           ]);
@@ -1498,7 +1521,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             grossProfit: Number(row.gross_profit ?? row.grossProfit ?? 0),
             flightDetails: row.flight_details ? (typeof row.flight_details === 'string' ? JSON.parse(row.flight_details) : row.flight_details) : row.flightDetails,
           })) as Transaction[];
-          setData((prev: any) => ({ ...prev, transactions: mapped }));
+          const refreshedPayments: PartialPayment[] = (paymentRows as any[]).map((row) => ({
+            id: String(row.id),
+            transactionId: String(row.transaction_id ?? row.transactionId ?? ''),
+            paymentType: row.payment_type === 'vendor' ? 'vendor' : 'customer',
+            entityId: String(row.entity_id ?? ''),
+            entityName: String(row.entity_name ?? ''),
+            amount: Number(row.amount || 0),
+            paymentMethod: String(row.payment_method || 'cash').toLowerCase() === 'bkash' ? 'bKash' :
+              String(row.payment_method || 'cash').toLowerCase() === 'nagad' ? 'Nagad' :
+              String(row.payment_method || 'cash').toLowerCase() === 'rocket' ? 'Rocket' :
+              String(row.payment_method || 'cash').toLowerCase() === 'bank' ? 'Bank' :
+              String(row.payment_method || 'cash').toLowerCase() === 'card' ? 'Card' :
+              String(row.payment_method || 'cash').toLowerCase() === 'other' ? 'Other' : 'Cash',
+            date: String(row.paid_date || ''),
+            time: String(row.paid_time || '00:00'),
+            recordedBy: String(row.recorded_by_name || 'Staff'),
+            note: row.note || undefined,
+            reference: row.reference || row.invoice_number || undefined,
+          }));
+          setData((prev: any) => ({ ...prev, transactions: mapped, partialPayments: refreshedPayments }));
         } catch (refreshError) {
           console.error('Payment transaction refresh failed:', refreshError);
         }
