@@ -53,7 +53,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 1000 * 60 * 60 * 12 }
+  cookie: { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' }
 }));
 
 const audit = async (client: PoolClient, userId: string | null, action: string, recordType: string, recordId: string, previousValue?: unknown, newValue?: unknown) => {
@@ -171,6 +171,60 @@ app.post('/api/auth/login', async (req, res) => {
   const { rows } = await pool.query('SELECT id, username, password_hash, full_name, role, permissions, is_active FROM users WHERE lower(username)=lower($1)', [username]);
   const user = rows[0];
   if (!user || !user.is_active || !(await bcrypt.compare(password, user.password_hash))) return res.status(401).json({ error: 'Invalid credentials' });
+
+  const otp = String(randomInt(100000, 1000000));
+  await pool.query(`CREATE TABLE IF NOT EXISTS login_otps (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    otp_hash TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`);
+  await pool.query('UPDATE login_otps SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [user.id]);
+  const challengeId = randomUUID();
+  await pool.query(
+    "INSERT INTO login_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval '10 minutes')",
+    [challengeId, user.id, hashOtp(otp)]
+  );
+  await sendPasswordResetOtp(otp);
+
+  res.status(202).json({
+    requiresOtp: true,
+    challengeId,
+    message: 'A 6-digit login OTP was sent to the registered email. Enter it to continue.'
+  });
+});
+
+app.post('/api/auth/verify-login-otp', async (req, res) => {
+  const challengeId = String(req.body?.challengeId || '').trim();
+  const otp = String(req.body?.otp || '').trim();
+  if (!challengeId || !/^\d{6}$/.test(otp)) {
+    return res.status(400).json({ error: 'Challenge ID and 6-digit OTP are required' });
+  }
+
+  const { rows } = await pool.query(
+    'SELECT id, user_id, otp_hash, expires_at, attempts FROM login_otps WHERE id=$1 AND used_at IS NULL LIMIT 1',
+    [challengeId]
+  );
+  const item = rows[0];
+  if (!item || new Date(item.expires_at).getTime() <= Date.now() || Number(item.attempts) >= 5) {
+    return res.status(400).json({ error: 'Invalid or expired login OTP' });
+  }
+  if (hashOtp(otp) !== item.otp_hash) {
+    await pool.query('UPDATE login_otps SET attempts=attempts+1 WHERE id=$1', [challengeId]);
+    return res.status(400).json({ error: 'Invalid or expired login OTP' });
+  }
+
+  const { rows: users } = await pool.query(
+    'SELECT id, username, full_name, role, permissions, is_active FROM users WHERE id=$1',
+    [item.user_id]
+  );
+  const user = users[0];
+  if (!user?.is_active) return res.status(401).json({ error: 'Account inactive' });
+
+  await pool.query('UPDATE login_otps SET used_at=now() WHERE id=$1', [challengeId]);
   req.session.userId = user.id;
   res.json({ user: { id: user.id, username: user.username, fullName: user.full_name, role: user.role, permissions: user.permissions } });
 });
