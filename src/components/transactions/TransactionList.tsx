@@ -39,7 +39,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [recordFilter, setRecordFilter] = useState<'all' | 'sale' | 'customer_payment' | 'vendor_payment'>('all');
+  const [recordFilter, setRecordFilter] = useState<'all' | 'sale' | 'customer_payment' | 'vendor_payment' | 'transfer'>('all');
   const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -425,7 +425,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <select
               value={recordFilter}
-              onChange={(e) => setRecordFilter(e.target.value as 'all' | 'sale' | 'customer_payment' | 'vendor_payment')}
+              onChange={(e) => setRecordFilter(e.target.value as 'all' | 'sale' | 'customer_payment' | 'vendor_payment' | 'transfer')}
               className="px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white focus:outline-none"
             >
               <option value="all">All Records</option>
