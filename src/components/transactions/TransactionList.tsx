@@ -132,6 +132,26 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const totalDue = filteredTransactions.reduce((sum, t) => sum + t.customerDue, 0);
   const totalProfit = filteredTransactions.reduce((sum, t) => sum + t.grossProfit, 0);
 
+  const openTransactionEditor = (tx: Transaction) => {
+    try {
+      setEditingTransaction(tx);
+      setEditFlightStatus(tx.flightDetails?.ticketStatus || 'Confirmed');
+      setEditReminderDate(tx.reminderDate || '');
+      setEditReminderTime(tx.reminderTime || '');
+      setEditNote(tx.reminderNote || '');
+      setEditServiceId(tx.serviceId || '');
+      setEditVendorId(tx.vendorId || '');
+      setEditVendorCost(tx.vendorCost ?? '');
+      setEditSellingPrice(tx.sellingPrice ?? '');
+      setEditCustomerPaid(tx.customerPaid ?? '');
+      setEditCustomerPaymentMethod((tx.customerPaymentMethod || 'Cash') as PaymentMethod);
+      setEditCustomerDue(tx.customerDue ?? '');
+    } catch (error) {
+      console.error('Unable to open transaction editor:', error);
+      window.alert('Edit window could not be opened. Please refresh and try again.');
+    }
+  };
+
   // CSV Export
   const handleExportCSV = () => {
     const headers = [
@@ -475,19 +495,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
                           {currentUser?.role === 'admin' && (
                             <button
-                              onClick={() => {
-                                setEditingTransaction(tx);
-                                setEditFlightStatus(tx.flightDetails?.ticketStatus || 'Confirmed');
-                                setEditReminderDate(tx.reminderDate || '');
-                                setEditReminderTime(tx.reminderTime || '');
-                                setEditNote(tx.reminderNote || '');
-                                 setEditServiceId(tx.serviceId || '');
-                                 setEditVendorId(tx.vendorId || '');
-                                 setEditVendorCost(tx.vendorCost ?? '');
-                                 setEditSellingPrice(tx.sellingPrice ?? '');
-                                 setEditCustomerPaid(tx.customerPaid ?? '');
-                                 setEditCustomerPaymentMethod((tx.customerPaymentMethod || 'Cash') as PaymentMethod);
-                                 setEditCustomerDue(tx.customerDue ?? '');
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openTransactionEditor(tx);
                               }}
                               className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                               title="Edit Transaction (Admin + OTP)"
