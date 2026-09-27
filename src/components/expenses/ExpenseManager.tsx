@@ -3,6 +3,7 @@ import {
   WalletCards,
   Plus,
   Trash2,
+  Pencil,
   Calendar,
   Filter,
   DollarSign,
@@ -14,9 +15,10 @@ import { Expense, PaymentMethod } from '../../types';
 import { formatCurrency, formatDate, formatTime } from '../../utils/formatters';
 
 export const ExpenseManager: React.FC = () => {
-  const { expenses, expenseCategories, addExpense, deleteExpense, accountBalances } = useApp();
+  const { expenses, expenseCategories, addExpense, updateExpense, deleteExpense, accountBalances, currentUser } = useApp();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [selectedCategory, setSelectedCategory] = useState(expenseCategories[0]?.name || 'Office Rent');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState<number | ''>('');
@@ -39,6 +41,20 @@ export const ExpenseManager: React.FC = () => {
 
   const totalExpenseFiltered = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
+  const openEditExpense = (exp: Expense) => {
+    if (currentUser?.role !== 'admin') return;
+    setEditingExpense(exp);
+    setSelectedCategory(exp.category);
+    setDescription(exp.description);
+    setAmount(exp.amount);
+    setPaymentMethod(exp.paymentMethod);
+    setDate(exp.date);
+    setTime(exp.time);
+    setNote(exp.note || '');
+    setSubmitError(null);
+    setIsModalOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const numAmount = Number(amount) || 0;
@@ -54,7 +70,10 @@ export const ExpenseManager: React.FC = () => {
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      await addExpense({
+      if (editingExpense) {
+        await updateExpense(editingExpense.id, { category: selectedCategory, description: description.trim(), amount: numAmount, paymentMethod, date, time, note: note.trim() });
+      } else {
+        await addExpense({
       category: selectedCategory,
       description: description.trim(),
       amount: numAmount,
@@ -62,8 +81,10 @@ export const ExpenseManager: React.FC = () => {
       date,
       time,
         note: note.trim(),
-      });
+        });
+      }
 
+      setEditingExpense(null);
       setDescription('');
     setAmount('');
       setNote('');
@@ -195,15 +216,22 @@ export const ExpenseManager: React.FC = () => {
                     </td>
                     <td className="py-3 px-4 text-right font-sans">
                       <button
+                        onClick={() => openEditExpense(exp)}
+                        className="p-1 text-slate-400 hover:text-blue-600 rounded transition-colors"
+                        title="Edit Expense"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => {
                           if (confirm(`Delete expense ৳${exp.amount} (${exp.description})?`)) {
                             deleteExpense(exp.id);
                           }
                         }}
                         className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                        title="Delete Expense"
+                        title="Edit Expense"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        {currentUser?.role === 'admin' && <Pencil className="w-4 h-4" />}
                       </button>
                     </td>
                   </tr>
@@ -219,7 +247,7 @@ export const ExpenseManager: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200">
             <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
-              <h3 className="font-bold text-sm">Record Business Expense</h3>
+              <h3 className="font-bold text-sm">{editingExpense ? "Edit Business Expense" : "Record Business Expense"}</h3>
               <button
                 onClick={() => setIsModalOpen(false)}
                 className="text-slate-400 hover:text-white"
@@ -363,7 +391,7 @@ export const ExpenseManager: React.FC = () => {
                     disabled={isSubmitting}
                     className="px-5 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed rounded-lg shadow-xs cursor-pointer"
                   >
-                    {isSubmitting ? 'Saving…' : 'Save & Deduct Account'}
+                    {isSubmitting ? 'Saving…' : editingExpense ? 'Save Expense Changes' : 'Save & Deduct Account'}
                   </button>
                 </div>
               </div>
