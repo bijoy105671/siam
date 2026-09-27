@@ -105,7 +105,7 @@ const auth = (req: express.Request, res: express.Response, next: express.NextFun
   next();
 };
 
-const criticalAdminOnly = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+const historicalChangeAdminOnly = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Authentication required' });
   try {
     const { rows } = await pool.query('SELECT role, is_active FROM users WHERE id=$1', [req.session.userId]);
@@ -118,7 +118,7 @@ const criticalAdminOnly = async (req: express.Request, res: express.Response, ne
       await pool.query('UPDATE security_otps SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [req.session.userId]);
       await pool.query("INSERT INTO security_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval '10 minutes')", [randomUUID(), req.session.userId, hashOtp(otp)]);
       await sendPasswordResetOtp(otp);
-      return res.status(428).json({ error: 'SECURITY_OTP_REQUIRED', message: 'A security OTP was sent to the recovery email. Enter it to continue this important change.' });
+      return res.status(428).json({ error: 'SECURITY_OTP_REQUIRED', message: 'A security OTP was sent to the recovery email. Enter it to continue this historical change.' });
     }
     next();
   } catch (e) {
@@ -174,7 +174,7 @@ app.get('/api/settings', auth, async (_req, res) => {
   res.json({ settings: value && typeof value === 'object' ? value : {} });
 });
 
-app.patch('/api/settings', criticalAdminOnly, async (req, res) => {
+app.patch('/api/settings', adminOnly, async (req, res) => {
   const incoming = req.body && typeof req.body === 'object' ? req.body : {};
   const allowed = [
     'name','tagline','logoUrl','address','mobile','whatsapp','email','website',
@@ -379,7 +379,7 @@ app.get('/api/users', adminOnly, async (_req,res) => {
   const {rows}=await pool.query('SELECT id,username,full_name,role,phone,permissions,is_active,created_at FROM users ORDER BY created_at DESC');
   res.json(rows);
 });
-app.post('/api/users', criticalAdminOnly, async (req,res) => {
+app.post('/api/users', adminOnly, async (req,res) => {
   const username=String(req.body?.username||'').trim(), password=String(req.body?.password||''), fullName=String(req.body?.fullName||'').trim();
   const role=String(req.body?.role||'staff').toLowerCase(), phone=String(req.body?.phone||'').trim()||null;
   const permissions=req.body?.permissions&&typeof req.body.permissions==='object'?req.body.permissions:{};
@@ -387,7 +387,7 @@ app.post('/api/users', criticalAdminOnly, async (req,res) => {
   try{const hash=await bcrypt.hash(password,12);const {rows}=await pool.query('INSERT INTO users (username,password_hash,full_name,role,phone,permissions) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,username,full_name,role,phone,permissions,is_active,created_at',[username,hash,fullName,role,phone,JSON.stringify(permissions)]);res.status(201).json({user:rows[0]});}
   catch(e){res.status(400).json({error:e instanceof Error?e.message:'User creation failed'});}
 });
-app.patch('/api/users/:id', criticalAdminOnly, async (req,res) => {
+app.patch('/api/users/:id', adminOnly, async (req,res) => {
   try{
     const id=req.params.id, fullName=req.body?.fullName!==undefined?String(req.body.fullName).trim():null, username=req.body?.username!==undefined?String(req.body.username).trim():null;
     const role=req.body?.role!==undefined?String(req.body.role).toLowerCase():null, phone=req.body?.phone!==undefined?(String(req.body.phone).trim()||null):null;
@@ -399,7 +399,7 @@ app.patch('/api/users/:id', criticalAdminOnly, async (req,res) => {
     res.json({user:rows[0]});
   }catch(e){res.status(400).json({error:e instanceof Error?e.message:'User update failed'});}
 });
-app.delete('/api/users/:id', criticalAdminOnly, async (req,res) => {
+app.delete('/api/users/:id', adminOnly, async (req,res) => {
   if(req.params.id===req.session.userId)return res.status(400).json({error:'You cannot deactivate your own account'});
   const {rows}=await pool.query('UPDATE users SET is_active=false WHERE id=$1 RETURNING id',[req.params.id]);
   if(!rows[0])return res.status(404).json({error:'User not found'});
@@ -411,7 +411,7 @@ app.get('/api/expense-categories', auth, async (_req, res) => {
   res.json(Array.isArray(value) ? value : []);
 });
 
-app.put('/api/expense-categories', criticalAdminOnly, async (req, res) => {
+app.put('/api/expense-categories', adminOnly, async (req, res) => {
   const categories = Array.isArray(req.body?.categories) ? req.body.categories : null;
   if (!categories) return res.status(400).json({ error: 'categories must be an array' });
   const normalized = categories
@@ -432,18 +432,18 @@ app.get('/api/services', auth, async (_req,res) => {
   const {rows}=await pool.query('SELECT id,name,category,enabled,sort_order FROM services ORDER BY sort_order,name');
   res.json(rows);
 });
-app.post('/api/services', criticalAdminOnly, async (req,res) => {
+app.post('/api/services', adminOnly, async (req,res) => {
   const name=String(req.body?.name||'').trim(), category=String(req.body?.category||'Other').trim()||'Other';
   if(!name)return res.status(400).json({error:'Service name is required'});
   try{const {rows}=await pool.query('INSERT INTO services (name,category,enabled,sort_order) VALUES ($1,$2,$3,$4) RETURNING id,name,category,enabled,sort_order',[name,category,req.body?.enabled!==false,Number(req.body?.sortOrder||0)]);res.status(201).json({service:rows[0]});}
   catch(e){res.status(400).json({error:e instanceof Error?e.message:'Service creation failed'});}
 });
-app.patch('/api/services/:id', criticalAdminOnly, async (req,res) => {
+app.patch('/api/services/:id', adminOnly, async (req,res) => {
   const {rows}=await pool.query('UPDATE services SET name=COALESCE($1,name), category=COALESCE($2,category), enabled=COALESCE($3,enabled), sort_order=COALESCE($4,sort_order) WHERE id=$5 RETURNING id,name,category,enabled,sort_order',
     [req.body?.name!==undefined?String(req.body.name).trim():null,req.body?.category!==undefined?String(req.body.category).trim():null,req.body?.enabled!==undefined?Boolean(req.body.enabled):null,req.body?.sortOrder!==undefined?Number(req.body.sortOrder):null,req.params.id]);
   if(!rows[0])return res.status(404).json({error:'Service not found'});res.json({service:rows[0]});
 });
-app.delete('/api/services/:id', criticalAdminOnly, async (req,res) => {
+app.delete('/api/services/:id', adminOnly, async (req,res) => {
   const {rows}=await pool.query('UPDATE services SET enabled=false WHERE id=$1 RETURNING id',[req.params.id]);
   if(!rows[0])return res.status(404).json({error:'Service not found'});res.json({ok:true});
 });
@@ -508,7 +508,7 @@ app.get('/api/customers', auth, async (req, res) => {
   res.json(rows);
 });
 
-app.delete('/api/customers/:id', criticalAdminOnly, async (req, res) => {
+app.delete('/api/customers/:id', adminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -524,7 +524,7 @@ app.delete('/api/customers/:id', criticalAdminOnly, async (req, res) => {
   finally { client.release(); }
 });
 
-app.delete('/api/vendors/:id', criticalAdminOnly, async (req, res) => {
+app.delete('/api/vendors/:id', adminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -540,7 +540,7 @@ app.delete('/api/vendors/:id', criticalAdminOnly, async (req, res) => {
   finally { client.release(); }
 });
 
-app.post('/api/admin/clear-all-data', criticalAdminOnly, async (req, res) => {
+app.post('/api/admin/clear-all-data', adminOnly, async (req, res) => {
   const backupCode = String(req.body?.backupCode || '');
   if (backupCode !== '105671') return res.status(403).json({ error: 'Invalid backup code' });
   const client = await pool.connect();
@@ -621,7 +621,7 @@ app.patch('/api/vendors/:id', auth, async (req,res) => {
   } catch(e) { res.status(400).json({error:e instanceof Error?e.message:'Vendor update failed'}); }
 });
 
-app.delete('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
+app.delete('/api/transactions/:id', adminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -647,7 +647,7 @@ app.delete('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
   } finally { client.release(); }
 });
 
-app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
+app.patch('/api/transactions/:id', historicalChangeAdminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -850,7 +850,7 @@ app.patch('/api/transactions/:id', criticalAdminOnly, async (req, res) => {
   }
 });
 
-app.get('/api/admin/recycle-bin', criticalAdminOnly, async (_req, res) => {
+app.get('/api/admin/recycle-bin', adminOnly, async (_req, res) => {
   const { rows } = await pool.query(
     `SELECT t.*, c.name customer_name, c.mobile customer_mobile, s.name service_name, v.name vendor_name
      FROM transactions t
@@ -864,7 +864,7 @@ app.get('/api/admin/recycle-bin', criticalAdminOnly, async (_req, res) => {
   res.json(rows);
 });
 
-app.post('/api/admin/recycle-bin/:id/restore', criticalAdminOnly, async (req, res) => {
+app.post('/api/admin/recycle-bin/:id/restore', adminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -961,7 +961,7 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
   } finally { client.release(); }
 });
 
-app.post('/api/payments/:id/reverse', criticalAdminOnly, async (req, res) => {
+app.post('/api/payments/:id/reverse', adminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -998,7 +998,7 @@ app.get('/api/opening-balances', adminOnly, async (_req, res) => {
   res.json(rows);
 });
 
-app.put('/api/opening-balances/:account', criticalAdminOnly, async (req, res) => {
+app.put('/api/opening-balances/:account', adminOnly, async (req, res) => {
   const account = String(req.params.account || '').toLowerCase();
   const amount = Number(req.body?.amount);
   if (!ACCOUNT_METHODS.has(account) || !Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: 'Invalid account or opening balance' });
@@ -1132,7 +1132,7 @@ app.patch('/api/loan-advances/:id', auth, async (req, res) => {
   finally{client.release();}
 });
 
-app.delete('/api/loan-advances/:id', criticalAdminOnly, async (req,res)=>{
+app.delete('/api/loan-advances/:id', adminOnly, async (req,res)=>{
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
@@ -1177,7 +1177,7 @@ app.post('/api/loan-advances/:id/adjust', auth, async (req,res)=>{
   finally{client.release();}
 });
 
-app.post('/api/loan-advance-adjustments/:id/reverse', criticalAdminOnly, async (req,res)=>{
+app.post('/api/loan-advance-adjustments/:id/reverse', adminOnly, async (req,res)=>{
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
@@ -1293,7 +1293,7 @@ app.post('/api/expenses', auth, async (req, res) => {
   finally { client.release(); }
 });
 
-app.post('/api/expenses/:id/reverse', criticalAdminOnly, async (req, res) => {
+app.post('/api/expenses/:id/reverse', adminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1335,7 +1335,7 @@ app.post('/api/fund-transfers', auth, async (req, res) => {
   finally { client.release(); }
 });
 
-app.post('/api/fund-transfers/:id/reverse', criticalAdminOnly, async (req, res) => {
+app.post('/api/fund-transfers/:id/reverse', adminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
