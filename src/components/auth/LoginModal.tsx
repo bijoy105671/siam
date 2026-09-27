@@ -23,6 +23,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const [resetConfirm, setResetConfirm] = useState('');
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [loginOtpOpen, setLoginOtpOpen] = useState(false);
+  const [loginOtpChallenge, setLoginOtpChallenge] = useState('');
+  const [loginOtp, setLoginOtp] = useState('');
+  const [loginOtpError, setLoginOtpError] = useState('');
+  const [loginOtpBusy, setLoginOtpBusy] = useState(false);
+  const [loginOtpMessage, setLoginOtpMessage] = useState('');
   const [businessIdentity, setBusinessIdentity] = useState({
     name: 'SIAM AIR & DIGITAL SERVICE',
     tagline: 'Travel Agency · Visa · Passport · Digital',
@@ -39,6 +45,50 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !USE_SERVER_API) return;
+    const showLoginOtp = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      setLoginOtpChallenge(String(detail.challengeId || ''));
+      setLoginOtpMessage(String(detail.message || 'A 6-digit OTP was sent to your registered email.'));
+      setLoginOtp('');
+      setLoginOtpError('');
+      setLoginOtpBusy(false);
+      setLoginOtpOpen(true);
+    };
+    window.addEventListener('siam:login-otp-required', showLoginOtp);
+    return () => window.removeEventListener('siam:login-otp-required', showLoginOtp);
+  }, [isOpen]);
+
+  const verifyLoginOtp = async () => {
+    if (!/^\d{6}$/.test(loginOtp) || !loginOtpChallenge) {
+      setLoginOtpError('Enter the 6-digit OTP.');
+      return;
+    }
+    setLoginOtpBusy(true);
+    setLoginOtpError('');
+    try {
+      const result = await api.verifyLoginOtp(loginOtpChallenge, loginOtp);
+      window.dispatchEvent(new CustomEvent('siam:login-otp-verified', {
+        detail: { challengeId: loginOtpChallenge, user: result.user }
+      }));
+      setLoginOtpOpen(false);
+      setLoginOtpBusy(false);
+    } catch (err) {
+      setLoginOtpBusy(false);
+      setLoginOtpError(err instanceof Error ? err.message : 'Invalid or expired login OTP.');
+    }
+  };
+
+  const cancelLoginOtp = () => {
+    if (loginOtpBusy) return;
+    const challengeId = loginOtpChallenge;
+    setLoginOtpOpen(false);
+    window.dispatchEvent(new CustomEvent('siam:login-otp-cancelled', {
+      detail: { challengeId, message: 'Login cancelled. OTP verification is required.' }
+    }));
+  };
 
   if (!isOpen) return null;
 
@@ -221,6 +271,54 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             </div>
           )}
         </form>
+
+        {loginOtpOpen && USE_SERVER_API && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
+            <div className="w-full max-w-md overflow-hidden rounded-[28px] border border-white/60 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.4)]">
+              <div className="bg-gradient-to-br from-emerald-700 via-emerald-600 to-sky-600 px-6 py-5 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15">
+                    <Shield className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/70">Login Verification</div>
+                    <h3 className="mt-1 text-xl font-extrabold">Email OTP Required</h3>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-5 p-6">
+                <div className="rounded-2xl border border-sky-100 bg-sky-50 p-4">
+                  <div className="flex gap-3">
+                    <Mail className="mt-0.5 h-5 w-5 shrink-0 text-sky-600" />
+                    <p className="text-xs leading-5 text-slate-600">
+                      {loginOtpMessage} A new OTP is required for every sign-in.
+                      <span className="mt-1 block font-semibold text-slate-800">OTP sent to the registered recovery email.</span>
+                      <span className="mt-1 block text-[11px] text-slate-400">The OTP expires in 10 minutes.</span>
+                    </p>
+                  </div>
+                </div>
+                <input
+                  autoFocus
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={loginOtp}
+                  onChange={(e) => setLoginOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void verifyLoginOtp(); }}
+                  placeholder="Enter 6-digit OTP"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-center text-2xl font-black tracking-[0.65em] outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
+                />
+                {loginOtpError && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700">{loginOtpError}</div>}
+                <div className="flex gap-3">
+                  <button type="button" onClick={cancelLoginOtp} disabled={loginOtpBusy} className="flex-1 rounded-2xl bg-slate-100 py-3.5 text-sm font-bold text-slate-600 hover:bg-slate-200 disabled:opacity-60">Cancel</button>
+                  <button type="button" onClick={() => void verifyLoginOtp()} disabled={loginOtpBusy || loginOtp.length !== 6} className="flex-1 rounded-2xl bg-gradient-to-r from-emerald-600 to-sky-600 py-3.5 text-sm font-extrabold text-white shadow-lg disabled:opacity-60">
+                    {loginOtpBusy ? 'Verifying…' : 'Verify & Sign In'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showForgot && USE_SERVER_API && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
