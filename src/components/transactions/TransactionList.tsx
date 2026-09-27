@@ -51,7 +51,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [editVendorCost, setEditVendorCost] = useState<number | ''>('');
   const [editSellingPrice, setEditSellingPrice] = useState<number | ''>('');
   const [editCustomerPaid, setEditCustomerPaid] = useState<number | ''>('');
-  const [editCustomerPaymentMethod, setEditCustomerPaymentMethod] = useState<PaymentMethod>('cash');
+  const [editCustomerPaymentMethod, setEditCustomerPaymentMethod] = useState<PaymentMethod>('Cash');
   const [editCustomerDue, setEditCustomerDue] = useState<number | ''>('');
   const [savingEdit, setSavingEdit] = useState(false);
 
