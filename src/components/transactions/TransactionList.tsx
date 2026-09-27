@@ -14,6 +14,7 @@ import {
   X,
   Save,
   ShieldCheck,
+  DollarSign,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { PaymentMethod, Transaction, TransactionStatus } from '../../types';
@@ -68,7 +69,17 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const now = new Date();
   const todayStr = toLocalDateString(now);
 
+  // Transaction dates are stored as PostgreSQL DATE values (YYYY-MM-DD).
+  // Keep the calendar date as-is instead of parsing it through Date/UTC.
+  // This makes Today/Yesterday/Custom work consistently on phone and desktop.
+  const normalizeTransactionDate = (value: unknown) => {
+    if (typeof value !== 'string') return '';
+    const match = value.trim().match(/^(\\d{4}-\\d{2}-\\d{2})/);
+    return match ? match[1] : value.trim();
+  };
+
   const filteredTransactions = transactions.filter((tx) => {
+    const transactionDate = normalizeTransactionDate(tx.date);
     // 1. Text Search (Customer, Vendor, Invoice, PNR, Ticket, Service)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -94,23 +105,23 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
     // 4. Date filter
     if (dateRange === 'today') {
-      if (tx.date !== todayStr) return false;
+      if (transactionDate !== todayStr) return false;
     } else if (dateRange === 'yesterday') {
       const yesterday = new Date(now);
       yesterday.setDate(yesterday.getDate() - 1);
       const yStr = toLocalDateString(yesterday);
-      if (tx.date !== yStr) return false;
+      if (transactionDate !== yStr) return false;
     } else if (dateRange === 'week') {
       const sevenDaysAgo = new Date(now);
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const sStr = toLocalDateString(sevenDaysAgo);
-      if (tx.date < sStr) return false;
+      if (transactionDate < sStr) return false;
     } else if (dateRange === 'month') {
       const firstOfMonth = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
-      if (tx.date < firstOfMonth) return false;
+      if (transactionDate < firstOfMonth) return false;
     } else if (dateRange === 'custom') {
-      if (customStart && tx.date < customStart) return false;
-      if (customEnd && tx.date > customEnd) return false;
+      if (customStart && transactionDate < customStart) return false;
+      if (customEnd && transactionDate > customEnd) return false;
     }
 
     return true;
