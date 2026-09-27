@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Calculator, Plane, Ticket, X, RotateCcw, ArrowRight } from 'lucide-react';
 import { Dashboard as ExistingDashboard } from './DashboardLegacy';
 
-type Props = React.ComponentProps<typeof ExistingDashboard>;
+type Props = React.ComponentProps<typeof ExistingDashboard> & { onOpenPNR?: () => void };
 type CalcMode = 'net' | 'reissue' | 'refund';
 
 const num = (v: string) => Number.parseFloat(v) || 0;
@@ -36,7 +36,7 @@ export const Dashboard: React.FC<Props> = (props) => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         <button
           type="button"
-          onClick={props.onOpenNewEntry}
+          onClick={props.onOpenPNR || props.onOpenNewEntry}
           className="group flex items-center gap-3 rounded-xl border border-blue-200 bg-white px-3.5 py-3 text-left shadow-sm hover:border-blue-400 hover:bg-blue-50/40 transition-all active:scale-[0.99] cursor-pointer"
         >
           <span className="w-9 h-9 shrink-0 rounded-lg bg-blue-600 text-white flex items-center justify-center">
@@ -44,7 +44,7 @@ export const Dashboard: React.FC<Props> = (props) => {
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-bold text-slate-900">PNR CREATION &amp; E-TICKET</span>
-            <span className="block text-[11px] text-slate-500 mt-0.5">Open One Entry / New Entry</span>
+            <span className="block text-[11px] text-slate-500 mt-0.5">Dedicated PNR & E-Ticket Module</span>
           </span>
           <ArrowRight className="w-4 h-4 text-blue-500 group-hover:translate-x-0.5 transition-transform" />
         </button>
