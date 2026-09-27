@@ -982,8 +982,8 @@ app.get('/api/transactions', auth, async (req, res) => {
   const limit = Math.min(Number(req.query.limit || 100), 500);
   const { rows } = await pool.query(`
     SELECT t.*, c.name customer_name, c.mobile customer_mobile, s.name service_name, v.name vendor_name,
-      (SELECT p.payment_method FROM payments p WHERE p.transaction_id=t.id AND p.payment_type='customer' AND p.reversed_at IS NULL ORDER BY p.created_at DESC, p.id DESC LIMIT 1) AS customer_payment_method,
-      (SELECT p.payment_method FROM payments p WHERE p.transaction_id=t.id AND p.payment_type='vendor' AND p.reversed_at IS NULL ORDER BY p.created_at DESC, p.id DESC LIMIT 1) AS vendor_payment_method
+      (SELECT p.payment_method FROM payments p WHERE p.transaction_id=t.id AND p.payment_type='customer' AND p.reversed_at IS NULL ORDER BY p.paid_at DESC, p.id DESC LIMIT 1) AS customer_payment_method,
+      (SELECT p.payment_method FROM payments p WHERE p.transaction_id=t.id AND p.payment_type='vendor' AND p.reversed_at IS NULL ORDER BY p.paid_at DESC, p.id DESC LIMIT 1) AS vendor_payment_method
     FROM transactions t
     JOIN customers c ON c.id=t.customer_id
     LEFT JOIN services s ON s.id=t.service_id
