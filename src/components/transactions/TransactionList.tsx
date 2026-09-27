@@ -33,7 +33,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   paymentFocus = null,
   onOpenPayment,
 }) => {
-  const { transactions, partialPayments, services, vendors, addVendorAsync, deleteTransaction, updateTransaction, currentUser } = useApp();
+  const { transactions, partialPayments, transfers, services, vendors, addVendorAsync, deleteTransaction, updateTransaction, currentUser } = useApp();
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,7 +84,11 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   };
 
   type DisplayTransaction = Transaction & {
-    recordType?: 'sale' | 'payment';
+    recordType?: 'sale' | 'payment' | 'transfer';
+    transferFrom?: string;
+    transferTo?: string;
+    transferAmount?: number;
+    transferReason?: string;
     paymentType?: 'customer' | 'vendor';
     paymentAmount?: number;
     paymentMethodDisplay?: string;
@@ -127,6 +131,22 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       paymentMethodDisplay: p.paymentMethod,
       paymentReference: p.reference || undefined,
     })),
+    ...transfers.map((tr) => ({
+      id: tr.id,
+      invoiceNumber: `TRANSFER-${tr.id.replace(/^trf_/, '')}`,
+      date: tr.date,
+      time: tr.time,
+      createdBy: tr.createdBy,
+      customerId: '', customerName: 'Fund Transfer', customerMobile: '',
+      serviceId: '', serviceName: 'Fund Transfer',
+      sellingPrice: 0, customerPaid: 0, customerDue: 0, customerPaymentMethod: tr.fromAccount,
+      vendorCost: 0, vendorPaid: 0, vendorDue: 0, vendorPaymentMethod: tr.toAccount,
+      grossProfit: 0, status: 'PAID' as const,
+      recordType: 'transfer' as const,
+      transferFrom: tr.fromAccount, transferTo: tr.toAccount,
+      transferAmount: Number(tr.amount || 0), transferReason: tr.reason,
+      notes: tr.note,
+    })),
   ].sort((a, b) => {
     const dateCompare = normalizeTransactionDate(b.date).localeCompare(normalizeTransactionDate(a.date));
     if (dateCompare !== 0) return dateCompare;
@@ -158,9 +178,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     if (recordFilter === 'sale' && tx.recordType !== 'sale') return false;
     if (recordFilter === 'customer_payment' && !(tx.recordType === 'payment' && tx.paymentType === 'customer')) return false;
     if (recordFilter === 'vendor_payment' && !(tx.recordType === 'payment' && tx.paymentType === 'vendor')) return false;
+    if (recordFilter === 'transfer' && tx.recordType !== 'transfer') return false;
 
     // Payment records are displayed in All Transactions, but are not service/sale rows.
-    if (tx.recordType === 'payment') {
+    if (tx.recordType === 'transfer') {
+      if (serviceFilter !== 'all') return false;
+      if (statusFilter !== 'all') return false;
+    } else if (tx.recordType === 'payment') {
       if (serviceFilter !== 'all') return false;
       if (statusFilter !== 'all') return false;
     } else {
@@ -222,6 +246,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const handleExportPDF = () => {
     const escapeHtml = (value: unknown) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const rows = filteredTransactions.map((t) => {
+      if (t.recordType === 'transfer') {
+        return '<tr class="transfer-row"><td>' + escapeHtml(t.invoiceNumber) + '<br><small>' + escapeHtml(t.date) + ' ' + escapeHtml(t.time) + '</small></td><td>Fund Transfer</td><td>' + escapeHtml(t.transferReason || 'Account Transfer') + '</td><td>' + escapeHtml(t.transferFrom || '') + ' → ' + escapeHtml(t.transferTo || '') + '</td><td class="money">' + escapeHtml(formatCurrency(Number(t.transferAmount || 0))) + '</td><td>—</td><td>—</td><td>NON-SALE</td></tr>';
+      }
       if (t.recordType === 'payment') {
         const customer = t.paymentType === 'customer';
         return '<tr class="payment ' + (customer ? 'customer-payment' : 'vendor-payment') + '"><td>' + escapeHtml(t.invoiceNumber) + '<br><small>' + escapeHtml(t.date) + ' ' + escapeHtml(t.time) + '</small></td><td>' + escapeHtml(customer ? t.customerName : t.vendorName) + '</td><td>' + escapeHtml(customer ? 'CUSTOMER DUE PAYMENT' : 'VENDOR DUE PAYMENT') + '</td><td>—</td><td>' + escapeHtml(formatCurrency(Number(t.paymentAmount || 0))) + '</td><td>—</td><td>—</td><td>' + escapeHtml(t.paymentMethodDisplay) + '</td></tr>';
@@ -405,6 +432,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
               <option value="sale">🟢 SALES ONLY</option>
               <option value="customer_payment">Customer Due Paid</option>
               <option value="vendor_payment">Vendor Due Paid</option>
+              <option value="transfer">Fund Transfers</option>
             </select>
 
             <select
@@ -488,6 +516,34 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                 </tr>
               ) : (
                 filteredTransactions.map((tx) => {
+                  if (tx.recordType === 'transfer') {
+                    return (
+                      <tr key={tx.id} className="bg-sky-50/70 border-l-4 border-sky-400">
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-sky-800 font-mono">{tx.invoiceNumber}</div>
+                          <div className="text-[11px] text-slate-500 font-mono">{formatDate(tx.date)} {formatTime(tx.time)}</div>
+                        </td>
+                        <td className="py-3 px-4 font-sans">
+                          <div className="font-bold text-sky-800">FUND TRANSFER</div>
+                          <div className="text-[10px] text-slate-500">Non-Sale Transaction</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-semibold text-sky-800 font-sans">{tx.transferReason || 'Account Transfer'}</div>
+                          <div className="text-[10px] text-slate-500">Internal account movement</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-semibold text-sky-800 font-sans">{tx.transferFrom} → {tx.transferTo}</div>
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold tabular-nums text-sky-700">{formatCurrency(Number(tx.transferAmount || 0))}</td>
+                        <td className="py-3 px-4 text-right text-slate-400">—</td>
+                        <td className="py-3 px-4 text-right text-slate-400">—</td>
+                        <td className="py-3 px-4 text-right font-bold text-slate-400">—</td>
+                        <td className="py-3 px-4 text-center"><span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-sky-100 text-sky-800 border-sky-200">TRANSFER · NON-SALE</span></td>
+                        <td className="py-3 px-4 text-right text-[10px] text-slate-500 font-sans">{tx.transferAmount ? formatCurrency(Number(tx.transferAmount)) : '—'}</td>
+                      </tr>
+                    );
+                  }
+
                   if (tx.recordType === 'payment') {
                     const isCustomerPayment = tx.paymentType === 'customer';
                     const amount = Number(tx.paymentAmount || 0);
