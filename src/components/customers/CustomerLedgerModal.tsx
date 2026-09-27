@@ -56,7 +56,7 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
               </a>
             )}
 
-            {onOpenPayment && ledger.currentDue > 0 && ledger.transactions.some(tx => tx.customerDue > 0) && (
+            {onOpenPayment && ledger.currentDue > 0 && (
               <button
                 onClick={() => {
                   const tx = ledger.transactions.find(item => item.customerDue > 0);
