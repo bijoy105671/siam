@@ -466,7 +466,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                  setEditVendorCost(tx.vendorCost ?? '');
                                  setEditSellingPrice(tx.sellingPrice ?? '');
                                  setEditCustomerPaid(tx.customerPaid ?? '');
-                                 setEditCustomerPaymentMethod((tx.customerPaymentMethod || 'cash') as PaymentMethod);
+                                 setEditCustomerPaymentMethod((tx.customerPaymentMethod || 'Cash') as PaymentMethod);
                                  setEditCustomerDue(tx.customerDue ?? '');
                               }}
                               className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
@@ -545,13 +545,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   <label className="block">
                     <span className="block text-[10px] font-semibold text-slate-700 mb-1">Additional Payment Account (when Paid increases)</span>
                     <select value={editCustomerPaymentMethod} onChange={(e) => setEditCustomerPaymentMethod(e.target.value as PaymentMethod)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="cash">Cash</option>
-                      <option value="bkash">bKash</option>
-                      <option value="nagad">Nagad</option>
-                      <option value="rocket">Rocket</option>
-                      <option value="bank">Bank</option>
-                      <option value="card">Card</option>
-                      <option value="other">Other</option>
+                      <option value="Cash">Cash</option>
+                      <option value="bKash">bKash</option>
+                      <option value="Nagad">Nagad</option>
+                      <option value="Rocket">Rocket</option>
+                      <option value="Bank">Bank</option>
+                      <option value="Card">Card</option>
+                      <option value="Other">Other</option>
                     </select>
                   </label>
                   <label className="block">
