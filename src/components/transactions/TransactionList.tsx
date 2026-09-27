@@ -50,6 +50,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [editVendorId, setEditVendorId] = useState('');
   const [editVendorCost, setEditVendorCost] = useState<number | ''>('');
   const [editSellingPrice, setEditSellingPrice] = useState<number | ''>('');
+  const [editCustomerPaid, setEditCustomerPaid] = useState<number | ''>('');
+  const [editCustomerPaymentMethod, setEditCustomerPaymentMethod] = useState<PaymentMethod>('cash');
   const [editCustomerDue, setEditCustomerDue] = useState<number | ''>('');
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -463,6 +465,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                  setEditVendorId(tx.vendorId || '');
                                  setEditVendorCost(tx.vendorCost ?? '');
                                  setEditSellingPrice(tx.sellingPrice ?? '');
+                                 setEditCustomerPaid(tx.customerPaid ?? '');
+                                 setEditCustomerPaymentMethod((tx.customerPaymentMethod || 'cash') as PaymentMethod);
                                  setEditCustomerDue(tx.customerDue ?? '');
                               }}
                               className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
@@ -525,23 +529,45 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                     <input type="number" min="0" value={editSellingPrice} onChange={(e) => {
                       const next = e.target.value === '' ? '' : Number(e.target.value);
                       setEditSellingPrice(next);
-                      if (next !== '') setEditCustomerDue(Math.max(0, Number(next) - Number(editingTransaction.customerPaid || 0)));
+                      if (next !== '') setEditCustomerDue(Math.max(0, Number(next) - Number(editCustomerPaid || 0)));
                     }} className="w-full px-3 py-2.5 text-sm font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Customer Paid (Historical Correction)</span>
+                    <input type="number" min="0" value={editCustomerPaid} onChange={(e) => {
+                      const next = e.target.value === '' ? '' : Number(e.target.value);
+                      setEditCustomerPaid(next);
+                      if (next !== '') setEditCustomerDue(Math.max(0, Number(editSellingPrice || 0) - Number(next)));
+                    }} className="w-full px-3 py-2.5 text-sm font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Additional Payment Account (when Paid increases)</span>
+                    <select value={editCustomerPaymentMethod} onChange={(e) => setEditCustomerPaymentMethod(e.target.value as PaymentMethod)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="cash">Cash</option>
+                      <option value="bkash">bKash</option>
+                      <option value="nagad">Nagad</option>
+                      <option value="rocket">Rocket</option>
+                      <option value="bank">Bank</option>
+                      <option value="card">Card</option>
+                      <option value="other">Other</option>
+                    </select>
                   </label>
                   <label className="block">
                     <span className="block text-[10px] font-semibold text-slate-700 mb-1">Customer Due</span>
                     <input type="number" min="0" value={editCustomerDue} onChange={(e) => {
                       const next = e.target.value === '' ? '' : Number(e.target.value);
                       setEditCustomerDue(next);
-                      if (next !== '') setEditSellingPrice(Number(editingTransaction.customerPaid || 0) + Number(next));
+                      if (next !== '') setEditSellingPrice(Number(editCustomerPaid || 0) + Number(next));
                     }} className="w-full px-3 py-2.5 text-sm font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </label>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-[10px]">
-                  <div className="rounded-lg bg-white border border-slate-200 p-2"><span className="text-slate-500 block">Customer Paid</span><strong>{formatCurrency(editingTransaction.customerPaid)}</strong></div>
-                  <div className="rounded-lg bg-white border border-slate-200 p-2"><span className="text-slate-500 block">Calculated Due</span><strong className="text-rose-600">{formatCurrency(Math.max(0, Number(editSellingPrice || 0) - Number(editingTransaction.customerPaid || 0)))}</strong></div>
+                  <div className="rounded-lg bg-white border border-slate-200 p-2"><span className="text-slate-500 block">Current Historical Paid</span><strong>{formatCurrency(editingTransaction.customerPaid)}</strong></div>
+                  <div className="rounded-lg bg-white border border-slate-200 p-2"><span className="text-slate-500 block">New Calculated Due</span><strong className="text-rose-600">{formatCurrency(Math.max(0, Number(editSellingPrice || 0) - Number(editCustomerPaid || 0)))}</strong></div>
                 </div>
-                <p className="text-[10px] text-rose-800">Admin price corrections do not create a new cash/bank payment. Customer Paid remains unchanged; Selling Price and Due stay mathematically linked.</p>
+                <p className="text-[10px] text-rose-800">Changing Customer Paid reconciles the historical payment records. Increasing Paid creates a new receipt in the selected account; decreasing Paid reduces/reverses the latest historical receipts and restores the corresponding account balance.</p>
               </div>
 
               <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 space-y-3">
@@ -627,6 +653,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         vendorId: editVendorId || null,
                         vendorCost: Number(editVendorCost || 0),
                         sellingPrice: Number(editSellingPrice || 0),
+                        customerPaid: Number(editCustomerPaid || 0),
+                        customerPaymentMethod: editCustomerPaymentMethod,
                         customerDue: Number(editCustomerDue || 0),
                         ...(editingTransaction.flightDetails ? { flightStatus: editFlightStatus } : {}),
                       }, 'Admin transaction edit');
