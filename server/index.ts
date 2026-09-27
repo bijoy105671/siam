@@ -20,8 +20,25 @@ const hashOtp = (otp: string) => createHash('sha256').update(otp).digest('hex');
 const initializeDatabase = async () => {
   const schemaUrl = new URL('./schema.sql', import.meta.url);
   const schema = await readFile(schemaUrl, 'utf8');
-  await pool.query(schema);
-  console.log('SIAM AIR database schema initialized');
+
+  // Render can briefly run the old and new instances together during a deploy.
+  // Schema DDL can deadlock with live requests in that overlap, so retry
+  // transient PostgreSQL lock/deadlock errors instead of taking the service down.
+  const maxAttempts = 6;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await pool.query(schema);
+      console.log('SIAM AIR database schema initialized');
+      return;
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      const transientLockError = code === '40P01' || code === '55P03';
+      if (!transientLockError || attempt === maxAttempts) throw error;
+      const delayMs = attempt * 1500;
+      console.warn('Database schema initialization hit a transient PostgreSQL lock; retrying in ' + delayMs + 'ms (attempt ' + (attempt + 1) + '/' + maxAttempts + ')');
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
 };
 
 const sendPasswordResetOtp = async (otp: string) => {
