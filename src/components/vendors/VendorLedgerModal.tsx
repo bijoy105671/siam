@@ -56,7 +56,7 @@ export const VendorLedgerModal: React.FC<VendorLedgerModalProps> = ({
               </a>
             )}
 
-            {onOpenPayment && ledger.currentPayable > 0 && ledger.transactions.some(tx => tx.vendorDue > 0) && (
+            {onOpenPayment && ledger.currentPayable > 0 && (
               <button
                 onClick={() => {
                   const tx = ledger.transactions.find(item => item.vendorDue > 0);
