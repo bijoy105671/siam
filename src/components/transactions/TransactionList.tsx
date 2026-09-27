@@ -56,8 +56,17 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Filtering logic
+  // Use the browser's local calendar date instead of UTC (toISOString),
+  // otherwise Bangladesh users can see Today/Yesterday shift around midnight.
+  const toLocalDateString = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = toLocalDateString(now);
 
   const filteredTransactions = transactions.filter((tx) => {
     // 1. Text Search (Customer, Vendor, Invoice, PNR, Ticket, Service)
@@ -87,17 +96,17 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     if (dateRange === 'today') {
       if (tx.date !== todayStr) return false;
     } else if (dateRange === 'yesterday') {
-      const yesterday = new Date();
+      const yesterday = new Date(now);
       yesterday.setDate(yesterday.getDate() - 1);
-      const yStr = yesterday.toISOString().split('T')[0];
+      const yStr = toLocalDateString(yesterday);
       if (tx.date !== yStr) return false;
     } else if (dateRange === 'week') {
-      const sevenDaysAgo = new Date();
+      const sevenDaysAgo = new Date(now);
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const sStr = sevenDaysAgo.toISOString().split('T')[0];
+      const sStr = toLocalDateString(sevenDaysAgo);
       if (tx.date < sStr) return false;
     } else if (dateRange === 'month') {
-      const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      const firstOfMonth = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
       if (tx.date < firstOfMonth) return false;
     } else if (dateRange === 'custom') {
       if (customStart && tx.date < customStart) return false;
