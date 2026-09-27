@@ -789,7 +789,7 @@ app.patch('/api/transactions/:id', historicalChangeAdminOnly, async (req, res) =
       if (!vendorId && vendorPaid > 0) throw new Error('Vendor must be linked before recording vendor paid amount');
       if (difference > 0) {
         const fallbackMethod = await client.query(
-          "SELECT payment_method FROM payments WHERE transaction_id=$1 AND payment_type='vendor' AND reversed_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1",
+          "SELECT payment_method FROM payments WHERE transaction_id=$1 AND payment_type='vendor' AND reversed_at IS NULL ORDER BY paid_at DESC, id DESC LIMIT 1",
           [tx.id]
         );
         const method = String(body.vendorPaymentMethod || fallbackMethod.rows[0]?.payment_method || 'cash').toLowerCase();
@@ -806,7 +806,7 @@ app.patch('/api/transactions/:id', historicalChangeAdminOnly, async (req, res) =
       } else {
         let remaining = Math.abs(difference);
         const payments = (await client.query(
-          "SELECT * FROM payments WHERE transaction_id=$1 AND payment_type='vendor' AND reversed_at IS NULL ORDER BY created_at DESC, id DESC FOR UPDATE",
+          "SELECT * FROM payments WHERE transaction_id=$1 AND payment_type='vendor' AND reversed_at IS NULL ORDER BY paid_at DESC, id DESC FOR UPDATE",
           [tx.id]
         )).rows;
         const totalHistorical = payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
@@ -839,7 +839,7 @@ app.patch('/api/transactions/:id', historicalChangeAdminOnly, async (req, res) =
       const difference = customerPaid - oldCustomerPaid;
       if (difference > 0) {
         const fallbackMethod = await client.query(
-          "SELECT payment_method FROM payments WHERE transaction_id=$1 AND payment_type='customer' AND reversed_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1",
+          "SELECT payment_method FROM payments WHERE transaction_id=$1 AND payment_type='customer' AND reversed_at IS NULL ORDER BY paid_at DESC, id DESC LIMIT 1",
           [tx.id]
         );
         const method = String(body.customerPaymentMethod || fallbackMethod.rows[0]?.payment_method || 'cash').toLowerCase();
@@ -856,7 +856,7 @@ app.patch('/api/transactions/:id', historicalChangeAdminOnly, async (req, res) =
       } else {
         let remaining = Math.abs(difference);
         const payments = (await client.query(
-          "SELECT * FROM payments WHERE transaction_id=$1 AND payment_type='customer' AND reversed_at IS NULL ORDER BY created_at DESC, id DESC FOR UPDATE",
+          "SELECT * FROM payments WHERE transaction_id=$1 AND payment_type='customer' AND reversed_at IS NULL ORDER BY paid_at DESC, id DESC FOR UPDATE",
           [tx.id]
         )).rows;
         const totalHistorical = payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
