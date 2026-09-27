@@ -44,6 +44,26 @@ const sendPasswordResetOtp = async (otp: string) => {
   }
 };
 
+const sendLoginOtp = async (otp: string) => {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = 'onboarding@resend.dev';
+  if (!apiKey) throw new Error('Login email OTP is not configured. Add RESEND_API_KEY in Render.');
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from,
+      to: [PASSWORD_RESET_EMAIL],
+      subject: 'SIAM AIR & DIGITAL SERVICE — Login Verification OTP',
+      html: '<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:14px"><h2 style="margin:0 0 8px">Login Verification</h2><p>Your one-time login verification code is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#ecfdf5;border-radius:10px">' + otp + '</div><p style="color:#64748b">This OTP expires in 10 minutes. A new OTP is required for every sign-in.</p><p style="margin-bottom:0"><b>SIAM AIR & DIGITAL SERVICE</b></p></div>'
+    })
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error('Email provider rejected the login OTP request: ' + body.slice(0, 300));
+  }
+};
+
 const PgSession = connectPgSimple(session);
 
 app.set('trust proxy', 1);
@@ -188,7 +208,7 @@ app.post('/api/auth/login', async (req, res) => {
     "INSERT INTO login_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval '10 minutes')",
     [challengeId, user.id, hashOtp(otp)]
   );
-  await sendPasswordResetOtp(otp);
+  await sendLoginOtp(otp);
 
   res.status(202).json({
     requiresOtp: true,
