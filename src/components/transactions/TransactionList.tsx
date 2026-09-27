@@ -33,7 +33,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   paymentFocus = null,
   onOpenPayment,
 }) => {
-  const { transactions, services, vendors, deleteTransaction, updateTransaction, currentUser } = useApp();
+  const { transactions, services, vendors, addVendorAsync, deleteTransaction, updateTransaction, currentUser } = useApp();
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -49,6 +49,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [editNote, setEditNote] = useState('');
   const [editServiceId, setEditServiceId] = useState('');
   const [editVendorId, setEditVendorId] = useState('');
+  const [editVendorName, setEditVendorName] = useState('');
   const [editVendorCost, setEditVendorCost] = useState<number | ''>('');
   const [editVendorPaid, setEditVendorPaid] = useState<number | ''>('');
   const [editVendorPaymentMethod, setEditVendorPaymentMethod] = useState<PaymentMethod>('Cash');
@@ -144,6 +145,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       setEditNote(tx.reminderNote || '');
       setEditServiceId(tx.serviceId || '');
       setEditVendorId(tx.vendorId || '');
+      setEditVendorName(tx.vendorName || vendors.find((v) => v.id === tx.vendorId)?.name || '');
       setEditVendorCost(tx.vendorCost ?? '');
       setEditSellingPrice(tx.sellingPrice ?? '');
       setEditCustomerPaid(tx.customerPaid ?? '');
@@ -615,10 +617,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   </label>
                   <label className="block">
                     <span className="block text-[10px] font-semibold text-slate-700 mb-1">Vendor / Consolidator</span>
-                    <select value={editVendorId} onChange={(e) => setEditVendorId(e.target.value)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">No vendor linked</option>
-                      {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}{v.company ? ' · ' + v.company : ''}</option>)}
-                    </select>
+                    <input type="text" list="admin-vendor-suggestions" value={editVendorName} onChange={(e) => { const value = e.target.value; setEditVendorName(value); const match = vendors.find((v) => v.name.trim().toLowerCase() === value.trim().toLowerCase()); setEditVendorId(match?.id || ''); }} placeholder="Type vendor / consolidator name" className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <datalist id="admin-vendor-suggestions">{vendors.map((v) => <option key={v.id} value={v.name}>{v.company ? v.name + ' · ' + v.company : v.name}</option>)}</datalist>
+                    <span className="block mt-1 text-[9px] text-slate-500">Type an existing vendor or enter a new name. A new vendor profile will be created automatically when you save.</span>
                   </label>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -738,13 +739,27 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                     if (!editingTransaction) return;
                     setSavingEdit(true);
                     try {
+                      const typedVendorName = editVendorName.trim();
+                      let resolvedVendorId = editVendorId || '';
+                      if (typedVendorName) {
+                        const existingVendor = vendors.find((v) => v.name.trim().toLowerCase() === typedVendorName.toLowerCase());
+                        if (existingVendor) {
+                          resolvedVendorId = existingVendor.id;
+                        } else {
+                          const newVendor = await addVendorAsync({ name: typedVendorName, company: '', mobile: '', whatsapp: '', email: '', address: '', accountInfo: '', openingPayable: 0 });
+                          resolvedVendorId = newVendor.id;
+                        }
+                      } else {
+                        resolvedVendorId = '';
+                      }
+
                       await updateTransaction(editingTransaction.id, {
                         reminderDate: editReminderDate || null,
                         reminderTime: editReminderTime || null,
                         reminderStatus: editReminderDate ? 'pending' : null,
                         reminderNote: editNote || null,
                         serviceId: editServiceId || null,
-                        vendorId: editVendorId || null,
+                        vendorId: resolvedVendorId || null,
                         vendorCost: Number(editVendorCost || 0),
                         vendorPaid: Number(editVendorPaid || 0),
                         vendorDue: Number(editVendorDue || 0),
