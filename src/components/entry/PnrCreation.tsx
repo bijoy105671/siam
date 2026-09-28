@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { createWorker } from 'tesseract.js';
 import { ArrowLeft, Printer, Plus, Ticket, Trash2, Upload } from 'lucide-react';
 import siamAirLogo from '../../assets/images/siam_air_logo_1790325286013.jpg';
+import { useApp } from '../../context/AppContext';
 
 interface PnrCreationProps { onClose: () => void; }
 
@@ -105,6 +106,12 @@ const parseImportedText = (raw: string) => {
   const issueDate=detectValue(text,[/(?:DATE\s*OF\s*ISSUE|ISSUE\s*DATE|ISSUED)\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i]);
   const date=detectValue(text,[/(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\s*(?:DATE)?\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,/\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b/i]);
   const time=detectValue(text,[/(?:DEPARTURE|DEPART|STD|ETD)\s*(?:TIME)?\s*[:#-]?\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i,/(?:DEP(?:ARTS)?|DEPARTURE)\s*[:#-]?[^0-9]{0,30}(\d{1,2}:\d{2})/i]);
+  const extractDateTokens=(line:string)=>{
+    const found:string[]=[];
+    const patterns=[/\b\d{4}-\d{2}-\d{2}\b/g,/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g,/\b\d{1,2}\s+[A-Z]{3,9}\s*,?\s*\d{2,4}\b/gi,/\b\d{1,2}[A-Z]{3}\d{0,4}\b/gi];
+    for(const p of patterns) for(const m of line.matchAll(p)) found.push(normalizeFlightDateToken(m[0]));
+    return [...new Set(found)].filter(Boolean);
+  };
   const tripRoute = namedRoute ? [namedRoute[1].toUpperCase(), namedRoute[2].toUpperCase()] : route;
   const tripAirline = airline || (text.match(/\b(US-BANGLA AIRLINES|BIMAN BANGLADESH AIRLINES|AIR ARABIA|EMIRATES|QATAR AIRWAYS|SAUDIA|OMAN AIR|GULF AIR|ETIHAD AIRWAYS)\b/i)?.[1] || '');
   const tripFlight = detectValue(text,[/(?:FLIGHT\s*(?:NO|NUMBER)?|FLIGHT\s*INFO)\s*[-:#]?\s*(\d{2,4})/i]);
@@ -142,12 +149,6 @@ const parseImportedText = (raw: string) => {
       return normalizeDateInput(`${m[1]} ${m[2]} ${year.length===2?'20'+year:year}`);
     }
     return normalizeDateInput(v);
-  };
-  const extractDateTokens=(line:string)=>{
-    const found:string[]=[];
-    const patterns=[/\b\d{4}-\d{2}-\d{2}\b/g,/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g,/\b\d{1,2}\s+[A-Z]{3,9}\s*,?\s*\d{2,4}\b/gi,/\b\d{1,2}[A-Z]{3}\d{0,4}\b/gi];
-    for(const p of patterns) for(const m of line.matchAll(p)) found.push(normalizeFlightDateToken(m[0]));
-    return [...new Set(found)].filter(Boolean);
   };
   const parseSectorLine=(line:string)=>{
     const upper=line.toUpperCase().replace(/[|,]+/g,' ').replace(/\s+/g,' ').trim();
@@ -207,6 +208,7 @@ const parseImportedText = (raw: string) => {
 };
 
 export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
+  const { settings } = useApp();
   const [airlinePnr, setAirlinePnr] = useState('');
   const [gdsPnr, setGdsPnr] = useState('');
   const [ticketNumber, setTicketNumber] = useState('');
@@ -215,7 +217,8 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const [passport, setPassport] = useState('');
   const [frequentFlyer, setFrequentFlyer] = useState('');
   const [status, setStatus] = useState('CONFIRMED');
-  const [logo, setLogo] = useState('');
+  // Business logo is controlled by Admin > Business Info. Airline logos are only metadata; never replace the admin logo.
+  const [logo, setLogo] = useState(settings.logoUrl || siamAirLogo);
   const [sectors, setSectors] = useState<Sector[]>([blankSector()]);
   const templateId = FIXED_TICKET_TEMPLATE.id;
   const accent = FIXED_TICKET_TEMPLATE.accent;
@@ -235,7 +238,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     const s=sectors.find(x=>x.airline||x.flightNo);
     return normalizeAirlineCode(s?.airline||'') || inferAirlineCode(s?.flightNo||'') || s?.airline || '';
   }, [sectors]);
-  React.useEffect(() => { setLogo(airlineLogoUrl(detectedAirline)); }, [detectedAirline]);
+  React.useEffect(() => { setLogo(settings.logoUrl || siamAirLogo); }, [settings.logoUrl]);
 
 
   const applyParsed = (parsed: ReturnType<typeof parseImportedText>) => {
@@ -245,7 +248,6 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     if (parsed.issueDate) setIssueDate(parsed.issueDate);
     if (parsed.passenger) setPassenger(parsed.passenger);
     if (parsed.passport) setPassport(parsed.passport);
-    const parsedLogo=airlineLogoUrl(parsed.sectors.find(s=>s.airline)?.airline||''); if(parsedLogo) setLogo(parsedLogo);
     if (parsed.sectors.some(s => Object.values(s).some(Boolean))) setSectors(parsed.sectors);
   };
 
@@ -342,7 +344,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const printTicket = () => {
     const w = window.open('', '_blank', 'width=900,height=900');
     if (!w) return;
-    const logoHtml = '<img src="' + siamAirLogo + '" style="height:58px;width:58px;object-fit:contain;border-radius:10px;background:#fff;padding:3px" />';
+    const logoHtml = '<img src="' + escapeHtml(settings.logoUrl || siamAirLogo) + '" style="height:58px;width:58px;object-fit:contain;border-radius:10px;background:#fff;padding:3px" />';
     const rows = printable.sectors.map(s => '<tr>' +
       '<td><div class="flight-airline">' + escapeHtml(s.airline || '-') + '</div><div class="flight-no">' + escapeHtml(s.flightNo || '-') + '</div></td>' +
       '<td class="route"><b>' + escapeHtml(s.from || '-') + '</b></td><td class="route"><b>' + escapeHtml(s.to || '-') + '</b></td>' +
@@ -404,10 +406,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
             {field('Passenger Name',passenger,setPassenger)}{field('Passport Number',passport,setPassport)}
             {field('Frequent Flyer Number',frequentFlyer,setFrequentFlyer)}
             <label className="block"><span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Ticket Status</span><select value={status} onChange={e=>setStatus(e.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"><option>CONFIRMED</option><option>REISSUED</option><option>CANCELLED</option><option>REFUNDED</option><option>VOID</option></select></label>
-            <label className="block"><span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Airline Logo (Automatic)</span><div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 min-h-[46px]">{logo ? <img src={logo} alt="Airline logo" className="h-8 max-w-[120px] object-contain" onError={(e)=>{
-  const fallback=airlineLogoFallbackUrl(detectedAirline);
-  if(fallback && e.currentTarget.src!==fallback) e.currentTarget.src=fallback; else setLogo('');
-}} /> : <span className="text-xs text-slate-400">Enter airline code/name in a sector field.</span>}</div></label>
+            <label className="block"><span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">SIAM AIR Business Logo</span><div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 min-h-[46px]">{logo ? <img src={logo} alt="SIAM AIR business logo" className="h-8 max-w-[120px] object-contain" /> : <span className="text-xs text-slate-400">Upload/save your business logo from Admin Control Panel.</span>}</div></label>
           </div>
         </section>
 
