@@ -89,123 +89,267 @@ const normalizeDateInput = (value: string) => {
 };
 
 const parseImportedText = (raw: string) => {
-  const text=cleanText(raw);
-  const lines=raw.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,'\n')
-    .replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
-  const airlinePnr=normalizePnr(detectValue(text,[/(?:AIRLINE\s*)?PNR\s*[:#-]?\s*([A-Z0-9]{5,8})/i,/(?:BOOKING|RESERVATION)\s*(?:REFERENCE|REF|CODE)\s*[:#-]?\s*([A-Z0-9]{5,8})/i,/RECORD\s*LOCATOR\s*[:#-]?\s*([A-Z0-9]{5,8})/i]));
-  const gdsPnr=normalizePnr(detectValue(text,[/(?:GDS|GALILEO|AMADEUS|SABRE|TRAVELPORT|WORLDSPAN)\s*(?:PNR|LOCATOR|REFERENCE)\s*[:#-]?\s*([A-Z0-9]{5,8})/i,/(?:GALILEO|AMADEUS|SABRE|TRAVELPORT)\s*[:#-]?\s*([A-Z0-9]{5,8})/i]));
-  const ticketNumber=normalizeTicket(detectValue(text,[/(?:E-?TICKET|TICKET)\s*(?:NUMBER|NO|NUM)?\s*[:#-]?\s*(\d{3}[-\s]?\d{10})/i,/\b(\d{3}-\d{10})\b/,/\b(\d{13})\b/]));
-  const passport=detectValue(text,[/PASSPORT(?:\s*(?:NUMBER|NO|NUM))?\s*[:#-]?\s*([A-Z0-9]{6,12})/i]).toUpperCase();
-  const passengerNames=[...text.matchAll(/(?:^|\s)(?:\d{1,2}\s+)?(?:PRIMARY\s+)?(?:MR|MRS|MS|MISS)\.?\s+([A-Z][A-Z .,'\/-]{1,}?)(?=\s+(?:ADULT|CHILD|INFANT)\b)/gi)].map(m=>m[1].trim().replace(/\s+/g,' '));
-  const passenger=passengerNames.length ? [...new Set(passengerNames)].join(' / ') : detectValue(text,[/(?:PASSENGER|PAX|TRAVELER|TRAVELLER)\s*(?:NAME|NAME\/S)?\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,})/i,/(?:NAME|PAX NAME)\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,})/i,/\b(?:MR|MRS|MS|MISS)\.?\s+([A-Z][A-Z .,'\/-]{2,})/i]).replace(/\s+(?:TICKET|PNR|PASSPORT|AIRLINE|FLIGHT|ROUTE|DATE)\b.*$/i,'').trim();
-  const airline=detectValue(text,[/(?:AIRLINE|CARRIER|MARKETING\s*CARRIER|OPERATING\s*CARRIER)\s*[:#-]\s*([A-Z][A-Z0-9 &.'-]{2,})/i,/(?:AIRLINE|CARRIER)\s*\|\s*([A-Z][A-Z0-9 &.'-]{2,})/i]).replace(/\s+(?:FLIGHT|PNR|TICKET|ROUTE|DATE)\b.*$/i,'').trim();
-  const flightNo=detectValue(text,[/(?:FLIGHT|FLT)\s*(?:NUMBER|NO|NUM)?\s*[:#-]?\s*([A-Z0-9]{2,3}\s*[-]?\s*\d{2,4})/i,/\b([A-Z]{2}\s*[-]?\s*\d{2,4})\b/i]).replace(/\s+/g,'').toUpperCase();
-  const namedRoute=text.match(/\b[A-Z][A-Z .'-]*\(([A-Z]{3})\)\s*(?:-|–|—|→|TO|\/)\s*[A-Z][A-Z .'-]*\(([A-Z]{3})\)\b/i);
-  const routeMatch=namedRoute || text.match(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/i);
-  const route=routeMatch?[routeMatch[1].toUpperCase(),routeMatch[2].toUpperCase()]:['',''];
-  const issueDate=detectValue(text,[/(?:DATE\s*OF\s*ISSUE|ISSUE\s*DATE|DATE\s*ISSUED|ISSUED)\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+[A-Z]{3,9},?\s+\d{2,4})/i]);
-  const normalizeFlightDateToken=(value:string)=>{
-    const v=value.trim().toUpperCase().replace(/,/g,'');
-    if(/^\d{1,2}[A-Z]{3}\d{0,4}$/.test(v)){
-      const m=v.match(/^(\d{1,2})([A-Z]{3})(\d{0,4})$/)!;
-      const year=m[3]||String(new Date().getFullYear());
-      return normalizeDateInput(`${m[1]} ${m[2]} ${year.length===2?'20'+year:year}`);
+  // Ticket PDFs come from many providers/GDSs and often lose table columns during PDF text extraction.
+  // Parse by labels and local line context first; never invent a value when it is not present.
+  const source = String(raw || '');
+  const text = cleanText(source);
+  const lines = source
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, '\n')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .split(/\r?\n/)
+    .map(x => x.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  const first = (patterns: RegExp[], input = text) => {
+    for (const p of patterns) {
+      const m = input.match(p);
+      if (m?.[1]) return m[1].trim().replace(/\s+/g, ' ');
     }
-    return normalizeDateInput(v);
+    return '';
   };
-  const extractDateTokens=(line:string)=>{
-    const found:string[]=[];
-    const patterns=[/\b\d{4}-\d{2}-\d{2}\b/g,/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g,/\b\d{1,2}\s+[A-Z]{3,9}\s*,?\s*\d{2,4}\b/gi,/\b\d{1,2}[A-Z]{3}\d{0,4}\b/gi];
-    for(const p of patterns) for(const m of line.matchAll(p)) found.push(normalizeFlightDateToken(m[0]));
-    return [...new Set(found)].filter(Boolean);
+  const dateValue = (v: string) => {
+    const s = String(v || '').trim().replace(/,/g, '');
+    if (!s) return '';
+    const compact = s.match(/^(\d{1,2})([A-Z]{3})(\d{2,4})$/i);
+    if (compact) return normalizeDateInput(\`\${compact[1]} \${compact[2]} \${compact[3]}\`);
+    return normalizeDateInput(s);
+  };
+  const datesIn = (input: string) => {
+    const out: string[] = [];
+    const patterns = [
+      /\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b/g,
+      /\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/g,
+      /\b\d{1,2}\s+[A-Z]{3,9}\s*,?\s*\d{2,4}\b/gi,
+      /\b\d{1,2}[A-Z]{3}\d{2,4}\b/gi
+    ];
+    for (const p of patterns) for (const m of input.matchAll(p)) {
+      const d = dateValue(m[0]);
+      if (d && !out.includes(d)) out.push(d);
+    }
+    return out;
+  };
+  const timesIn = (input: string) =>
+    [...input.matchAll(/\b(?:[01]?\d|2[0-3]):[0-5]\d(?:\s*[AP]M)?\b/gi)].map(m => m[0].trim());
+
+  const airlineNameFromCode = (code: string) => {
+    const c = normalizeAirlineCode(code);
+    if (!c) return '';
+    const names: Record<string,string> = {
+      G9:'Air Arabia', '3L':'Air Arabia Abu Dhabi', BS:'US-Bangla Airlines', BG:'Biman Bangladesh Airlines',
+      EK:'Emirates', EY:'Etihad Airways', FZ:'Flydubai', QR:'Qatar Airways', SV:'Saudia', OV:'SalamAir',
+      WY:'Oman Air', GF:'Gulf Air', KU:'Kuwait Airways', MH:'Malaysia Airlines', AI:'Air India',
+      IX:'Air India Express', 6E:'IndiGo', SQ:'Singapore Airlines', UL:'SriLankan Airlines',
+      TK:'Turkish Airlines', TG:'Thai Airways', CX:'Cathay Pacific', BA:'British Airways'
+    };
+    return names[c] || c;
   };
 
-  const date=detectValue(text,[/(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\s*(?:DATE)?\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,/\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b/i]);
-  const time=detectValue(text,[/(?:DEPARTURE|DEPART|STD|ETD)\s*(?:TIME)?\s*[:#-]?\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i,/(?:DEP(?:ARTS)?|DEPARTURE)\s*[:#-]?[^0-9]{0,30}(\d{1,2}:\d{2})/i]);
-  const tripRoute = namedRoute ? [namedRoute[1].toUpperCase(), namedRoute[2].toUpperCase()] : route;
-  const tripAirline = airline || (text.match(/\b(US-BANGLA AIRLINES|BIMAN BANGLADESH AIRLINES|AIR ARABIA|EMIRATES|QATAR AIRWAYS|SAUDIA|OMAN AIR|GULF AIR|ETIHAD AIRWAYS)\b/i)?.[1] || '');
-  const tripFlight = detectValue(text,[/(?:FLIGHT\s*(?:NO|NUMBER)?|FLIGHT\s*INFO)\s*[-:#]?\s*(\d{2,4})/i]);
-  const tripTimes=[...text.matchAll(/(?:^|\s)(\d{1,2}:\d{2})\s+(?:Departs|Departure):/gi)].map(m=>m[1]);
-  const tripDates=[...text.matchAll(/\b(\d{1,2}\s+[A-Z]{3},?\s+\d{2,4})\b/gi)].map(m=>normalizeDateInput(m[1]));
-  const arrivalTime=detectValue(text,[/\b(?:Arrival|Arrives)\s*:\s*[^0-9]{0,30}(\d{1,2}:\d{2})/i]);
-  const baggage=detectValue(text,[/(?:ADT|CHD|INF)[^\n]{0,30}?→\s*(\d+(?:\.\d+)?)\s*(?:Kg|KG)/i,/(\d+(?:\.\d+)?)\s*(?:Kg|KG)\b/i]);
-  const cabin=detectValue(text,[/\b(Economy|Business|First|Premium Economy)\b/i]);  // Triplover-style PDFs put the carrier name and flight number on one line,
-  // while departure/arrival date+time are on separate lines.
-  const itineraryCarrier = airline || (text.match(/\b(US[- ]?BANG[A-Z]*\s+AIRLINES|BIMAN\s+BANGLADESH\s+AIRLINES|AIR\s+ARABIA|EMIRATES|QATAR\s+AIRWAYS|SAUDIA|OMAN\s+AIR|GULF\s+AIR|ETIHAD\s+AIRWAYS)\b/i)?.[1] || '');
-  const itineraryFlight = tripFlight || detectValue(text,[/\bFlight\s+No\s*[-:#]?\s*(\d{2,4})/i]);
-  const itineraryRows = lines.filter(l=>/\b(?:Departs|Departure|Arrival|Arrives)\s*:/i.test(l));
-  const depRow = itineraryRows.find(l=>/\b(?:Departs|Departure)\s*:/i.test(l)) || '';
-  const arrRow = itineraryRows.find(l=>/\b(?:Arrival|Arrives)\s*:/i.test(l)) || '';
-  const depDateFromRow = extractDateTokens(depRow)[0] || '';
-  const arrDateFromRow = extractDateTokens(arrRow)[0] || '';
-  const depTimeFromRow = depRow.match(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/)?.[0] || '';
-  const arrTimeFromRow = arrRow.match(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/)?.[0] || '';
-  const routeFromRows = depRow.match(/\(([A-Z]{3})\)/)?.[1] || tripRoute[0] || '';
-  const routeToRows = arrRow.match(/\(([A-Z]{3})\)/)?.[1] || tripRoute[1] || '';
+  const airlinePnr = normalizePnr(first([
+    /(?:AIRLINE\s*)?(?:PNR|BOOKING\s*PNR)\s*[:#-]\s*([A-Z0-9]{5,8})/i,
+    /(?:BOOKING|RESERVATION)\s*(?:REFERENCE|REF|CODE)\s*[:#-]\s*([A-Z0-9]{5,8})/i,
+    /(?:AIRLINE\s+)?PNR\s*[:#-]?\s*([A-Z0-9]{5,8})\b/i,
+    /RECORD\s*LOCATOR\s*[:#-]?\s*([A-Z0-9]{5,8})\b/i
+  ]));
+  const gdsPnr = normalizePnr(first([
+    /(?:GALILEO|AMADEUS|SABRE|TRAVELPORT|WORLDSPAN|GDS)\s*(?:PNR|LOCATOR|REFERENCE|REF)\s*[:#-]?\s*([A-Z0-9]{5,8})/i,
+    /\b(?:GALILEO|AMADEUS|SABRE|TRAVELPORT)\s*[:#-]\s*([A-Z0-9]{5,8})\b/i
+  ]));
 
-  // Parse itinerary rows flexibly: GDS PDF extraction does not preserve table columns.
-  const sectors:Sector[]=[];
-  const addSector=(s:Sector)=>{
-    const normalized={...s, airline:normalizeAirlineCode(s.airline)||s.airline.toUpperCase(), flightNo:s.flightNo.replace(/\s+/g,'').toUpperCase(), from:s.from.toUpperCase(), to:s.to.toUpperCase()};
-    const d=sectors.find(x=>x.flightNo===normalized.flightNo&&x.from===normalized.from&&x.to===normalized.to);
-    if(d) Object.assign(d,Object.fromEntries(Object.entries(normalized).filter(([,v])=>Boolean(v))));
-    else if(normalized.flightNo||normalized.from||normalized.to) sectors.push(normalized);
-  };
-  const parseSectorLine=(line:string)=>{
-    const upper=line.toUpperCase().replace(/[|,]+/g,' ').replace(/\s+/g,' ').trim();
-    const fm=upper.match(/\b([A-Z0-9]{2,3})\s*-?\s*(\d{2,4})\b/);
-    if(!fm) return;
-    const flightCode=(fm[1]+fm[2]).toUpperCase();
-    const airlineCode=normalizeAirlineCode(fm[1])||fm[1];
-    const airportTokens=[...upper.matchAll(/\b[A-Z]{3}\b/g)].map(m=>m[0]);
-    const blocked=new Set(['THE','AND','FOR','FROM','TO','DEP','ARR','STD','STA','PNR','ADT','CHD','INF','KG','CAB','SEAT','ECO','BUS','FIRST']);
-    const airports=airportTokens.filter(x=>!blocked.has(x));
-    const routePair=upper.match(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/);
-    const from=routePair?.[1] || (airports.length>=2 ? airports[airports.length-2] : '');
-    const to=routePair?.[2] || (airports.length>=2 ? airports[airports.length-1] : '');
-    const dates=extractDateTokens(upper);
-    const times=[...upper.matchAll(/\b(?:[01]?\d|2[0-3]):[0-5]\d(?:\s*[AP]M)?\b/g)].map(m=>m[0]);
-    const baggageMatch=upper.match(/\b(\d+(?:\.\d+)?)\s*(?:KG|KGS)\b/);
-    const cabinMatch=upper.match(/\b(PREMIUM\s+ECONOMY|ECONOMY|BUSINESS|FIRST|PREMIUM)\b/);
-    const classMatch=upper.match(/(?:\s|^)([A-Z0-9])(?:\s|$)/);
-    addSector({...blankSector(),airline:airlineCode,flightNo:flightCode,from,to,departureDate:dates[0]||'',departureTime:times[0]||'',arrivalDate:dates[1]||'',arrivalTime:times[1]||'',bookingClass:cabinMatch?.[0]||classMatch?.[1]||'',baggage:baggageMatch?.[1]?`${baggageMatch[1]} KG`:''});
-  };
-  for(const line of lines){
-    if(/\b(?:\d{1,2}\s+)?[A-Z0-9]{2,3}\s*-?\s*\d{2,4}\b/.test(line)) parseSectorLine(line);
+  const ticketNumber = normalizeTicket(first([
+    /(?:E[-\s]?TICKET|ELECTRONIC\s*TICKET|TICKET|DOCUMENT)\s*(?:NUMBER|NO|NUM|#)?\s*[:#-]?\s*(\d{3}[-\s]?\d{10})\b/i,
+    /\b(\d{3}[-\s]\d{10})\b/,
+    /\b(\d{13})\b/
+  ]));
+
+  const passport = first([
+    /(?:PASSPORT|PP)\s*(?:NUMBER|NO|NUM|#)?\s*[:#-]\s*([A-Z0-9]{6,12})\b/i,
+    /\bPASSPORT\s+([A-Z0-9]{6,12})\b/i
+  ]).toUpperCase();
+
+  // Passenger extraction is intentionally bounded by passenger-type/next-field markers.
+  const passengerNames: string[] = [];
+  for (const m of text.matchAll(/(?:^|\s)(?:\d{1,2}\s+)?(?:PRIMARY\s+)?(?:MR|MRS|MS|MISS|DR)\.?\s+([A-Z][A-Z .,'\/-]{1,80}?)(?=\s+(?:ADULT|CHILD|INFANT|ADT|CHD|INF)\b)/gi)) {
+    const n = m[1].trim().replace(/\s+/g, ' ');
+    if (n && !passengerNames.includes(n)) passengerNames.push(n);
   }
-  const inlinePattern=/\b([A-Z0-9]{2,3})\s*-?\s*(\d{2,4})\b[\s:,-]{0,20}([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/gi;
-  let inlineMatch:RegExpExecArray|null;
-  while((inlineMatch=inlinePattern.exec(text))&&sectors.length<12){
-    addSector({...blankSector(),airline:normalizeAirlineCode(inlineMatch[1])||inlineMatch[1].toUpperCase(),flightNo:(inlineMatch[1]+inlineMatch[2]).toUpperCase(),from:inlineMatch[3].toUpperCase(),to:inlineMatch[4].toUpperCase(),departureDate:normalizeDateInput(date),departureTime:time,bookingClass:cabin||''});
-  }
-  if(!sectors.length && (routeFromRows||tripRoute[0]) && (routeToRows||tripRoute[1]) && itineraryFlight){
-    const inferredCode=normalizeAirlineCode(itineraryCarrier)||inferAirlineCode(itineraryCarrier)||inferAirlineCode(flightNo)||'';
-    const code=inferredCode||itineraryCarrier.toUpperCase().slice(0,3);
-    addSector({...blankSector(),
-      airline:code,
-      flightNo:code+itineraryFlight,
-      from:routeFromRows||tripRoute[0],
-      to:routeToRows||tripRoute[1],
-      departureDate:depDateFromRow||tripDates[0]||normalizeDateInput(date),
-      departureTime:depTimeFromRow||tripTimes[0]||time,
-      arrivalDate:arrDateFromRow||tripDates[1]||tripDates[0]||'',
-      arrivalTime:arrTimeFromRow||arrivalTime,
-      baggage,
-      bookingClass:cabin||''
+  const passenger = passengerNames.length
+    ? passengerNames.join(' / ')
+    : first([
+        /(?:PASSENGER|PAX|TRAVELER|TRAVELLER)\s*(?:NAME|NAMES?)?\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,80})/i,
+        /\b(?:MR|MRS|MS|MISS|DR)\.?\s+([A-Z][A-Z .,'\/-]{2,80}?)(?=\s+(?:TICKET|PNR|PASSPORT|AIRLINE|FLIGHT|ROUTE|DATE|BOOKING)\b)/i
+      ]).trim();
+
+  const knownAirlinePattern = /\b(US[-\s]?BANGLA\s+AIRLINES|BIMAN\s+BANGLADESH\s+AIRLINES|AIR\s+ARABIA(?:\s+ABU\s+DHABI)?|EMIRATES|ETIHAD\s+AIRWAYS?|FLY\s*DUBAI|QATAR\s+AIRWAYS?|SAUDIA|OMAN\s+AIR|GULF\s+AIR|KUWAIT\s+AIRWAYS?|MALAYSIA\s+AIRLINES|SINGAPORE\s+AIRLINES|TURKISH\s+AIRLINES|THAI\s+AIRWAYS?|AIR\s+INDIA(?:\s+EXPRESS)?|INDIGO|SRI\s+LANKAN\s+AIRLINES?|BRITISH\s+AIRWAYS)\b/i;
+  const airline = first([
+    /(?:MARKETING\s+|OPERATING\s+)?(?:AIRLINE|CARRIER)\s*[:#-]\s*([A-Z][A-Z0-9 &.'-]{2,80})/i,
+    /(?:AIRLINE|CARRIER)\s*\|\s*([A-Z][A-Z0-9 &.'-]{2,80})/i
+  ]).replace(/\s+(?:FLIGHT|PNR|TICKET|ROUTE|DATE|PASSENGER)\b.*$/i, '').trim()
+    || knownAirlinePattern.exec(text)?.[1]?.trim() || '';
+
+  // Flight number: accept IATA/ICAO prefixes only when adjacent to a 2-4 digit number.
+  const flightMatches = [...text.matchAll(/\b([A-Z0-9]{2,3})\s*[-/]?\s*(\d{2,4})\b/g)]
+    .map(m => ({ raw: m[0], prefix: m[1].toUpperCase(), number: m[2], code: normalizeAirlineCode(m[1]) }))
+    .filter(x => x.code);
+  const explicitFlight = first([
+    /(?:FLIGHT|FLT)\s*(?:NUMBER|NO|NUM|#)?\s*[:#-]?\s*([A-Z0-9]{2,3}\s*[-/]?\s*\d{2,4})/i,
+    /(?:FLIGHT\s+INFO|FLIGHT\s+NO)\s*[-:#]?\s*(?:[A-Z]{2,3}\s*)?(\d{2,4})/i
+  ]).replace(/\s+/g,'').toUpperCase();
+  const flightCode = explicitFlight || (flightMatches[0] ? flightMatches[0].code + flightMatches[0].number : '');
+  const carrierCode = normalizeAirlineCode(airline) || flightMatches[0]?.code || '';
+
+  const namedRoute = text.match(/\b[A-Z][A-Z .'-]{1,50}\(([A-Z]{3})\)\s*(?:-|–|—|→|TO|\/)\s*[A-Z][A-Z .'-]{1,50}\(([A-Z]{3})\)\b/i);
+  const explicitRoute = text.match(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/i);
+  const route = namedRoute ? [namedRoute[1].toUpperCase(), namedRoute[2].toUpperCase()] : explicitRoute ? [explicitRoute[1].toUpperCase(), explicitRoute[2].toUpperCase()] : ['', ''];
+
+  const issueDate = dateValue(first([
+    /(?:DATE\s*OF\s*ISSUE|ISSUE\s*DATE|DATE\s*ISSUED|ISSUED)\s*[:#-]?\s*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}\s+[A-Z]{3,9},?\s+\d{2,4})/i
+  ]));
+
+  const globalCabin = first([/\b(PREMIUM\s+ECONOMY|PREMIUM|ECONOMY|BUSINESS|FIRST)\b/i]);
+  const globalBaggage = first([
+    /(?:BAGGAGE|BAG|ALLOWANCE)\s*[:#-]?\s*(\d+(?:\.\d+)?)\s*(?:KG|KGS)\b/i,
+    /\b(\d+(?:\.\d+)?)\s*(?:KG|KGS)\b/i
+  ]);
+
+  const sectors: Sector[] = [];
+  const addSector = (s: Sector) => {
+    const normalized: Sector = {
+      ...blankSector(),
+      ...s,
+      airline: normalizeAirlineCode(s.airline) || String(s.airline || '').toUpperCase(),
+      flightNo: String(s.flightNo || '').replace(/[\s/-]+/g, '').toUpperCase(),
+      from: String(s.from || '').toUpperCase(),
+      to: String(s.to || '').toUpperCase(),
+      departureDate: dateValue(s.departureDate),
+      arrivalDate: dateValue(s.arrivalDate)
+    };
+    if (!normalized.flightNo && !normalized.from && !normalized.to) return;
+    const same = sectors.find(x => normalized.flightNo && x.flightNo === normalized.flightNo && x.from === normalized.from && x.to === normalized.to);
+    if (same) Object.assign(same, Object.fromEntries(Object.entries(normalized).filter(([,v]) => Boolean(v))));
+    else sectors.push(normalized);
+  };
+
+  // High-confidence row parser for provider/GDS text such as:
+  // "BS307 19:00 Dhaka (DAC) Singapore (SIN) 25-Jun-26 22:00 26-Jun-26 04:00"
+  const rowFlight = /\b([A-Z0-9]{2,3})\s*[-/]?\s*(\d{2,4})\b/;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const fm = line.match(rowFlight);
+    if (!fm) continue;
+    const code = normalizeAirlineCode(fm[1]);
+    if (!code) continue;
+
+    const nearby = lines.slice(Math.max(0, i - 1), Math.min(lines.length, i + 4)).join(' ');
+    const routeM = nearby.match(/\b[A-Z][A-Z .'-]{1,40}\(([A-Z]{3})\)\s*(?:-|→|TO)?\s*[A-Z][A-Z .'-]{1,40}\(([A-Z]{3})\)\b/i)
+      || nearby.match(/\b([A-Z]{3})\s*(?:-|→|TO|\/)\s*([A-Z]{3})\b/i);
+    const ds = datesIn(nearby);
+    const ts = timesIn(nearby);
+    const bag = first([/\b(\d+(?:\.\d+)?)\s*(?:KG|KGS)\b/i], nearby);
+    const cabin = first([/\b(PREMIUM\s+ECONOMY|PREMIUM|ECONOMY|BUSINESS|FIRST)\b/i], nearby);
+    const cls = nearby.match(/\b(?:CLASS|CLS|BOOKING\s*CLASS)\s*[:#-]?\s*([A-Z0-9])\b/i)?.[1] || '';
+    addSector({
+      airline: code,
+      flightNo: code + fm[2],
+      from: routeM?.[1]?.toUpperCase() || '',
+      to: routeM?.[2]?.toUpperCase() || '',
+      departureDate: ds[0] || '',
+      departureTime: ts[0] || '',
+      arrivalDate: ds[1] || '',
+      arrivalTime: ts[1] || '',
+      bookingClass: cls || cabin,
+      baggage: bag ? bag + ' KG' : ''
     });
   }
-  if(!sectors.length){
-    const flights=[...text.matchAll(/\b([A-Z0-9]{2,3})\s*-?\s*(\d{2,4})\b/g)];
-    const routes=[...text.matchAll(/\b([A-Z]{3})\s+(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/gi)];
-    const count=Math.min(12,Math.max(flights.length,routes.length,1));
-    for(let i=0;i<count;i++){
-      const f=flights[i];
-      addSector({...blankSector(),airline:f?(normalizeAirlineCode(f[1])||f[1].toUpperCase()):airline,flightNo:f?(f[1]+f[2]).toUpperCase():flightNo,from:routes[i]?.[1]?.toUpperCase()||route[0],to:routes[i]?.[2]?.toUpperCase()||route[1],departureDate:normalizeDateInput(date),departureTime:time,bookingClass:cabin||''});
+
+  // Triplover-style: carrier/flight line followed by separate Departs:/Arrival: lines.
+  const depLineIndex = lines.findIndex(l => /\b(?:Departs|Departure)\s*:/i.test(l));
+  const arrLineIndex = lines.findIndex(l => /\b(?:Arrival|Arrives)\s*:/i.test(l));
+  if (depLineIndex >= 0 || arrLineIndex >= 0) {
+    const depLine = depLineIndex >= 0 ? lines[depLineIndex] : '';
+    const arrLine = arrLineIndex >= 0 ? lines[arrLineIndex] : '';
+    const depRoute = depLine.match(/\(([A-Z]{3})\)/)?.[1] || route[0];
+    const arrRoute = arrLine.match(/\(([A-Z]{3})\)/)?.[1] || route[1];
+    const depDate = datesIn(depLine)[0] || datesIn(lines.slice(Math.max(0, depLineIndex - 2), depLineIndex + 1).join(' '))[0] || '';
+    const arrDate = datesIn(arrLine)[0] || datesIn(lines.slice(Math.max(0, arrLineIndex - 2), arrLineIndex + 1).join(' '))[0] || '';
+    const depTime = timesIn(depLine)[0] || '';
+    const arrTime = timesIn(arrLine)[0] || '';
+    const carrierFlightLine = lines.find(l => /\b(?:Flight\s+No|Flight\s+Number)\s*[-:#]?\s*\d{2,4}\b/i.test(l)) || '';
+    const carrier = normalizeAirlineCode(airline) || carrierCode;
+    const number = carrierFlightLine.match(/\b(?:Flight\s+No|Flight\s+Number)\s*[-:#]?\s*(\d{2,4})\b/i)?.[1] || flightMatches[0]?.number || explicitFlight.replace(/^[A-Z0-9]{2,3}/,'');
+    if (carrier && number) {
+      addSector({
+        airline: carrier,
+        flightNo: carrier + number,
+        from: depRoute,
+        to: arrRoute,
+        departureDate: depDate,
+        departureTime: depTime,
+        arrivalDate: arrDate,
+        arrivalTime: arrTime,
+        bookingClass: globalCabin,
+        baggage: globalBaggage ? globalBaggage + ' KG' : ''
+      });
     }
   }
-  const firstAirline=sectors[0]?.airline||airline||inferAirlineCode(flightNo);
-  const normalizedSectors=sectors.map(s=>({...s,departureDate:normalizeDateInput(s.departureDate),arrivalDate:normalizeDateInput(s.arrivalDate),bookingClass:s.bookingClass||cabin||'',baggage:s.baggage||baggage}));
-  return {airlinePnr,gdsPnr,ticketNumber,issueDate:normalizeDateInput(issueDate),passenger,passport,sectors:normalizedSectors.length?normalizedSectors:[{...blankSector(),airline:firstAirline,flightNo,from:route[0],to:route[1],departureDate:normalizeDateInput(date),departureTime:time}],rawText:text.slice(0,30000)};
+
+  // Explicit inline flight + route pattern, used by many OTA/GDS exports.
+  for (const m of text.matchAll(/\b([A-Z0-9]{2,3})\s*[-/]?\s*(\d{2,4})\b[\s:,-]{0,30}([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/gi)) {
+    const code = normalizeAirlineCode(m[1]);
+    if (!code) continue;
+    const context = text.slice(Math.max(0, (m.index || 0) - 250), Math.min(text.length, (m.index || 0) + 500));
+    const ds = datesIn(context);
+    const ts = timesIn(context);
+    addSector({
+      airline: code, flightNo: code + m[2], from: m[3], to: m[4],
+      departureDate: ds[0] || '', departureTime: ts[0] || '',
+      arrivalDate: ds[1] || '', arrivalTime: ts[1] || '',
+      bookingClass: first([/\b(PREMIUM\s+ECONOMY|PREMIUM|ECONOMY|BUSINESS|FIRST)\b/i], context),
+      baggage: first([/\b(\d+(?:\.\d+)?)\s*(?:KG|KGS)\b/i], context) ? first([/\b(\d+(?:\.\d+)?)\s*(?:KG|KGS)\b/i], context) + ' KG' : ''
+    });
+  }
+
+  // Last-resort single sector only when we have a trustworthy flight/route combination.
+  if (!sectors.length && (flightCode || flightMatches[0]) && (route[0] && route[1])) {
+    const code = carrierCode || flightMatches[0]?.code || '';
+    const number = explicitFlight.match(/\d{2,4}$/)?.[0] || flightMatches[0]?.number || '';
+    if (code && number) addSector({
+      airline: code, flightNo: code + number, from: route[0], to: route[1],
+      departureDate: dateValue(first([/(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\s*(?:DATE)?\s*[:#-]?\s*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}\s+[A-Z]{3,9}\s+\d{2,4})/i])),
+      departureTime: first([/(?:DEPARTURE|DEPART|STD|ETD)\s*(?:TIME)?\s*[:#-]?\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i]),
+      bookingClass: globalCabin,
+      baggage: globalBaggage ? globalBaggage + ' KG' : ''
+    });
+  }
+
+  const fallbackSector: Sector = {
+    ...blankSector(),
+    airline: sectors[0]?.airline || carrierCode || '',
+    flightNo: sectors[0]?.flightNo || flightCode,
+    from: sectors[0]?.from || route[0],
+    to: sectors[0]?.to || route[1],
+    departureDate: sectors[0]?.departureDate || '',
+    departureTime: sectors[0]?.departureTime || '',
+    arrivalDate: sectors[0]?.arrivalDate || '',
+    arrivalTime: sectors[0]?.arrivalTime || '',
+    bookingClass: sectors[0]?.bookingClass || globalCabin,
+    baggage: sectors[0]?.baggage || (globalBaggage ? globalBaggage + ' KG' : '')
+  };
+
+  return {
+    airlinePnr,
+    gdsPnr,
+    ticketNumber,
+    issueDate,
+    passenger,
+    passport,
+    sectors: sectors.length ? sectors.slice(0, 12) : [fallbackSector],
+    rawText: text.slice(0, 30000)
+  };
 };
 
 export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
@@ -243,13 +387,15 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
 
 
   const applyParsed = (parsed: ReturnType<typeof parseImportedText>) => {
-    if (parsed.airlinePnr) setAirlinePnr(parsed.airlinePnr);
-    if (parsed.gdsPnr) setGdsPnr(parsed.gdsPnr);
-    if (parsed.ticketNumber) setTicketNumber(parsed.ticketNumber);
-    if (parsed.issueDate) setIssueDate(parsed.issueDate);
-    if (parsed.passenger) setPassenger(parsed.passenger);
-    if (parsed.passport) setPassport(parsed.passport);
-    if (parsed.sectors.some(s => Object.values(s).some(Boolean))) setSectors(parsed.sectors);
+    // Each import is a fresh ticket. Clear fields that are absent instead of leaving
+    // stale values from a previously imported ticket.
+    setAirlinePnr(parsed.airlinePnr || '');
+    setGdsPnr(parsed.gdsPnr || '');
+    setTicketNumber(parsed.ticketNumber || '');
+    setIssueDate(parsed.issueDate || '');
+    setPassenger(parsed.passenger || '');
+    setPassport(parsed.passport || '');
+    setSectors(parsed.sectors?.length ? parsed.sectors : [blankSector()]);
   };
 
   const updateSector = (index: number, key: keyof Sector, value: string) =>
