@@ -104,14 +104,24 @@ const parseImportedText = (raw: string) => {
   const routeMatch=namedRoute || text.match(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/i);
   const route=routeMatch?[routeMatch[1].toUpperCase(),routeMatch[2].toUpperCase()]:['',''];
   const issueDate=detectValue(text,[/(?:DATE\s*OF\s*ISSUE|ISSUE\s*DATE|ISSUED)\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i]);
-  const date=detectValue(text,[/(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\s*(?:DATE)?\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,/\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b/i]);
-  const time=detectValue(text,[/(?:DEPARTURE|DEPART|STD|ETD)\s*(?:TIME)?\s*[:#-]?\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i,/(?:DEP(?:ARTS)?|DEPARTURE)\s*[:#-]?[^0-9]{0,30}(\d{1,2}:\d{2})/i]);
+  const normalizeFlightDateToken=(value:string)=>{
+    const v=value.trim().toUpperCase().replace(/,/g,'');
+    if(/^\d{1,2}[A-Z]{3}\d{0,4}$/.test(v)){
+      const m=v.match(/^(\d{1,2})([A-Z]{3})(\d{0,4})$/)!;
+      const year=m[3]||String(new Date().getFullYear());
+      return normalizeDateInput(`${m[1]} ${m[2]} ${year.length===2?'20'+year:year}`);
+    }
+    return normalizeDateInput(v);
+  };
   const extractDateTokens=(line:string)=>{
     const found:string[]=[];
     const patterns=[/\b\d{4}-\d{2}-\d{2}\b/g,/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/g,/\b\d{1,2}\s+[A-Z]{3,9}\s*,?\s*\d{2,4}\b/gi,/\b\d{1,2}[A-Z]{3}\d{0,4}\b/gi];
     for(const p of patterns) for(const m of line.matchAll(p)) found.push(normalizeFlightDateToken(m[0]));
     return [...new Set(found)].filter(Boolean);
   };
+
+  const date=detectValue(text,[/(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\s*(?:DATE)?\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,/\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b/i]);
+  const time=detectValue(text,[/(?:DEPARTURE|DEPART|STD|ETD)\s*(?:TIME)?\s*[:#-]?\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i,/(?:DEP(?:ARTS)?|DEPARTURE)\s*[:#-]?[^0-9]{0,30}(\d{1,2}:\d{2})/i]);
   const tripRoute = namedRoute ? [namedRoute[1].toUpperCase(), namedRoute[2].toUpperCase()] : route;
   const tripAirline = airline || (text.match(/\b(US-BANGLA AIRLINES|BIMAN BANGLADESH AIRLINES|AIR ARABIA|EMIRATES|QATAR AIRWAYS|SAUDIA|OMAN AIR|GULF AIR|ETIHAD AIRWAYS)\b/i)?.[1] || '');
   const tripFlight = detectValue(text,[/(?:FLIGHT\s*(?:NO|NUMBER)?|FLIGHT\s*INFO)\s*[-:#]?\s*(\d{2,4})/i]);
@@ -140,15 +150,6 @@ const parseImportedText = (raw: string) => {
     const d=sectors.find(x=>x.flightNo===normalized.flightNo&&x.from===normalized.from&&x.to===normalized.to);
     if(d) Object.assign(d,Object.fromEntries(Object.entries(normalized).filter(([,v])=>Boolean(v))));
     else if(normalized.flightNo||normalized.from||normalized.to) sectors.push(normalized);
-  };
-  const normalizeFlightDateToken=(value:string)=>{
-    const v=value.trim().toUpperCase().replace(/,/g,'');
-    if(/^\d{1,2}[A-Z]{3}\d{0,4}$/.test(v)){
-      const m=v.match(/^(\d{1,2})([A-Z]{3})(\d{0,4})$/)!;
-      const year=m[3]||String(new Date().getFullYear());
-      return normalizeDateInput(`${m[1]} ${m[2]} ${year.length===2?'20'+year:year}`);
-    }
-    return normalizeDateInput(v);
   };
   const parseSectorLine=(line:string)=>{
     const upper=line.toUpperCase().replace(/[|,]+/g,' ').replace(/\s+/g,' ').trim();
