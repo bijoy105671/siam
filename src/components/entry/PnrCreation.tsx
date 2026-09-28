@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { createWorker } from 'tesseract.js';
 import { ArrowLeft, Palette, Plane, Printer, Plus, RotateCcw, Save, Ticket, Trash2, Upload } from 'lucide-react';
 
 interface PnrCreationProps { onClose: () => void; }
@@ -154,10 +155,22 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
         return;
       }
       if (file.type.startsWith('image/')) {
-        setImportStatus('Image uploaded. This image-only ticket needs OCR to extract text automatically; the file is available for review.');
-        const rd = new FileReader();
-        rd.onload = () => setLogo(String(rd.result || ''));
-        rd.readAsDataURL(file);
+        setImportStatus('Reading ticket image with OCR…');
+        const worker = await createWorker('eng');
+        try {
+          const { data } = await worker.recognize(file);
+          const parsed = parseImportedText(String(data.text || ''));
+          if (parsed.airlinePnr) setAirlinePnr(parsed.airlinePnr);
+          if (parsed.gdsPnr) setGdsPnr(parsed.gdsPnr);
+          if (parsed.ticketNumber) setTicketNumber(parsed.ticketNumber);
+          if (parsed.passenger) setPassenger(parsed.passenger);
+          if (parsed.passport) setPassport(parsed.passport);
+          if (parsed.sectors[0]) setSectors(parsed.sectors);
+          if (!String(data.text || '').trim()) throw new Error('No readable text was found in the image.');
+          setImportStatus('JPG/PNG/GIF ticket read successfully with OCR. Please review the detected fields before generating.');
+        } finally {
+          await worker.terminate();
+        }
         return;
       }
       const raw = await file.text();
