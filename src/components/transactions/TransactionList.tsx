@@ -442,6 +442,21 @@ export const TransactionList: React.FC<TransactionListProps> = ({
             </select>
 
             <select
+              value={paymentMethodFilter}
+              onChange={(e) => setPaymentMethodFilter(e.target.value as 'all' | PaymentMethod)}
+              className="px-2.5 py-1.5 text-xs font-medium border border-slate-300 rounded-lg bg-white focus:outline-none"
+            >
+              <option value="all">All Payment Methods</option>
+              <option value="Cash">Cash</option>
+              <option value="bKash">bKash</option>
+              <option value="Nagad">Nagad</option>
+              <option value="Rocket">Rocket</option>
+              <option value="Bank">Bank</option>
+              <option value="Card">Card</option>
+              <option value="Other">Other</option>
+            </select>
+
+            <select
               value={serviceFilter}
               onChange={(e) => setServiceFilter(e.target.value)}
               className="px-2.5 py-1.5 text-xs font-medium border border-slate-300 rounded-lg bg-white focus:outline-none"
