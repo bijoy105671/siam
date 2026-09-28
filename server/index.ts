@@ -1356,12 +1356,16 @@ app.post('/api/entries', auth, async (req, res) => {
     const customerPaid = Number(body.customerPaid || 0);
     const vendorCost = Number(body.vendorCost || 0);
     const vendorPaid = Number(body.vendorPaid || 0);
+    const accountCost = Number(body.accountCost || 0);
+    const accountCostPaymentMethod = String(body.accountCostPaymentMethod || 'cash').toLowerCase();
     const customerPaymentMethod = String(body.customerPaymentMethod || body.paymentMethod || 'cash').toLowerCase();
     const vendorPaymentMethod = String(body.vendorPaymentMethod || 'cash').toLowerCase();
     if (!customerName || !mobile) return res.status(400).json({ error: 'Customer name and mobile are required' });
-    if (![sellingPrice, customerPaid, vendorCost, vendorPaid].every(Number.isFinite) || [sellingPrice, customerPaid, vendorCost, vendorPaid].some(v => v < 0)) return res.status(400).json({ error: 'Financial amounts must be valid non-negative numbers' });
+    if (![sellingPrice, customerPaid, vendorCost, vendorPaid, accountCost].every(Number.isFinite) || [sellingPrice, customerPaid, vendorCost, vendorPaid, accountCost].some(v => v < 0)) return res.status(400).json({ error: 'Financial amounts must be valid non-negative numbers' });
     if (customerPaid > sellingPrice) return res.status(400).json({ error: 'Customer payment cannot exceed selling price' });
     if (vendorPaid > vendorCost) return res.status(400).json({ error: 'Vendor payment cannot exceed vendor cost' });
+    if (accountCost > 0 && vendorCost > 0) return res.status(400).json({ error: 'Use either vendor cost or account-funded cost, not both' });
+    if (accountCost > 0 && !ACCOUNT_METHODS.has(accountCostPaymentMethod)) return res.status(400).json({ error: 'Invalid account-funded cost payment method' });
     if (customerPaid > 0 && !ACCOUNT_METHODS.has(customerPaymentMethod)) return res.status(400).json({ error: 'Invalid customer payment method' });
     if (vendorPaid > 0 && !ACCOUNT_METHODS.has(vendorPaymentMethod)) return res.status(400).json({ error: 'Invalid vendor payment method' });
     await client.query('BEGIN');
@@ -1387,8 +1391,15 @@ app.post('/api/entries', auth, async (req, res) => {
     const due = sellingPrice - customerPaid;
     const vendorDue = vendorCost - vendorPaid;
     const status = due === 0 ? 'PAID' : customerPaid > 0 ? 'PARTIAL' : 'DUE';
-    const grossProfit = sellingPrice - vendorCost;
+    const grossProfit = sellingPrice - vendorCost - accountCost;
     const tx = (await client.query(`INSERT INTO transactions (invoice_number,date,time,created_by,customer_id,service_id,description,flight_details,selling_price,customer_paid,customer_due,vendor_id,vendor_cost,vendor_paid,vendor_due,gross_profit,reminder_date,reminder_time,reminder_status,reminder_note,status,notes) VALUES ($1,COALESCE($2::date,CURRENT_DATE),COALESCE($3::time,CURRENT_TIME),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`, [invoice, body.date || null, body.time || null, req.session.userId, customerId, serviceId, body.description || null, body.flightDetails ? JSON.stringify(body.flightDetails) : null, sellingPrice, customerPaid, due, vendorId, vendorCost, vendorPaid, vendorDue, grossProfit, body.reminderDate || null, body.reminderTime || null, body.reminderStatus || null, body.reminderNote || null, status, body.notes || null])).rows[0];
+
+    if (accountCost > 0) {
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [accountCostPaymentMethod]);
+      const balance = await accountBalance(client, accountCostPaymentMethod);
+      if (accountCost > balance) throw new Error('Insufficient balance for account-funded service cost');
+      await addAccountEntry(client, accountCostPaymentMethod, -accountCost, 'service_cost', tx.id, req.session.userId!, body.notes || 'In-house service cost');
+    }
 
     if (customerPaid > 0) {
       const payment = (await client.query('INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,\'customer\',$2,$3,$4,$5,$6,$7) RETURNING *', [tx.id, customerId, customerPaid, customerPaymentMethod, req.session.userId, body.paymentNote || null, body.paymentReference || null])).rows[0];
