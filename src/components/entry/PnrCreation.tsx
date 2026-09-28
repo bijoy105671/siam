@@ -465,7 +465,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ flightNumber, flightDate, airline })
+        body: JSON.stringify({ flightNumber, flightDate, airline, from: sector?.from || '', to: sector?.to || '' })
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(result.error || 'Flight search failed.'));
