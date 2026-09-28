@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   vendor_cost numeric(14,2) NOT NULL DEFAULT 0,
   vendor_paid numeric(14,2) NOT NULL DEFAULT 0,
   vendor_due numeric(14,2) NOT NULL DEFAULT 0,
+  account_cost numeric(14,2) NOT NULL DEFAULT 0,
+  account_cost_payment_method text,
   gross_profit numeric(14,2) NOT NULL DEFAULT 0,
   reminder_date date,
   reminder_time time,
@@ -86,6 +88,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   deleted_by uuid REFERENCES users(id)
 );
 
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS account_cost numeric(14,2) NOT NULL DEFAULT 0;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS account_cost_payment_method text;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS deleted_by uuid REFERENCES users(id);
 CREATE INDEX IF NOT EXISTS idx_transactions_deleted_at ON transactions(deleted_at);
@@ -217,3 +221,18 @@ CREATE TABLE IF NOT EXISTS loan_advance_adjustments (
 );
 CREATE INDEX IF NOT EXISTS idx_loan_adjustments_loan ON loan_advance_adjustments(loan_advance_id, reversed_at);
 CREATE INDEX IF NOT EXISTS idx_loan_adjustments_tx ON loan_advance_adjustments(transaction_id, reversed_at);
+
+-- Backfill account-funded service costs already recorded in account_entries.
+UPDATE transactions t
+SET account_cost = x.account_cost,
+    account_cost_payment_method = x.account_cost_payment_method,
+    gross_profit = t.selling_price - t.vendor_cost - x.account_cost
+FROM (
+  SELECT source_id,
+         GREATEST(0, -COALESCE(SUM(amount),0)) AS account_cost,
+         (ARRAY_AGG(account_name ORDER BY occurred_at DESC))[1] AS account_cost_payment_method
+  FROM account_entries
+  WHERE source_type='service_cost' AND reversed_at IS NULL
+  GROUP BY source_id
+) x
+WHERE t.id::text=x.source_id AND COALESCE(t.account_cost,0)=0;
