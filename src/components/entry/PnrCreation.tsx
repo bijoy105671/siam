@@ -3,7 +3,7 @@ import { createWorker } from 'tesseract.js';
 import { ArrowLeft, Printer, Plus, Ticket, Trash2, Upload } from 'lucide-react';
 import siamAirLogo from '../../assets/images/siam_air_logo_1790325286013.jpg';
 import { useApp } from '../../context/AppContext';
-import { api, USE_SERVER_API } from '../../services/apiClient';
+import { api, USE_SERVER_API , flightDirectory } from '../../services/apiClient';
 
 interface PnrCreationProps { onClose: () => void; }
 
@@ -418,6 +418,8 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const [customTitle, setCustomTitle] = useState('SIAM AIR AND DIGITAL SERVICE');
   const [customFooter, setCustomFooter] = useState('Ticket information only — no accounting connection.');
   const [importStatus, setImportStatus] = useState('');
+  const [flightOptions, setFlightOptions] = useState<Record<number, any[]>>({});
+  const [flightOptionSearch, setFlightOptionSearch] = useState<Record<number, string>>({});
   const [flightAssistLoading, setFlightAssistLoading] = useState<Record<number, boolean>>({});
   const [flightAssistStatus, setFlightAssistStatus] = useState<Record<number, string>>({});
   const [flightAssistSources, setFlightAssistSources] = useState<Record<number, {title:string;url:string}[]>>({});
@@ -716,6 +718,31 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     w.document.close();
   };
 
+  const loadFlightOptions = async (sectorIndex: number, value: string) => {
+    const q = String(value || '').trim();
+    const s = sectors[sectorIndex];
+    if (!q && !s.from && !s.to) { setFlightOptions(prev => ({...prev, [sectorIndex]: []})); return; }
+    try {
+      const rows = await flightDirectory(q, s.from, s.to);
+      setFlightOptions(prev => ({...prev, [sectorIndex]: Array.isArray(rows) ? rows : []}));
+    } catch { setFlightOptions(prev => ({...prev, [sectorIndex]: []})); }
+  };
+
+  const chooseFlightOption = (sectorIndex: number, x: any) => {
+    updateSector(sectorIndex, 'flightNo', x.flight_no || '');
+    updateSector(sectorIndex, 'airline', x.airline || x.airline_code || '');
+    updateSector(sectorIndex, 'from', x.from_airport || '');
+    updateSector(sectorIndex, 'to', x.to_airport || '');
+    updateSector(sectorIndex, 'departureTime', x.departure_time || '');
+    updateSector(sectorIndex, 'arrivalTime', x.arrival_time || '');
+    updateSector(sectorIndex, 'bookingClass', x.booking_class || '');
+    updateSector(sectorIndex, 'baggage', x.baggage || '');
+    updateSector(sectorIndex, 'duration', x.duration || '');
+    updateSector(sectorIndex, 'aircraft', x.aircraft || '');
+    updateSector(sectorIndex, 'terminal', x.terminal || '');
+    setFlightOptions(prev => ({...prev, [sectorIndex]: []}));
+  };
+
   const field = (label: string, value: string, setValue: (v: string) => void, type = 'text') => (
     <label className="block"><span className="block min-h-[28px] leading-tight text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">{label}</span>
       <input type={type} value={value} onChange={e=>setValue(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
@@ -783,7 +810,13 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
               {(flightAssistSources[i] || []).length > 0 && <div className="mt-2 text-[10px] text-slate-500">Source: {(flightAssistSources[i] || []).map((src,k)=><a key={k} href={src.url} target="_blank" rel="noreferrer" className="underline mr-2">{src.title || src.url}</a>)}</div>}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {field('Airline / IATA Code',s.airline,v=>updateSector(i,'airline',v))}{field('Flight Number',s.flightNo,v=>updateSector(i,'flightNo',v))}
+              {field('Airline / IATA Code',s.airline,v=>updateSector(i,'airline',v))}
+              <label className="block relative"><span className="block min-h-[28px] leading-tight text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Flight Number — Search / List</span>
+                <input value={s.flightNo} onChange={e=>{ updateSector(i,'flightNo',e.target.value); setFlightOptionSearch(p=>({...p,[i]:e.target.value})); void loadFlightOptions(i,e.target.value); }} placeholder="Search flight no. e.g. BS321" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500" autoComplete="off" />
+                {(flightOptions[i] || []).length > 0 && <div className="absolute z-30 left-0 right-0 mt-1 max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                  {(flightOptions[i] || []).filter(x=>{const q=(flightOptionSearch[i]||'').toUpperCase(); return !q || String(x.flight_no||'').includes(q) || String(x.airline||'').toUpperCase().includes(q) || String(x.airline_code||'').toUpperCase().includes(q) || String(x.to_airport||'').toUpperCase().includes(q);}).slice(0,20).map((x,k)=><button type="button" key={x.id||k} onClick={()=>chooseFlightOption(i,x)} className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-0"><div className="text-xs font-extrabold text-slate-800">{x.flight_no} — {x.airline || x.airline_code}</div><div className="text-[10px] text-slate-500">{x.from_airport} → {x.to_airport}{x.departure_time ? ` · ${x.departure_time}` : ''}</div></button>)}
+                </div>}
+              </label>
               {field('From',s.from,v=>updateSector(i,'from',v))}{field('To',s.to,v=>updateSector(i,'to',v))}
               {field('Departure Date',s.departureDate,v=>updateSector(i,'departureDate',v),'date')}{field('Departure Time',s.departureTime,v=>updateSector(i,'departureTime',v),'time')}
               {field('Arrival Date',s.arrivalDate,v=>updateSector(i,'arrivalDate',v),'date')}{field('Arrival Time',s.arrivalTime,v=>updateSector(i,'arrivalTime',v),'time')}
