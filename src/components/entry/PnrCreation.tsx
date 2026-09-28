@@ -458,7 +458,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     }
     try {
       setFlightAssistLoading(prev => ({ ...prev, [sectorIndex]: true }));
-      const result = await api.saveFlightDirectory({
+      await api.saveFlightDirectory({
         flightNo: sector.flightNo,
         airline: sector.airline,
         airlineCode: normalizeAirlineCode(sector.airline) || inferAirlineCode(sector.flightNo),
