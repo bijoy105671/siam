@@ -61,6 +61,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [editCustomerPaymentMethod, setEditCustomerPaymentMethod] = useState<PaymentMethod>('Cash');
   const [editCustomerDue, setEditCustomerDue] = useState<number | ''>('');
   const [savingEdit, setSavingEdit] = useState(false);
+  const [pageSize, setPageSize] = useState<20 | 50 | 100>(20);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Filtering logic
   // Use the browser's local calendar date instead of UTC (toISOString),
@@ -226,6 +228,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const totalPaid = filteredTransactions.reduce((sum, t) => sum + t.customerPaid, 0);
   const totalDue = filteredTransactions.reduce((sum, t) => sum + t.customerDue, 0);
   const totalProfit = filteredTransactions.reduce((sum, t) => sum + t.grossProfit, 0);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedTransactions = filteredTransactions.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const openTransactionEditor = (tx: Transaction) => {
     try {
@@ -511,6 +517,24 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       </div>
 
       {/* Transactions Table */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-1 text-xs">
+        <div className="text-slate-500 font-sans">
+          Showing <strong className="text-slate-800">{filteredTransactions.length === 0 ? 0 : (safePage - 1) * pageSize + 1}-{Math.min(safePage * pageSize, filteredTransactions.length)}</strong> of <strong className="text-slate-800">{filteredTransactions.length}</strong> records
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-slate-500 font-sans">Per page:</span>
+          {[20, 50, 100].map((size) => (
+            <button key={size} type="button" onClick={() => { setPageSize(size as 20 | 50 | 100); setCurrentPage(1); }} className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold ${pageSize === size ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
+              {size}
+            </button>
+          ))}
+          <button type="button" disabled={safePage <= 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 disabled:opacity-40">Previous</button>
+          <span className="font-mono text-slate-600">Page {safePage} / {totalPages}</span>
+          <button type="button" disabled={safePage >= totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 disabled:opacity-40">Next</button>
+        </div>
+      </div>
+
+      {/* Transactions Table */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -536,7 +560,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredTransactions.map((tx) => {
+                paginatedTransactions.map((tx) => {
                   if (tx.recordType === 'transfer') {
                     return (
                       <tr key={tx.id} className="bg-sky-50/70 border-l-4 border-sky-400">
