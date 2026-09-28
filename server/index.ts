@@ -1025,8 +1025,8 @@ app.post('/api/appointments', auth, async (req, res) => {
   const b = req.body || {};
   if (!String(b.customerName || '').trim()) return res.status(400).json({ error: 'Customer name is required' });
   if (!String(b.title || '').trim()) return res.status(400).json({ error: 'Appointment title is required' });
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(b.appointmentDate || ''))) return res.status(400).json({ error: 'Valid appointment date is required' });
-  if (!/^\\d{2}:\\d{2}$/.test(String(b.appointmentTime || ''))) return res.status(400).json({ error: 'Valid appointment time is required' });
+  if (!/^\d{4}-\\d{2}-\\d{2}$/.test(String(b.appointmentDate || ''))) return res.status(400).json({ error: 'Valid appointment date is required' });
+  if (!/^\d{2}:\\d{2}$/.test(String(b.appointmentTime || ''))) return res.status(400).json({ error: 'Valid appointment time is required' });
   const { rows } = await pool.query('INSERT INTO appointment_reminders (customer_id,customer_name,customer_mobile,customer_email,title,appointment_date,appointment_time,note,status,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,\'pending\',$9) RETURNING *', [b.customerId || null, String(b.customerName).trim(), b.customerMobile || null, b.customerEmail || null, String(b.title).trim(), b.appointmentDate, b.appointmentTime, b.note || null, req.session.userId]);
   res.status(201).json({ appointment: rows[0] });
 });
