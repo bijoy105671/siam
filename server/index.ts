@@ -261,6 +261,22 @@ app.post('/api/flight-assist', auth, async (req, res) => {
     }
 
     const normalize = (v: string) => String(v || '').toUpperCase().replace(/[\s/-]+/g, '');
+    const savedResult = await pool.query(`SELECT * FROM flight_directory
+      WHERE UPPER(REPLACE(REPLACE(REPLACE(flight_no,' ',''),'-',''),'/',''))=$1
+      AND ($2='' OR from_airport=$2) AND ($3='' OR to_airport=$3)
+      ORDER BY updated_at DESC LIMIT 8`, [flightNumberInput, fromHint, toHint]);
+    if (savedResult.rows.length) {
+      const candidates = savedResult.rows.map((x:any) => ({
+        airline: x.airline || '', airlineCode: x.airline_code || '', flightNo: x.flight_no,
+        from: x.from_airport, fromName: x.from_name || '', to: x.to_airport, toName: x.to_name || '',
+        departureDate: flightDate, arrivalDate: flightDate, departureTime: x.departure_time || '',
+        arrivalTime: x.arrival_time || '', duration: x.duration || '', aircraft: x.aircraft || '',
+        terminal: x.terminal || '', bookingClass: x.booking_class || '', baggage: x.baggage || '',
+        status: 'SAVED IN SIAM AIR DATABASE'
+      }));
+      return res.json({ data: { matched: true, confidence: 'high', provider: 'SIAM AIR saved flight database', flight: candidates[0], candidates, sources: [] } });
+    }
+
     const candidates = DAC_FLIGHT_DIRECTORY
       .filter(x => normalize(x.flightNo) === flightNumberInput)
       .filter(x => !airlineHint || x.airlineCode === airlineHint || x.airline.toUpperCase().includes(airlineHint))
@@ -313,6 +329,47 @@ app.post('/api/flight-assist', auth, async (req, res) => {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Flight search failed' });
   }
 });
+app.get('/api/flight-directory', auth, async (req, res) => {
+  const q = String(req.query.flightNo || '').trim().toUpperCase().replace(/[\\s/-]+/g, '');
+  const from = String(req.query.from || '').trim().toUpperCase();
+  const to = String(req.query.to || '').trim().toUpperCase();
+  const params: any[] = [];
+  const where: string[] = [];
+  if (q) { params.push(q); where.push("UPPER(REPLACE(REPLACE(REPLACE(flight_no,' ',''),'-',''),'/',''))=$"+params.length); }
+  if (from) { params.push(from); where.push("from_airport=$"+params.length); }
+  if (to) { params.push(to); where.push("to_airport=$"+params.length); }
+  const { rows } = await pool.query(`SELECT * FROM flight_directory ${where.length ? 'WHERE '+where.join(' AND ') : ''} ORDER BY updated_at DESC LIMIT 50`, params);
+  res.json(rows);
+});
+
+app.post('/api/flight-directory', auth, async (req, res) => {
+  const b = req.body || {};
+  const flightNo = String(b.flightNo || '').trim().toUpperCase().replace(/[\\s/-]+/g, '');
+  const from = String(b.from || '').trim().toUpperCase();
+  const to = String(b.to || '').trim().toUpperCase();
+  if (!flightNo || !from || !to) return res.status(400).json({ error: 'Flight No, From and To are required to save flight data.' });
+  const values = [
+    flightNo, String(b.airline || '').trim(), String(b.airlineCode || '').trim().toUpperCase(),
+    from, String(b.fromName || '').trim(), to, String(b.toName || '').trim(),
+    String(b.departureTime || '').trim(), String(b.arrivalTime || '').trim(),
+    String(b.duration || '').trim(), String(b.aircraft || '').trim(), String(b.terminal || '').trim(),
+    String(b.bookingClass || '').trim().toUpperCase(), String(b.baggage || '').trim(), String(b.notes || '').trim(),
+    req.session.userId
+  ];
+  const { rows } = await pool.query(`INSERT INTO flight_directory
+    (flight_no,airline,airline_code,from_airport,from_name,to_airport,to_name,departure_time,arrival_time,duration,aircraft,terminal,booking_class,baggage,notes,created_by)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+    ON CONFLICT (flight_no,from_airport,to_airport) DO UPDATE SET
+      airline=EXCLUDED.airline, airline_code=EXCLUDED.airline_code, from_name=EXCLUDED.from_name,
+      to_name=EXCLUDED.to_name, departure_time=EXCLUDED.departure_time, arrival_time=EXCLUDED.arrival_time,
+      duration=EXCLUDED.duration, aircraft=EXCLUDED.aircraft, terminal=EXCLUDED.terminal,
+      booking_class=EXCLUDED.booking_class, baggage=EXCLUDED.baggage, notes=EXCLUDED.notes,
+      updated_at=now()
+    RETURNING *`, values);
+  res.status(201).json({ flight: rows[0] });
+});
+
+
 
 app.get('/api/health', async (_req, res) => {
   try {
