@@ -23,6 +23,36 @@ const TEMPLATES: Template[] = [
   { id: 'custom', name: 'My Custom Template', accent: '#7c3aed', header: '#312e81', radius: '18px', compact: false, showPassport: true, showFrequentFlyer: true }
 ];
 
+const AIRLINE_CODES: Record<string, string> = {
+  'AIR ARABIA':'G9','AIR ARABIA ABU DHABI':'3L','AIR ASTANA':'KC','AIR INDIA':'AI','AIR INDIA EXPRESS':'IX',
+  'BANGLADESH BIMAN':'BG','BIMAN BANGLADESH AIRLINES':'BG','BRITISH AIRWAYS':'BA','CATHAY PACIFIC':'CX',
+  'CHINA EASTERN':'MU','CHINA SOUTHERN':'CZ','EMIRATES':'EK','ETIHAD':'EY','ETIHAD AIRWAYS':'EY',
+  'FLY DUBAI':'FZ','FLYDUBAI':'FZ','GULF AIR':'GF','INDIGO':'6E','KUWAIT AIRWAYS':'KU',
+  'MALAYSIA AIRLINES':'MH','OMAN AIR':'WY','QATAR AIRWAYS':'QR','SAUDI':'SV','SAUDIA':'SV',
+  'SINGAPORE AIRLINES':'SQ','SRI LANKAN AIRLINES':'UL','THAI AIRWAYS':'TG','TURKISH AIRLINES':'TK',
+  'US-BANGLA AIRLINES':'BS','US BANGLA AIRLINES':'BS','VISTARA':'UK','AIRASIA':'AK','AIR ASIA':'AK',
+  'JAPAN AIRLINES':'JL','KOREAN AIR':'KE','LUFTHANSA':'LH','QANTAS':'QF','TIGER AIR':'TR',
+  'NOVOAIR':'VQ','NOVO AIR':'VQ','SALAM AIR':'OV','AIR ARABIA EGYPT':'E5'
+};
+const normalizeAirlineCode = (value: string) => {
+  const v=String(value||'').trim().toUpperCase().replace(/\s+/g,' ');
+  if (/^[A-Z0-9]{2}$/.test(v)) return v;
+  if (/^[A-Z]{3}$/.test(v)) {
+    const icao: Record<string,string>={UAE:'EK',AAL:'AA',BAW:'BA',BGD:'BG',GFA:'GF',QTR:'QR',THA:'TG',TKY:'TK',SVA:'SV',OMA:'WY',MAS:'MH',VQI:'VQ'};
+    return icao[v]||'';
+  }
+  return AIRLINE_CODES[v]||'';
+};
+const airlineLogoUrl=(value:string)=>{
+  const code=normalizeAirlineCode(value);
+  return code ? `https://cdn.jsdelivr.net/gh/spydogenesis/airlines-logo@latest/airlines-logo/200x200_v2/${code}.png` : '';
+};
+const inferAirlineCode=(value:string)=>{
+  const v=String(value||'').trim().toUpperCase();
+  const direct=normalizeAirlineCode(v); if(direct) return direct;
+  const m=v.match(/\b([A-Z0-9]{2})\s*[- ]?\s*\d{2,4}\b/); return m?.[1]||'';
+};
+
 const blankSector = (): Sector => ({
   airline: '', flightNo: '', from: '', to: '', departureDate: '', departureTime: '',
   arrivalDate: '', arrivalTime: '', bookingClass: '', seat: '', baggage: ''
@@ -53,122 +83,34 @@ const normalizePnr = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g
 const normalizeTicket = (value: string) => value.replace(/[^\d]/g, '').slice(0, 13);
 
 const parseImportedText = (raw: string) => {
-  const text = cleanText(raw);
-  const lines = raw
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, '\n')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .split(/\r?\n/)
-    .map(x => x.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
-
-  const airlinePnr = normalizePnr(detectValue(text, [
-    /(?:AIRLINE\s*)?PNR\s*[:#-]?\s*([A-Z0-9]{5,8})/i,
-    /(?:BOOKING|RESERVATION)\s*(?:REFERENCE|REF|CODE)\s*[:#-]?\s*([A-Z0-9]{5,8})/i,
-    /RECORD\s*LOCATOR\s*[:#-]?\s*([A-Z0-9]{5,8})/i,
-    /\bPNR\s*([A-Z0-9]{5,8})\b/i
-  ]));
-
-  const ticketNumber = normalizeTicket(detectValue(text, [
-    /(?:E-?TICKET|TICKET)\s*(?:NUMBER|NO|NUM)?\s*[:#-]?\s*(\d{3}[-\s]?\d{10})/i,
-    /\b(\d{3}-\d{10})\b/,
-    /\b(\d{13})\b/
-  ]));
-
-  const passport = detectValue(text, [
-    /PASSPORT(?:\s*(?:NUMBER|NO|NUM))?\s*[:#-]?\s*([A-Z0-9]{6,12})/i
-  ]).toUpperCase();
-
-  const passenger = detectValue(text, [
-    /(?:PASSENGER|PAX|TRAVELER|TRAVELLER)(?:\s*(?:NAME|NAME\/S))?\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,})/i,
-    /(?:PASSENGER|PAX)\s*[:#-]?\s*([A-Z][A-Z .,'\/-]{3,})/i,
-    /\b(?:MR|MRS|MS|MISS)\s+([A-Z][A-Z .,'\/-]{3,})/i
-  ]).replace(/\s+(?:TICKET|PNR|PASSPORT|AIRLINE|FLIGHT)\b.*$/i, '').trim();
-
-  const gdsPnr = normalizePnr(detectValue(text, [
-    /(?:GDS|GALILEO|AMADEUS|SABRE|TRAVELPORT|WORLDSPAN)\s*(?:PNR|LOCATOR|REFERENCE)\s*[:#-]?\s*([A-Z0-9]{5,8})/i
-  ]));
-
-  const airline = detectValue(text, [
-    /(?:AIRLINE|CARRIER)\s*[:#-]\s*([A-Z][A-Z &.'-]{2,})/i,
-    /(?:MARKETING\s*CARRIER|OPERATING\s*CARRIER)\s*[:#-]\s*([A-Z][A-Z &.'-]{2,})/i
-  ]).replace(/\s+(?:FLIGHT|PNR|TICKET|ROUTE)\b.*$/i, '').trim();
-
-  const flightNo = detectValue(text, [
-    /(?:FLIGHT|FLT)\s*(?:NUMBER|NO|NUM)?\s*[:#-]?\s*([A-Z]{2,3}\s*[-]?\s*\d{2,4})/i,
-    /\b([A-Z]{2,3}\s*[-]?\s*\d{2,4})\b/
-  ]).replace(/\s+/g, '').toUpperCase();
-
-  const routeMatch = text.match(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/i);
-  const route = routeMatch ? [routeMatch[1].toUpperCase(), routeMatch[2].toUpperCase()] : ['', ''];
-
-  const date = detectValue(text, [
-    /(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\s*(?:DATE)?\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,
-    /\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b/i,
-    /\b((?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{1,2},?\s+\d{2,4})\b/i
-  ]);
-
-  const time = detectValue(text, [
-    /(?:DEPARTURE|DEPART|STD|ETD)\s*(?:TIME)?\s*[:#-]?\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i
-  ]);
-
-  const sectors: Sector[] = [];
-  const sectorPattern = /\b([A-Z]{2,3})\s*[-]?\s*(\d{2,4})\b[^A-Z0-9]{0,30}\b([A-Z]{3})\b[^A-Z0-9]{0,10}(?:-|–|—|→|TO|\/)\s*\b([A-Z]{3})\b/gi;
-  let match: RegExpExecArray | null;
-  while ((match = sectorPattern.exec(text)) && sectors.length < 12) {
-    const sector: Sector = {
-      ...blankSector(),
-      airline: airline || match[1].toUpperCase(),
-      flightNo: (match[1] + match[2]).toUpperCase(),
-      from: match[3].toUpperCase(),
-      to: match[4].toUpperCase(),
-      departureDate: date,
-      departureTime: time
-    };
-    if (!sectors.some(s => s.flightNo === sector.flightNo && s.from === sector.from && s.to === sector.to)) sectors.push(sector);
+  const text=cleanText(raw);
+  const lines=raw.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,'\n')
+    .replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const airlinePnr=normalizePnr(detectValue(text,[/(?:AIRLINE\s*)?PNR\s*[:#-]?\s*([A-Z0-9]{5,8})/i,/(?:BOOKING|RESERVATION)\s*(?:REFERENCE|REF|CODE)\s*[:#-]?\s*([A-Z0-9]{5,8})/i,/RECORD\s*LOCATOR\s*[:#-]?\s*([A-Z0-9]{5,8})/i]));
+  const gdsPnr=normalizePnr(detectValue(text,[/(?:GDS|GALILEO|AMADEUS|SABRE|TRAVELPORT|WORLDSPAN)\s*(?:PNR|LOCATOR|REFERENCE)\s*[:#-]?\s*([A-Z0-9]{5,8})/i,/(?:GALILEO|AMADEUS|SABRE|TRAVELPORT)\s*[:#-]?\s*([A-Z0-9]{5,8})/i]));
+  const ticketNumber=normalizeTicket(detectValue(text,[/(?:E-?TICKET|TICKET)\s*(?:NUMBER|NO|NUM)?\s*[:#-]?\s*(\d{3}[-\s]?\d{10})/i,/\b(\d{3}-\d{10})\b/,/\b(\d{13})\b/]));
+  const passport=detectValue(text,[/PASSPORT(?:\s*(?:NUMBER|NO|NUM))?\s*[:#-]?\s*([A-Z0-9]{6,12})/i]).toUpperCase();
+  const passenger=detectValue(text,[/(?:PASSENGER|PAX|TRAVELER|TRAVELLER)\s*(?:NAME|NAME\/S)?\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,})/i,/(?:NAME|PAX NAME)\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,})/i,/\b(?:MR|MRS|MS|MISS)\.?\s+([A-Z][A-Z .,'\/-]{2,})/i]).replace(/\s+(?:TICKET|PNR|PASSPORT|AIRLINE|FLIGHT|ROUTE|DATE)\b.*$/i,'').trim();
+  const airline=detectValue(text,[/(?:AIRLINE|CARRIER|MARKETING\s*CARRIER|OPERATING\s*CARRIER)\s*[:#-]\s*([A-Z][A-Z0-9 &.'-]{2,})/i]).replace(/\s+(?:FLIGHT|PNR|TICKET|ROUTE|DATE)\b.*$/i,'').trim();
+  const flightNo=detectValue(text,[/(?:FLIGHT|FLT)\s*(?:NUMBER|NO|NUM)?\s*[:#-]?\s*([A-Z0-9]{2,3}\s*[-]?\s*\d{2,4})/i,/\b([A-Z]{2}\s*[-]?\s*\d{2,4})\b/i]).replace(/\s+/g,'').toUpperCase();
+  const routeMatch=text.match(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/i);
+  const route=routeMatch?[routeMatch[1].toUpperCase(),routeMatch[2].toUpperCase()]:['',''];
+  const date=detectValue(text,[/(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\s*(?:DATE)?\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,/\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b/i]);
+  const time=detectValue(text,[/(?:DEPARTURE|DEPART|STD|ETD)\s*(?:TIME)?\s*[:#-]?\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i]);
+  const sectors:Sector[]=[];
+  const addSector=(s:Sector)=>{const d=sectors.find(x=>x.flightNo===s.flightNo&&x.from===s.from&&x.to===s.to);if(d){Object.assign(d,Object.fromEntries(Object.entries(s).filter(([,v])=>v)));}else if(sectors.length<12)sectors.push(s);};
+  const rowPattern=/^\s*\d{1,2}\s+([A-Z0-9]{2,3})\s*(\d{2,4})\s+([A-Z]{3})\s+([A-Z]{3})\s+([0-9A-Z]{3,9})(?:\s+([0-9:]{3,5}))?(?:\s+([0-9:]{3,5}))?/i;
+  for(const line of lines){const m=line.match(rowPattern);if(m)addSector({...blankSector(),airline:m[1].toUpperCase(),flightNo:(m[1]+m[2]).toUpperCase(),from:m[3].toUpperCase(),to:m[4].toUpperCase(),departureDate:m[5],departureTime:m[6]||'',arrivalTime:m[7]||''});}
+  const sectorPattern=/\b([A-Z]{2,3})\s*[-]?\s*(\d{2,4})\b[^A-Z0-9]{0,30}\b([A-Z]{3})\b[^A-Z0-9]{0,12}(?:-|–|—|→|TO|\/)\s*\b([A-Z]{3})\b/gi;
+  let match:RegExpExecArray|null; while((match=sectorPattern.exec(text))&&sectors.length<12)addSector({...blankSector(),airline:match[1].toUpperCase(),flightNo:(match[1]+match[2]).toUpperCase(),from:match[3].toUpperCase(),to:match[4].toUpperCase(),departureDate:date,departureTime:time});
+  if(!sectors.length){
+    const flights=[...text.matchAll(/\b([A-Z]{2,3})\s*[-]?\s*(\d{2,4})\b/g)];
+    const routes=[...text.matchAll(/\b([A-Z]{3})\s+(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/gi)];
+    const count=Math.min(12,Math.max(flights.length,routes.length,1));
+    for(let i=0;i<count;i++)addSector({...blankSector(),airline:flights[i]?.[1]?.toUpperCase()||airline,flightNo:flights[i]?(flights[i][1]+flights[i][2]).toUpperCase():flightNo,from:routes[i]?.[1]?.toUpperCase()||route[0],to:routes[i]?.[2]?.toUpperCase()||route[1],departureDate:date,departureTime:time});
   }
-
-  if (!sectors.length) {
-    const flightMatches = [...text.matchAll(/\b([A-Z]{2,3})\s*[-]?\s*(\d{2,4})\b/g)];
-    const routeMatches = [...text.matchAll(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/gi)];
-    const count = Math.min(12, Math.max(flightMatches.length, routeMatches.length, 1));
-    for (let i = 0; i < count; i++) {
-      sectors.push({
-        ...blankSector(),
-        airline,
-        flightNo: flightMatches[i] ? (flightMatches[i][1] + flightMatches[i][2]).toUpperCase() : flightNo,
-        from: routeMatches[i]?.[1]?.toUpperCase() || route[0],
-        to: routeMatches[i]?.[2]?.toUpperCase() || route[1],
-        departureDate: date,
-        departureTime: time
-      });
-    }
-  }
-
-  // Common GDS itinerary rows: "1 EK 585 DAC DXB 03OCT 0245 0550".
-  const rowPattern = /^\s*\d{1,2}\s+([A-Z0-9]{2,3})\s*(\d{2,4})\s+([A-Z]{3})\s+([A-Z]{3})\s+([0-9A-Z]{3,9})(?:\s+([0-9:]{3,5}))?(?:\s+([0-9:]{3,5}))?/i;
-  for (const line of lines) {
-    const m = line.match(rowPattern);
-    if (!m) continue;
-    const flight = (m[1] + m[2]).toUpperCase();
-    const existing = sectors.find(s => s.flightNo === flight);
-    const target = existing || { ...blankSector(), airline: m[1].toUpperCase(), flightNo: flight, from: m[3].toUpperCase(), to: m[4].toUpperCase() };
-    target.airline = target.airline || m[1].toUpperCase();
-    target.from = m[3].toUpperCase();
-    target.to = m[4].toUpperCase();
-    target.departureDate = target.departureDate || m[5];
-    if (m[6]) target.departureTime = m[6];
-    if (m[7]) target.arrivalTime = m[7];
-    if (!existing && sectors.length < 12) sectors.push(target);
-  }
-
-  return {
-    airlinePnr, gdsPnr, ticketNumber, passenger, passport,
-    sectors: sectors.length ? sectors : [{ ...blankSector(), airline, flightNo, from: route[0], to: route[1], departureDate: date, departureTime: time }],
-    rawText: text.slice(0, 30000)
-  };
+  const firstAirline=sectors[0]?.airline||airline||inferAirlineCode(flightNo);
+  return {airlinePnr,gdsPnr,ticketNumber,passenger,passport,sectors:sectors.length?sectors:[{...blankSector(),airline:firstAirline,flightNo,from:route[0],to:route[1],departureDate:date,departureTime:time}],rawText:text.slice(0,30000)};
 };
 
 export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
@@ -196,6 +138,9 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const [importStatus, setImportStatus] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const detectedAirline = useMemo(() => { const s=sectors.find(x=>x.airline||x.flightNo); return s?.airline || inferAirlineCode(s?.flightNo||''); }, [sectors]);
+  React.useEffect(() => { const u=airlineLogoUrl(detectedAirline); if(u) setLogo(u); }, [detectedAirline]);
+
   const applyTemplate = (id: string) => {
     const t = TEMPLATES.find(x => x.id === id) || TEMPLATES[2];
     setTemplateId(id); setAccent(t.accent); setHeader(t.header); setRadius(t.radius);
@@ -208,6 +153,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     if (parsed.ticketNumber) setTicketNumber(parsed.ticketNumber);
     if (parsed.passenger) setPassenger(parsed.passenger);
     if (parsed.passport) setPassport(parsed.passport);
+    const parsedLogo=airlineLogoUrl(parsed.sectors.find(s=>s.airline)?.airline||''); if(parsedLogo) setLogo(parsedLogo);
     if (parsed.sectors.some(s => Object.values(s).some(Boolean))) setSectors(parsed.sectors);
   };
 
@@ -390,7 +336,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
             {field('Passenger Name',passenger,setPassenger)}{field('Passport Number',passport,setPassport)}
             {field('Frequent Flyer Number',frequentFlyer,setFrequentFlyer)}
             <label className="block"><span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Ticket Status</span><select value={status} onChange={e=>setStatus(e.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"><option>CONFIRMED</option><option>REISSUED</option><option>CANCELLED</option><option>REFUNDED</option><option>VOID</option></select></label>
-            <label className="block"><span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Airline / Agent Logo</span><span className="flex items-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-xs text-slate-500"><Upload className="w-4 h-4"/><input type="file" accept="image/*" onChange={e=>{const f=e.target.files?.[0]; if(f){const rd=new FileReader(); rd.onload=()=>setLogo(String(rd.result||'')); rd.readAsDataURL(f);}}}/></span></label>
+            <label className="block"><span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Airline Logo (Automatic)</span><div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 min-h-[46px]">{logo ? <img src={logo} alt="Airline logo" className="h-8 max-w-[120px] object-contain" onError={()=>setLogo('')} /> : <span className="text-xs text-slate-400">Enter airline code/name in a sector field.</span>}</div></label>
           </div>
         </section>
 
@@ -416,7 +362,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
           <div className="space-y-3">{sectors.map((s,i)=><div key={i} className="rounded-2xl border border-slate-200 p-3 bg-slate-50/60">
             <div className="flex items-center justify-between mb-3"><span className="text-[11px] font-bold text-slate-600">SECTOR {i+1}</span>{sectors.length>1&&<button onClick={()=>setSectors(p=>p.filter((_,x)=>x!==i))} className="text-rose-500"><Trash2 className="w-4 h-4"/></button>}</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {field('Airline',s.airline,v=>updateSector(i,'airline',v))}{field('Flight Number',s.flightNo,v=>updateSector(i,'flightNo',v))}
+              {field('Airline / IATA Code',s.airline,v=>updateSector(i,'airline',v))}{field('Flight Number',s.flightNo,v=>updateSector(i,'flightNo',v))}
               {field('From',s.from,v=>updateSector(i,'from',v))}{field('To',s.to,v=>updateSector(i,'to',v))}
               {field('Departure Date',s.departureDate,v=>updateSector(i,'departureDate',v),'date')}{field('Departure Time',s.departureTime,v=>updateSector(i,'departureTime',v),'time')}
               {field('Arrival Date',s.arrivalDate,v=>updateSector(i,'arrivalDate',v),'date')}{field('Arrival Time',s.arrivalTime,v=>updateSector(i,'arrivalTime',v),'time')}
