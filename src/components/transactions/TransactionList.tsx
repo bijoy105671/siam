@@ -671,7 +671,14 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                             </div>
                           </div>
                         ) : (
-                          <span className="text-slate-400 font-sans">Direct Service</span>
+                          <div>
+                            <span className="text-slate-400 font-sans">Direct Service</span>
+                            {Number(tx.accountCost || 0) > 0 && (
+                              <div className="text-[11px] text-rose-700 font-mono mt-0.5">
+                                Account Cost ({tx.accountCostPaymentMethod || 'Account'}): {formatCurrency(Number(tx.accountCost || 0))}
+                              </div>
+                            )}
+                          </div>
                         )}
                       </td>
 
