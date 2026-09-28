@@ -3,6 +3,7 @@ import { createWorker } from 'tesseract.js';
 import { ArrowLeft, Printer, Plus, Ticket, Trash2, Upload } from 'lucide-react';
 import siamAirLogo from '../../assets/images/siam_air_logo_1790325286013.jpg';
 import { useApp } from '../../context/AppContext';
+import { api, USE_SERVER_API } from '../../services/apiClient';
 
 interface PnrCreationProps { onClose: () => void; }
 
@@ -445,6 +446,42 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const updateSector = (index: number, key: keyof Sector, value: string) =>
     setSectors(prev => prev.map((s, i) => i === index ? { ...s, [key]: value } : s));
 
+  const saveFlightManually = async (sectorIndex = 0) => {
+    const sector = sectors[sectorIndex];
+    if (!sector?.flightNo || !sector?.from || !sector?.to) {
+      setFlightAssistStatus(prev => ({ ...prev, [sectorIndex]: 'Flight No, From and To are required before saving.' }));
+      return;
+    }
+    if (!USE_SERVER_API) {
+      setFlightAssistStatus(prev => ({ ...prev, [sectorIndex]: 'Server database is not active in this environment.' }));
+      return;
+    }
+    try {
+      setFlightAssistLoading(prev => ({ ...prev, [sectorIndex]: true }));
+      const result = await api.saveFlightDirectory({
+        flightNo: sector.flightNo,
+        airline: sector.airline,
+        airlineCode: normalizeAirlineCode(sector.airline) || inferAirlineCode(sector.flightNo),
+        from: sector.from,
+        fromName: sector.from,
+        to: sector.to,
+        toName: sector.to,
+        departureTime: sector.departureTime,
+        arrivalTime: sector.arrivalTime,
+        duration: sector.duration,
+        aircraft: sector.aircraft,
+        terminal: sector.terminal,
+        bookingClass: sector.bookingClass,
+        baggage: sector.baggage,
+      });
+      setFlightAssistStatus(prev => ({ ...prev, [sectorIndex]: '✓ Flight data saved to SIAM AIR database. It can be reused on another date.' }));
+    } catch (error) {
+      setFlightAssistStatus(prev => ({ ...prev, [sectorIndex]: error instanceof Error ? error.message : 'Could not save flight data.' }));
+    } finally {
+      setFlightAssistLoading(prev => ({ ...prev, [sectorIndex]: false }));
+    }
+  };
+
   const findFlightWithAssist = async (sectorIndex = 0) => {
     const sector = sectors[sectorIndex];
     const flightNumber = String(sector?.flightNo || '').trim().toUpperCase();
@@ -740,6 +777,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
               <div className="text-[10px] text-violet-700 mt-1">Non-AI lookup. Uses public flight-data provider; no Gemini quota is used.</div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <button onClick={()=>findFlightWithAssist(i)} disabled={!!flightAssistLoading[i]} className="rounded-xl bg-violet-600 text-white px-4 py-2 text-xs font-bold disabled:opacity-60">{flightAssistLoading[i] ? 'Searching…' : '🔎 Find & Auto-Fill This Sector'}</button>
+                <button onClick={()=>saveFlightManually(i)} disabled={!!flightAssistLoading[i]} className="rounded-xl bg-emerald-600 text-white px-4 py-2 text-xs font-bold disabled:opacity-60">💾 Save Flight Data</button>
                 {flightAssistStatus[i] && <span className="text-[10px] text-slate-600">{flightAssistStatus[i]}</span>}
               </div>
               {(flightAssistSources[i] || []).length > 0 && <div className="mt-2 text-[10px] text-slate-500">Source: {(flightAssistSources[i] || []).map((src,k)=><a key={k} href={src.url} target="_blank" rel="noreferrer" className="underline mr-2">{src.title || src.url}</a>)}</div>}
