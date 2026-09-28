@@ -6,6 +6,8 @@ import { useApp } from '../../context/AppContext';
 
 interface PnrCreationProps { onClose: () => void; }
 
+type ImportedPassenger = { name: string; passport: string; ticketNumber: string; };
+
 type Sector = {
   airline: string; flightNo: string; from: string; to: string;
   departureDate: string; departureTime: string; arrivalDate: string; arrivalTime: string;
@@ -165,6 +167,22 @@ const parseImportedText = (raw: string) => {
     /\b(\d{3}[-\s]\d{10})\b/,
     /\b(\d{13})\b/
   ]));
+
+  // Extract passenger-specific rows first. Ticket numbers are paired by local row context;
+  // never reuse the first ticket number for every passenger.
+  const passengerRecords: ImportedPassenger[] = [];
+  const ticketTokens = [...text.matchAll(/\b(\d{3}[-\s]?\d{10}|\d{13})\b/g)].map(m => normalizeTicket(m[1]));
+  const nameCandidates = [...text.matchAll(/(?:^|\s)(?:\d{1,2}\s+)?(?:PRIMARY\s+)?(?:MR|MRS|MS|MISS|DR)\.?\s+([A-Z][A-Z .,'\/-]{1,80}?)(?=\s+(?:ADULT|CHILD|INFANT|ADT|CHD|INF)\b)/gi)]
+    .map(m => m[1].trim().replace(/\s+/g,' '));
+  const uniqueNames = [...new Set(nameCandidates)];
+  const namePositions = [...text.matchAll(/(?:^|\s)(?:\d{1,2}\s+)?(?:PRIMARY\s+)?(?:MR|MRS|MS|MISS|DR)\.?\s+[A-Z][A-Z .,'\/-]{1,80}?\s+(?:ADULT|CHILD|INFANT|ADT|CHD|INF)\b/gi)].map(m=>m.index||0);
+  uniqueNames.forEach((name, idx) => {
+    const pos = namePositions[idx] ?? 0;
+    const windowText = text.slice(Math.max(0,pos-180), Math.min(text.length,pos+420));
+    const localTicket = windowText.match(/\b(\d{3}[-\s]?\d{10}|\d{13})\b/);
+    const localPassport = windowText.match(/(?:PASSPORT|PP)\s*(?:NUMBER|NO|NUM|#)?\s*[:#-]?\s*([A-Z0-9]{6,12})\b/i);
+    passengerRecords.push({name, passport: (localPassport?.[1]||'').toUpperCase(), ticketNumber: localTicket ? normalizeTicket(localTicket[1]) : (ticketTokens[idx]||'')});
+  });
 
   const passport = first([
     /(?:PASSPORT|PP)\s*(?:NUMBER|NO|NUM|#)?\s*[:#-]\s*([A-Z0-9]{6,12})\b/i,
@@ -347,6 +365,7 @@ const parseImportedText = (raw: string) => {
     issueDate,
     passenger,
     passport,
+    passengers: passengerRecords,
     sectors: sectors.length ? sectors.slice(0, 12) : [fallbackSector],
     rawText: text.slice(0, 30000)
   };
@@ -357,6 +376,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const [airlinePnr, setAirlinePnr] = useState('');
   const [gdsPnr, setGdsPnr] = useState('');
   const [ticketNumber, setTicketNumber] = useState('');
+  const [importedPassengers, setImportedPassengers] = useState<ImportedPassenger[]>([]);
   const [issueDate, setIssueDate] = useState('');
   const [passenger, setPassenger] = useState('');
   const [passport, setPassport] = useState('');
@@ -395,6 +415,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     setIssueDate(parsed.issueDate || '');
     setPassenger(parsed.passenger || '');
     setPassport(parsed.passport || '');
+    setImportedPassengers(parsed.passengers?.length ? parsed.passengers : (parsed.passenger || parsed.ticketNumber ? [{name: parsed.passenger || '', passport: parsed.passport || '', ticketNumber: parsed.ticketNumber || ''}] : []));
     setSectors(parsed.sectors?.length ? parsed.sectors : [blankSector()]);
   };
 
@@ -403,7 +424,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
 
   const clearAll = () => {
     setAirlinePnr(''); setGdsPnr(''); setTicketNumber(''); setIssueDate(''); setPassenger('');
-    setPassport(''); setFrequentFlyer(''); setStatus('CONFIRMED'); setLogo(''); setSectors([blankSector()]);
+    setPassport(''); setFrequentFlyer(''); setImportedPassengers([]); setStatus('CONFIRMED'); setLogo(''); setSectors([blankSector()]);
     setImportStatus('');
   };
 
@@ -491,23 +512,25 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const printTicket = () => {
     const w = window.open('', '_blank', 'width=900,height=900');
     if (!w) return;
-    const logoHtml = '<img src="' + escapeHtml(settings.logoUrl || siamAirLogo) + '" style="height:58px;width:58px;object-fit:contain;border-radius:10px;background:#fff;padding:3px" />';
-    const rows = printable.sectors.map(s => '<tr>' +
-      '<td><div class="flight-airline">' + escapeHtml(s.airline || '-') + '</div><div class="flight-no">' + escapeHtml(s.flightNo || '-') + '</div></td>' +
-      '<td class="route"><b>' + escapeHtml(s.from || '-') + '</b></td><td class="route"><b>' + escapeHtml(s.to || '-') + '</b></td>' +
-      '<td><div class="date">' + escapeHtml(s.departureDate || '-') + '</div><div class="time">' + escapeHtml(s.departureTime || '-') + '</div></td>' +
-      '<td><div class="date">' + escapeHtml(s.arrivalDate || '-') + '</div><div class="time">' + escapeHtml(s.arrivalTime || '-') + '</div></td>' +
-      '<td>' + escapeHtml(s.seat || '-') + '</td><td class="info">Baggage : ' + escapeHtml(s.baggage || '-') + '<br>Class : ' + escapeHtml(s.bookingClass || '-') + '</td></tr>').join('');
-    w.document.write('<!doctype html><html><head><title>SIAM AIR E-Ticket</title><style>' +
-      '@page{size:A4 portrait;margin:0}body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#111;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
-      '.ticket{width:210mm;min-height:297mm;box-sizing:border-box;padding:13mm 12mm 10mm;background:#fff}.tp-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:25px}.tp-agency{font-size:11px;line-height:1.28}.tp-agency b{font-size:16px}.tp-right{display:flex;align-items:center;gap:10px;color:#1760b5}.tp-right .accred{font-size:21px;line-height:.9;text-align:right}.tp-title{font-size:20px;font-weight:700;margin:0 0 13px}.tp-section-title{font-size:18px;font-weight:700;margin:13px 0 7px}.tp-table{width:100%;border-collapse:collapse;table-layout:fixed}.tp-table th,.tp-table td{border:1px solid #333;padding:4px;vertical-align:top;font-size:10px;line-height:1.15}.tp-table th{background:#b9e3e9;text-align:left;font-weight:700}.tp-table td{height:28px}.itin th:nth-child(1){width:12%}.itin th:nth-child(2){width:17%}.itin th:nth-child(3){width:17%}.itin th:nth-child(4){width:14%}.itin th:nth-child(5){width:14%}.itin th:nth-child(6){width:5%}.itin th:nth-child(7){width:21%}.itin td{height:90px}.flight-airline{font-size:11px;font-weight:700}.flight-no{font-size:13px;font-weight:700;margin-top:13px}.route b{font-size:11px}.date{font-weight:700;font-size:11px}.time{font-size:14px;font-weight:700;margin-top:8px}.info{font-size:10px;line-height:1.25}.tp-notes{font-size:9px;line-height:1.18;margin-top:34px}.tp-important{font-size:9px;line-height:1.15;margin-top:18px}' +
-      '</style></head><body><div class="ticket"><div class="tp-head"><div class="tp-agency">' + logoHtml + '<br><b>SIAM AIR AND DIGITAL SERVICE</b><br>Ramkrisnapur (Shutradhar Super Market), Homna, Cumilla, Bangladesh<br>Mobile: 01883400808<br>Proprietor: MD Khairul Islam</div><div class="tp-right"><div class="accred">PNR<br>CREATION</div></div></div>' +
+    const logoSrc = settings.logoUrl || siamAirLogo;
+    const people = importedPassengers.length ? importedPassengers : [{ name: passenger, passport, ticketNumber }];
+    const pages = people.map((person, personIndex) => {
+      const rows = printable.sectors.map(s => '<tr>' +
+        '<td><div class="flight-airline"><img src="' + escapeHtml(airlineLogoUrl(s.airline || s.flightNo)) + '" onerror="this.onerror=null;this.src=' + JSON.stringify(airlineLogoFallbackUrl(s.airline || s.flightNo)) + ';this.style.display=this.src?\'block\':\'none\';" style="width:28px;height:28px;object-fit:contain;vertical-align:middle;margin-right:4px" />' + escapeHtml(s.airline || '-') + '</div><div class="flight-no">' + escapeHtml(s.flightNo || '-') + '</div></td>' +
+        '<td class="route"><b>' + escapeHtml(s.from || '-') + '</b></td><td class="route"><b>' + escapeHtml(s.to || '-') + '</b></td>' +
+        '<td><div class="date">' + escapeHtml(s.departureDate || '-') + '</div><div class="time">' + escapeHtml(s.departureTime || '-') + '</div></td>' +
+        '<td><div class="date">' + escapeHtml(s.arrivalDate || '-') + '</div><div class="time">' + escapeHtml(s.arrivalTime || '-') + '</div></td>' +
+        '<td>' + escapeHtml(s.seat || '-') + '</td><td class="info">Baggage : ' + escapeHtml(s.baggage || '-') + '<br>Class : ' + escapeHtml(s.bookingClass || '-') + '</td></tr>').join('');
+      const qr = settings.whatsappQrCode ? '<div class="qr"><img src="' + escapeHtml(settings.whatsappQrCode) + '" /><span>WhatsApp</span></div>' : '';
+      return '<div class="ticket' + (personIndex ? ' page-break' : '') + '"><div class="tp-head"><div class="tp-agency"><b>' + escapeHtml(settings.name || 'SIAM AIR AND DIGITAL SERVICE') + '</b><br>' + escapeHtml(settings.address || '') + '<br>Mobile: ' + escapeHtml(settings.mobile || '') + (settings.email ? '<br>Email: ' + escapeHtml(settings.email) : '') + '</div><div class="tp-right"><div class="brand"><img src="' + escapeHtml(logoSrc) + '" /><div>' + escapeHtml(settings.tagline || '') + '</div></div></div></div>' +
       '<div class="tp-title">Electronic Ticket</div><div class="tp-section-title">Passenger Information</div>' +
-      '<table class="tp-table"><tr><th>Passenger Information</th><th>Passport<br>Number</th><th>Frequent Flyer<br>Number</th><th>Ticket</th></tr><tr><td>' + escapeHtml(printable.passenger || '-') + '</td><td>' + escapeHtml(printable.passport || '-') + '</td><td>' + escapeHtml(printable.frequentFlyer || '-') + '</td><td>' + escapeHtml(printable.ticketNumber || '-') + '</td></tr></table>' +
+      '<table class="tp-table"><tr><th>Passenger Information</th><th>Passport Number</th><th>Frequent Flyer Number</th><th>Ticket</th></tr><tr><td>' + escapeHtml(person.name || '-') + '</td><td>' + escapeHtml(person.passport || '-') + '</td><td>' + escapeHtml(printable.frequentFlyer || '-') + '</td><td>' + escapeHtml(person.ticketNumber || '-') + '</td></tr></table>' +
       '<table class="tp-table" style="margin-top:10px"><tr><th>Airline PNR</th><th>Galileo PNR</th><th>Date of Issue</th><th>Status</th></tr><tr><td>' + escapeHtml(printable.airlinePnr || '-') + '</td><td>' + escapeHtml(printable.gdsPnr || '-') + '</td><td>' + escapeHtml(printable.issueDate || '-') + '</td><td>' + escapeHtml(printable.status || '-') + '</td></tr></table>' +
       '<div class="tp-section-title">Itinerary Information</div><table class="tp-table itin"><tr><th>Flight #</th><th>From</th><th>To</th><th>Depart</th><th>Arrive</th><th>Seat</th><th>Info</th></tr>' + rows + '</table>' +
-      '<div class="tp-notes"><b>Notes:</b><br>Baggage allowance and carrier conditions are subject to the airline and fare rules.</div><div class="tp-important"><b>IMPORTANT INFORMATION FOR TRAVELERS WITH ELECTRONIC TICKETS - PLEASE READ:</b><br>Carriage and other services provided by the carrier are subject to the conditions of carriage of the issuing carrier. Please carry valid passport, visa and other required travel documents.</div>' +
-      '</div><script>window.onload=()=>window.print()</script></body></html>');
+      '<div class="tp-notes"><b>Notes:</b><br>Baggage allowance and carrier conditions are subject to the airline and fare rules.</div><div class="tp-important"><b>IMPORTANT INFORMATION FOR TRAVELERS WITH ELECTRONIC TICKETS - PLEASE READ:</b><br>Carriage and other services provided by the carrier are subject to the conditions of carriage of the issuing carrier. Please carry valid passport, visa and other required travel documents.</div>' + qr + '</div>';
+    }).join('');
+    w.document.write('<!doctype html><html><head><title>SIAM AIR E-Ticket</title><style>' +
+      '@page{size:A4 portrait;margin:0}body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#111;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page-break{page-break-before:always}.ticket{width:210mm;min-height:297mm;box-sizing:border-box;padding:13mm 12mm 10mm;background:#fff}.tp-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:25px}.tp-agency{font-size:11px;line-height:1.28}.tp-agency b{font-size:16px}.tp-right{display:flex;align-items:center;justify-content:flex-end;min-width:190px}.brand{text-align:center;font-size:11px;font-weight:700;max-width:190px}.brand img{height:58px;width:58px;object-fit:contain;border-radius:10px;background:#fff;padding:3px;display:block;margin:0 auto 4px}.tp-title{font-size:20px;font-weight:700;margin:0 0 13px}.tp-section-title{font-size:18px;font-weight:700;margin:13px 0 7px}.tp-table{width:100%;border-collapse:collapse;table-layout:fixed}.tp-table th,.tp-table td{border:1px solid #333;padding:4px;vertical-align:top;font-size:10px;line-height:1.15}.tp-table th{background:#b9e3e9;text-align:left;font-weight:700}.tp-table td{height:28px}.itin th:nth-child(1){width:12%}.itin th:nth-child(2){width:17%}.itin th:nth-child(3){width:17%}.itin th:nth-child(4){width:14%}.itin th:nth-child(5){width:14%}.itin th:nth-child(6){width:5%}.itin th:nth-child(7){width:21%}.itin td{height:90px}.flight-airline{font-size:11px;font-weight:700;display:flex;align-items:center;gap:3px}.flight-no{font-size:13px;font-weight:700;margin-top:13px}.route b{font-size:11px}.date{font-weight:700;font-size:11px}.time{font-size:14px;font-weight:700;margin-top:8px}.info{font-size:10px;line-height:1.25}.tp-notes{font-size:9px;line-height:1.18;margin-top:34px}.tp-important{font-size:9px;line-height:1.15;margin-top:18px}.qr{margin-top:18px;display:flex;align-items:center;gap:8px;font-size:10px;font-weight:700}.qr img{width:72px;height:72px;object-fit:contain}</style></head><body>' + pages + '<script>window.onload=()=>window.print()</script></body></html>');
     w.document.close();
   };
 
