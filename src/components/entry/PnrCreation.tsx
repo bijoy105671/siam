@@ -723,6 +723,21 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
             </button>
             <span className="text-[10px] text-slate-500">Search is grounded on public sources; always review before printing.</span>
           </div>
+          {importStatus && <div className="mt-3 rounded-xl border border-violet-200 bg-white p-3 text-xs">
+            <div className="font-extrabold text-slate-900">Flight Assist Status</div>
+            <div className="mt-1 text-slate-600">{importStatus}</div>
+          </div>}
+          {sectors.some(s => s.flightNo) && <div className="mt-3 rounded-xl border border-emerald-200 bg-white p-3">
+            <div className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-700">Auto-filled flight result</div>
+            <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              {(() => { const s = sectors.find(x => x.flightNo) || blankSector(); return <>
+                <div><span className="text-slate-400">Flight</span><div className="font-bold">{s.airline || '—'} {s.flightNo || '—'}</div></div>
+                <div><span className="text-slate-400">Route</span><div className="font-bold">{s.from || '—'} → {s.to || '—'}</div></div>
+                <div><span className="text-slate-400">Departure</span><div className="font-bold">{s.departureDate || '—'} {s.departureTime || ''}</div></div>
+                <div><span className="text-slate-400">Arrival</span><div className="font-bold">{s.arrivalDate || '—'} {s.arrivalTime || ''}</div></div>
+              </> })()}
+            </div>
+          </div>}
           {flightAssistSources.length > 0 && <div className="mt-2 text-[10px] text-slate-500">Sources: {flightAssistSources.map((s,i)=><a key={i} href={s.url} target="_blank" rel="noreferrer" className="underline mr-2">{s.title || new URL(s.url).hostname}</a>)}</div>}
         </section>
 
