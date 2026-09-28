@@ -2194,7 +2194,7 @@ start();
   res.json({ appointment: rows[0] });
 });
 
-app.delete('/api/appointments/:id', adminOnly, async (req, res) => {
+app.delete('/api/appointments/:id', auth, async (req, res) => {
   const result = await pool.query('DELETE FROM appointment_reminders WHERE id=$1', [req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Appointment not found' });
   res.json({ ok: true });
