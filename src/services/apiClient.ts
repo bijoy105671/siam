@@ -243,6 +243,8 @@ export const createServerOneEntry = async (input: Record<string, any>) => {
     vendorCost: input.vendorCost,
     vendorPaid: input.vendorPaid,
     vendorPaymentMethod: String(input.vendorPaymentMethod || 'Cash').toLowerCase(),
+    accountCost: Number(input.accountCost || 0),
+    accountCostPaymentMethod: String(input.accountCostPaymentMethod || 'bKash').toLowerCase(),
     reminderDate: input.reminderDate || null,
     reminderTime: input.reminderTime || null,
     reminderStatus: input.reminderDate ? 'pending' : null,
