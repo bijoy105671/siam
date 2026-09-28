@@ -171,31 +171,31 @@ const parseImportedText = (raw: string) => {
   // Passenger table extraction: keep passenger rows and ticket numbers one-to-one.
   // Never copy/reuse a ticket number when several passengers are present.
   const passengerRecords: ImportedPassenger[] = [];
-  const passengerMatches = [...text.matchAll(/(?:^|\\s)(?:\\d{1,2}\\s+)?(?:PRIMARY\\s+)?(?:MR|MRS|MS|MISS|DR)\\.?\\s+([A-Z][A-Z .,'\\/-]{1,80}?)(?=\\s+(?:ADULT|CHILD|INFANT|ADT|CHD|INF)\\b)/gi)];
+  const passengerMatches = [...text.matchAll(/(?:^|\s)(?:\d{1,2}\s+)?(?:PRIMARY\s+)?(?:MR|MRS|MS|MISS|DR)\.?\s+([A-Z][A-Z .,'\/-]{1,80}?)(?=\s+(?:ADULT|CHILD|INFANT|ADT|CHD|INF)\b)/gi)];
   const passengerNames: string[] = [];
   for (const m of passengerMatches) {
-    const n = m[1].trim().replace(/\\s+/g, ' ');
+    const n = m[1].trim().replace(/\s+/g, ' ');
     if (n && !passengerNames.includes(n)) passengerNames.push(n);
   }
   const orderedTickets: string[] = [];
   const seenTickets = new Set<string>();
-  for (const m of text.matchAll(/\\b(\\d{3}[-\\s]?\\d{10}|\\d{13})\\b/g)) {
+  for (const m of text.matchAll(/\b(\d{3}[-\s]?\d{10}|\d{13})\b/g)) {
     const t = normalizeTicket(m[1]);
     if (t.length === 13 && !seenTickets.has(t)) { seenTickets.add(t); orderedTickets.push(t); }
   }
   const orderedPassports: string[] = [];
   const seenPassports = new Set<string>();
-  for (const m of text.matchAll(/(?:PASSPORT|PP)\\s*(?:NUMBER|NO|NUM|#)?\\s*[:#-]?\\s*([A-Z0-9]{6,12})\\b/gi)) {
+  for (const m of text.matchAll(/(?:PASSPORT|PP)\s*(?:NUMBER|NO|NUM|#)?\s*[:#-]?\s*([A-Z0-9]{6,12})\b/gi)) {
     const p = m[1].toUpperCase();
     if (!seenPassports.has(p)) { seenPassports.add(p); orderedPassports.push(p); }
   }
   passengerNames.forEach((name, idx) => {
-    const match = passengerMatches.find(m => m[1].trim().replace(/\\s+/g, ' ') === name);
+    const match = passengerMatches.find(m => m[1].trim().replace(/\s+/g, ' ') === name);
     const pos = match?.index ?? -1;
     const local = pos >= 0 ? text.slice(Math.max(0, pos - 120), Math.min(text.length, pos + 520)) : '';
-    const localTicketMatch = local.match(/\\b(\\d{3}[-\\s]?\\d{10}|\\d{13})\\b/);
+    const localTicketMatch = local.match(/\b(\d{3}[-\s]?\d{10}|\d{13})\b/);
     const localTicket = localTicketMatch ? normalizeTicket(localTicketMatch[1]) : '';
-    const localPassportMatch = local.match(/(?:PASSPORT|PP)\\s*(?:NUMBER|NO|NUM|#)?\\s*[:#-]?\\s*([A-Z0-9]{6,12})\\b/i);
+    const localPassportMatch = local.match(/(?:PASSPORT|PP)\s*(?:NUMBER|NO|NUM|#)?\s*[:#-]?\s*([A-Z0-9]{6,12})\b/i);
     const localPassport = localPassportMatch?.[1]?.toUpperCase() || '';
     // Prefer a ticket found in this passenger's local row. Otherwise consume the next
     // document-order ticket. If none exists, leave blank; never duplicate another ticket.
