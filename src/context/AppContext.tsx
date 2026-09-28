@@ -266,6 +266,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        if (USE_SERVER_API) parsed.currentUserId = undefined;
         const savedServices = Array.isArray(parsed.services) ? parsed.services : [];
         const savedExpenseCategories = Array.isArray(parsed.expenseCategories) ? parsed.expenseCategories : [];
         const serviceIds = new Set(savedServices.map((s: ServiceItem) => s.id));
