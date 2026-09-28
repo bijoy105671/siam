@@ -148,7 +148,7 @@ export interface Transaction {
   accountCostPaymentMethod?: PaymentMethod;
   
   // Profit calculations
-  grossProfit: number; // sellingPrice - vendorCost
+  grossProfit: number; // sellingPrice - vendorCost - accountCost
   
   // Reminder Details
   reminderDate?: string; // YYYY-MM-DD
