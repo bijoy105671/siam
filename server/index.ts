@@ -1027,12 +1027,12 @@ app.post('/api/appointments', auth, async (req, res) => {
   if (!String(b.title || '').trim()) return res.status(400).json({ error: 'Appointment title is required' });
   if (!/^\d{4}-\\d{2}-\\d{2}$/.test(String(b.appointmentDate || ''))) return res.status(400).json({ error: 'Valid appointment date is required' });
   if (!/^\d{2}:\\d{2}$/.test(String(b.appointmentTime || ''))) return res.status(400).json({ error: 'Valid appointment time is required' });
-  const { rows } = await pool.query('INSERT INTO appointment_reminders (customer_id,customer_name,customer_mobile,customer_email,title,appointment_date,appointment_time,note,status,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,\'pending\',$9) RETURNING *', [b.customerId || null, String(b.customerName).trim(), b.customerMobile || null, b.customerEmail || null, String(b.title).trim(), b.appointmentDate, b.appointmentTime, b.note || null, req.session.userId]);
+  const { rows } = await pool.query('INSERT INTO appointment_reminders (customer_id,customer_name,customer_mobile,customer_email,title,appointment_date,appointment_time,note,status,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,\'pending\',$9) RETURNING *', [b.customerId || null, b.transactionId || null, b.serviceId || null, String(b.customerName).trim(), b.customerMobile || null, b.customerEmail || null, String(b.title).trim(), b.appointmentDate, b.appointmentTime, b.note || null, req.session.userId]);
   res.status(201).json({ appointment: rows[0] });
 });
 
 app.patch('/api/appointments/:id', auth, async (req, res) => {
-  const map: Record<string,string> = { customerId:'customer_id', customerName:'customer_name', customerMobile:'customer_mobile', customerEmail:'customer_email', title:'title', appointmentDate:'appointment_date', appointmentTime:'appointment_time', note:'note', status:'status' };
+  const map: Record<string,string> = { customerId:'customer_id', transactionId:'transaction_id', serviceId:'service_id', customerName:'customer_name', customerMobile:'customer_mobile', customerEmail:'customer_email', title:'title', appointmentDate:'appointment_date', appointmentTime:'appointment_time', note:'note', status:'status' };
   const sets: string[] = []; const values: any[] = [];
   for (const key of Object.keys(map)) {
     if (req.body && req.body[key] !== undefined) {
