@@ -37,6 +37,10 @@ const airlineLogoUrl=(value:string)=>{
   const code=normalizeAirlineCode(value);
   return code ? `https://cdn.jsdelivr.net/gh/spydogenesis/airlines-logo@latest/airlines-logo/200x200_v2/${code}.png` : '';
 };
+const airlineLogoFallbackUrl=(value:string)=>{
+  const code=normalizeAirlineCode(value);
+  return code ? `https://images.kiwi.com/airlines/64/${code}.png` : '';
+};
 const inferAirlineCode=(value:string)=>{
   const v=String(value||'').trim().toUpperCase();
   const direct=normalizeAirlineCode(v); if(direct) return direct;
@@ -101,29 +105,68 @@ const parseImportedText = (raw: string) => {
   const issueDate=detectValue(text,[/(?:DATE\s*OF\s*ISSUE|ISSUE\s*DATE|ISSUED)\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i]);
   const date=detectValue(text,[/(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\s*(?:DATE)?\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,/\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b/i]);
   const time=detectValue(text,[/(?:DEPARTURE|DEPART|STD|ETD)\s*(?:TIME)?\s*[:#-]?\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i,/(?:DEP(?:ARTS)?|DEPARTURE)\s*[:#-]?[^0-9]{0,30}(\d{1,2}:\d{2})/i]);
+  // Parse itinerary rows flexibly: GDS PDF extraction does not preserve table columns.
   const sectors:Sector[]=[];
-  const tripRoute = namedRoute ? [namedRoute[1].toUpperCase(), namedRoute[2].toUpperCase()] : route;
-  const tripAirline = airline || (text.match(/\b(US-BANGLA AIRLINES|BIMAN BANGLADESH AIRLINES|AIR ARABIA|EMIRATES|QATAR AIRWAYS|SAUDIA|OMAN AIR|GULF AIR|ETIHAD AIRWAYS)\b/i)?.[1] || '');
-  const tripFlight = detectValue(text,[/(?:FLIGHT\s*(?:NO|NUMBER)?|FLIGHT\s*INFO)\s*[-:#]?\s*(\d{2,4})/i]);
-  const tripTimes=[...text.matchAll(/(?:^|\s)(\d{1,2}:\d{2})\s+(?:Departs|Departure):/gi)].map(m=>m[1]);
-  const tripDates=[...text.matchAll(/\b(\d{1,2}\s+[A-Z]{3},?\s+\d{2,4})\b/gi)].map(m=>normalizeDateInput(m[1]));
-  const arrivalTime=detectValue(text,[/\b(?:Arrival|Arrives)\s*:\s*[^0-9]{0,30}(\d{1,2}:\d{2})/i]);
-  const baggage=detectValue(text,[/(?:ADT|CHD|INF)[^\n]{0,30}?→\s*(\d+(?:\.\d+)?)\s*(?:Kg|KG)/i,/(\d+(?:\.\d+)?)\s*(?:Kg|KG)\b/i]);
-  const cabin=detectValue(text,[/\b(Economy|Business|First|Premium Economy)\b/i]);
-  const addSector=(s:Sector)=>{const d=sectors.find(x=>x.flightNo===s.flightNo&&x.from===s.from&&x.to===s.to);if(d){Object.assign(d,Object.fromEntries(Object.entries(s).filter(([,v])=>v)));}else if(sectors.length<12)sectors.push(s);};
-  const rowPattern=/^\s*\d{1,2}\s+([A-Z0-9]{2,3})\s*(\d{2,4})\s+([A-Z]{3})\s+([A-Z]{3})\s+([0-9A-Z]{3,9})(?:\s+([0-9:]{3,5}))?(?:\s+([0-9:]{3,5}))?/i;
-  for(const line of lines){const m=line.match(rowPattern);if(m)addSector({...blankSector(),airline:m[1].toUpperCase(),flightNo:(m[1]+m[2]).toUpperCase(),from:m[3].toUpperCase(),to:m[4].toUpperCase(),departureDate:m[5],departureTime:m[6]||'',arrivalTime:m[7]||''});}
-  const sectorPattern=/\b([A-Z]{2,3})\s*[-]?\s*(\d{2,4})\b[^A-Z0-9]{0,30}\b([A-Z]{3})\b[^A-Z0-9]{0,12}(?:-|–|—|→|TO|\/)\s*\b([A-Z]{3})\b/gi;
-  let match:RegExpExecArray|null; while((match=sectorPattern.exec(text))&&sectors.length<12)addSector({...blankSector(),airline:match[1].toUpperCase(),flightNo:(match[1]+match[2]).toUpperCase(),from:match[3].toUpperCase(),to:match[4].toUpperCase(),departureDate:date,departureTime:time});
+  const addSector=(s:Sector)=>{
+    const normalized={...s, airline:normalizeAirlineCode(s.airline)||s.airline.toUpperCase(), flightNo:s.flightNo.replace(/\\s+/g,'').toUpperCase(), from:s.from.toUpperCase(), to:s.to.toUpperCase()};
+    const d=sectors.find(x=>x.flightNo===normalized.flightNo&&x.from===normalized.from&&x.to===normalized.to);
+    if(d) Object.assign(d,Object.fromEntries(Object.entries(normalized).filter(([,v])=>Boolean(v))));
+    else if(normalized.flightNo||normalized.from||normalized.to) sectors.push(normalized);
+  };
+  const normalizeFlightDateToken=(value:string)=>{
+    const v=value.trim().toUpperCase().replace(/,/g,'');
+    if(/^\\d{1,2}[A-Z]{3}\\d{0,4}$/.test(v)){
+      const m=v.match(/^(\\d{1,2})([A-Z]{3})(\\d{0,4})$/)!;
+      const year=m[3]||String(new Date().getFullYear());
+      return normalizeDateInput(`${m[1]} ${m[2]} ${year.length===2?'20'+year:year}`);
+    }
+    return normalizeDateInput(v);
+  };
+  const extractDateTokens=(line:string)=>{
+    const found:string[]=[];
+    const patterns=[/\\b\\d{4}-\\d{2}-\\d{2}\\b/g,/\\b\\d{1,2}[\\/-]\\d{1,2}[\\/-]\\d{2,4}\\b/g,/\\b\\d{1,2}\\s+[A-Z]{3,9}\\s*,?\\s*\\d{2,4}\\b/gi,/\\b\\d{1,2}[A-Z]{3}\\d{0,4}\\b/gi];
+    for(const p of patterns) for(const m of line.matchAll(p)) found.push(normalizeFlightDateToken(m[0]));
+    return [...new Set(found)].filter(Boolean);
+  };
+  const parseSectorLine=(line:string)=>{
+    const upper=line.toUpperCase().replace(/[|,]+/g,' ').replace(/\\s+/g,' ').trim();
+    const fm=upper.match(/\\b([A-Z0-9]{2,3})\\s*-?\\s*(\\d{2,4})\\b/);
+    if(!fm) return;
+    const flightCode=(fm[1]+fm[2]).toUpperCase();
+    const airlineCode=normalizeAirlineCode(fm[1])||fm[1];
+    const airportTokens=[...upper.matchAll(/\\b[A-Z]{3}\\b/g)].map(m=>m[0]);
+    const blocked=new Set(['THE','AND','FOR','FROM','TO','DEP','ARR','STD','STA','PNR','ADT','CHD','INF','KG','CAB','SEAT','ECO','BUS','FIRST']);
+    const airports=airportTokens.filter(x=>!blocked.has(x));
+    const routePair=upper.match(/\\b([A-Z]{3})\\s*(?:-|–|—|→|TO|\\/)\\s*([A-Z]{3})\\b/);
+    const from=routePair?.[1] || (airports.length>=2 ? airports[airports.length-2] : '');
+    const to=routePair?.[2] || (airports.length>=2 ? airports[airports.length-1] : '');
+    const dates=extractDateTokens(upper);
+    const times=[...upper.matchAll(/\\b(?:[01]?\\d|2[0-3]):[0-5]\\d(?:\\s*[AP]M)?\\b/g)].map(m=>m[0]);
+    const baggageMatch=upper.match(/\\b(\\d+(?:\\.\\d+)?)\\s*(?:KG|KGS)\\b/);
+    const cabinMatch=upper.match(/\\b(PREMIUM\\s+ECONOMY|ECONOMY|BUSINESS|FIRST)\\b/);
+    const classMatch=upper.match(/(?:\\s|^)([A-Z0-9])(?:\\s|$)/);
+    addSector({...blankSector(),airline:airlineCode,flightNo:flightCode,from,to,departureDate:dates[0]||'',departureTime:times[0]||'',arrivalDate:dates[1]||'',arrivalTime:times[1]||'',bookingClass:cabinMatch?.[1]||classMatch?.[1]||'',baggage:baggageMatch?.[1]?`${baggageMatch[1]} KG`:''});
+  };
+  for(const line of lines){
+    if(/\\b(?:\\d{1,2}\\s+)?[A-Z0-9]{2,3}\\s*-?\\s*\\d{2,4}\\b/.test(line)) parseSectorLine(line);
+  }
+  const inlinePattern=/\\b([A-Z0-9]{2,3})\\s*-?\\s*(\\d{2,4})\\b[\\s:,-]{0,20}([A-Z]{3})\\s*(?:-|–|—|→|TO|\\/)\\s*([A-Z]{3})\\b/gi;
+  let inlineMatch:RegExpExecArray|null;
+  while((inlineMatch=inlinePattern.exec(text))&&sectors.length<12){
+    addSector({...blankSector(),airline:normalizeAirlineCode(inlineMatch[1])||inlineMatch[1].toUpperCase(),flightNo:(inlineMatch[1]+inlineMatch[2]).toUpperCase(),from:inlineMatch[3].toUpperCase(),to:inlineMatch[4].toUpperCase(),departureDate:normalizeDateInput(date),departureTime:time,bookingClass:cabin||''});
+  }
   if(!sectors.length && tripRoute[0] && tripRoute[1] && tripFlight){
-    const inferredCode=normalizeAirlineCode(tripAirline)||inferAirlineCode(tripAirline)||'';
-    addSector({...blankSector(),airline:inferredCode||tripAirline,flightNo:(inferredCode||'')+tripFlight,from:tripRoute[0],to:tripRoute[1],departureDate:tripDates[0]||normalizeDateInput(date),departureTime:tripTimes[0]||time,arrivalDate:tripDates[1]||tripDates[0]||'',arrivalTime,baggage,bookingClass:cabin||''});
+    const inferredCode=normalizeAirlineCode(tripAirline)||inferAirlineCode(tripAirline)||inferAirlineCode(flightNo)||'';
+    addSector({...blankSector(),airline:inferredCode||tripAirline,flightNo:(inferredCode||inferAirlineCode(flightNo)||'')+tripFlight,from:tripRoute[0],to:tripRoute[1],departureDate:tripDates[0]||normalizeDateInput(date),departureTime:tripTimes[0]||time,arrivalDate:tripDates[1]||tripDates[0]||'',arrivalTime,baggage,bookingClass:cabin||''});
   }
   if(!sectors.length){
-    const flights=[...text.matchAll(/\b([A-Z]{2,3})\s*[-]?\s*(\d{2,4})\b/g)];
-    const routes=[...text.matchAll(/\b([A-Z]{3})\s+(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/gi)];
+    const flights=[...text.matchAll(/\\b([A-Z0-9]{2,3})\\s*-?\\s*(\\d{2,4})\\b/g)];
+    const routes=[...text.matchAll(/\\b([A-Z]{3})\\s+(?:-|–|—|→|TO|\\/)\\s*([A-Z]{3})\\b/gi)];
     const count=Math.min(12,Math.max(flights.length,routes.length,1));
-    for(let i=0;i<count;i++)addSector({...blankSector(),airline:flights[i]?.[1]?.toUpperCase()||airline,flightNo:flights[i]?(flights[i][1]+flights[i][2]).toUpperCase():flightNo,from:routes[i]?.[1]?.toUpperCase()||route[0],to:routes[i]?.[2]?.toUpperCase()||route[1],departureDate:date,departureTime:time});
+    for(let i=0;i<count;i++){
+      const f=flights[i];
+      addSector({...blankSector(),airline:f?(normalizeAirlineCode(f[1])||f[1].toUpperCase()):airline,flightNo:f?(f[1]+f[2]).toUpperCase():flightNo,from:routes[i]?.[1]?.toUpperCase()||route[0],to:routes[i]?.[2]?.toUpperCase()||route[1],departureDate:normalizeDateInput(date),departureTime:time,bookingClass:cabin||''});
+    }
   }
   const firstAirline=sectors[0]?.airline||airline||inferAirlineCode(flightNo);
   const normalizedSectors=sectors.map(s=>({...s,departureDate:normalizeDateInput(s.departureDate),arrivalDate:normalizeDateInput(s.arrivalDate),bookingClass:s.bookingClass||cabin||'',baggage:s.baggage||baggage}));\n  return {airlinePnr,gdsPnr,ticketNumber,issueDate:normalizeDateInput(issueDate),passenger,passport,sectors:normalizedSectors.length?normalizedSectors:[{...blankSector(),airline:firstAirline,flightNo,from:route[0],to:route[1],departureDate:normalizeDateInput(date),departureTime:time}],rawText:text.slice(0,30000)};
@@ -154,8 +197,11 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const [importStatus, setImportStatus] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const detectedAirline = useMemo(() => { const s=sectors.find(x=>x.airline||x.flightNo); return s?.airline || inferAirlineCode(s?.flightNo||''); }, [sectors]);
-  React.useEffect(() => { const u=airlineLogoUrl(detectedAirline); if(u) setLogo(u); }, [detectedAirline]);
+  const detectedAirline = useMemo(() => {
+    const s=sectors.find(x=>x.airline||x.flightNo);
+    return normalizeAirlineCode(s?.airline||'') || inferAirlineCode(s?.flightNo||'') || s?.airline || '';
+  }, [sectors]);
+  React.useEffect(() => { setLogo(airlineLogoUrl(detectedAirline)); }, [detectedAirline]);
 
 
   const applyParsed = (parsed: ReturnType<typeof parseImportedText>) => {
@@ -324,7 +370,10 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
             {field('Passenger Name',passenger,setPassenger)}{field('Passport Number',passport,setPassport)}
             {field('Frequent Flyer Number',frequentFlyer,setFrequentFlyer)}
             <label className="block"><span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Ticket Status</span><select value={status} onChange={e=>setStatus(e.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"><option>CONFIRMED</option><option>REISSUED</option><option>CANCELLED</option><option>REFUNDED</option><option>VOID</option></select></label>
-            <label className="block"><span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Airline Logo (Automatic)</span><div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 min-h-[46px]">{logo ? <img src={logo} alt="Airline logo" className="h-8 max-w-[120px] object-contain" onError={()=>setLogo('')} /> : <span className="text-xs text-slate-400">Enter airline code/name in a sector field.</span>}</div></label>
+            <label className="block"><span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Airline Logo (Automatic)</span><div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 min-h-[46px]">{logo ? <img src={logo} alt="Airline logo" className="h-8 max-w-[120px] object-contain" onError={(e)=>{
+  const fallback=airlineLogoFallbackUrl(detectedAirline);
+  if(fallback && e.currentTarget.src!==fallback) e.currentTarget.src=fallback; else setLogo('');
+}} /> : <span className="text-xs text-slate-400">Enter airline code/name in a sector field.</span>}</div></label>
           </div>
         </section>
 
