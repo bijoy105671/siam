@@ -721,7 +721,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     const code = normalizeAirlineCode(airlineValue) || String(airlineValue || '').toUpperCase();
     if (!code) { setFlightOptions(prev => ({...prev, [sectorIndex]: []})); return; }
     try {
-      const rows = await flightDirectory('', '', '');
+      const rows = await flightDirectory('', '', '', code);
       const matches = (Array.isArray(rows) ? rows : []).filter((x:any) =>
         String(x.airline_code || '').toUpperCase() === code ||
         normalizeAirlineCode(String(x.airline || '')) === code
@@ -742,7 +742,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     // not a date-specific booking.
     setSectors(prev => prev.map((s, i) => i === sectorIndex ? ({
       ...s,
-      airline: x.airline || x.airline_code || s.airline,
+      airline: x.airline_code || normalizeAirlineCode(x.airline || '') || s.airline,
       flightNo: x.flight_no || '',
       from: x.from_airport || '',
       to: x.to_airport || '',
