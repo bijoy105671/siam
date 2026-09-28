@@ -737,17 +737,25 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   }, [sectors.map(s => s.airline).join('|')]);
 
   const chooseFlightOption = (sectorIndex: number, x: any) => {
-    updateSector(sectorIndex, 'flightNo', x.flight_no || '');
-    updateSector(sectorIndex, 'airline', x.airline || x.airline_code || '');
-    updateSector(sectorIndex, 'from', x.from_airport || '');
-    updateSector(sectorIndex, 'to', x.to_airport || '');
-    updateSector(sectorIndex, 'departureTime', x.departure_time || '');
-    updateSector(sectorIndex, 'arrivalTime', x.arrival_time || '');
-    updateSector(sectorIndex, 'bookingClass', x.booking_class || '');
-    updateSector(sectorIndex, 'baggage', x.baggage || '');
-    updateSector(sectorIndex, 'duration', x.duration || '');
-    updateSector(sectorIndex, 'aircraft', x.aircraft || '');
-    updateSector(sectorIndex, 'terminal', x.terminal || '');
+    // One atomic update: selecting a flight immediately fills every saved field.
+    // Keep the date the user already selected; the directory stores the recurring schedule,
+    // not a date-specific booking.
+    setSectors(prev => prev.map((s, i) => i === sectorIndex ? ({
+      ...s,
+      airline: x.airline || x.airline_code || s.airline,
+      flightNo: x.flight_no || '',
+      from: x.from_airport || '',
+      to: x.to_airport || '',
+      departureTime: x.departure_time || '',
+      arrivalTime: x.arrival_time || '',
+      bookingClass: x.booking_class || '',
+      baggage: x.baggage || '',
+      duration: x.duration || '',
+      aircraft: x.aircraft || '',
+      terminal: x.terminal || '',
+      departureDate: s.departureDate || '',
+      arrivalDate: s.arrivalDate || ''
+    }) : s));
     setFlightOptions(prev => ({...prev, [sectorIndex]: []}));
   };
 
