@@ -786,9 +786,11 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                     `Are you sure you want to delete Invoice ${tx.invoiceNumber}? This will be recorded permanently in the Audit History.`
                                   )
                                 ) {
-                                  void deleteTransaction(tx.id).catch((error) => {
+                                  try {
+                                    deleteTransaction(tx.id);
+                                  } catch (error) {
                                     alert(error instanceof Error ? error.message : 'Transaction could not be deleted.');
-                                  });
+                                  }
                                 }
                               }}
                               className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
@@ -1020,12 +1022,12 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                       }
 
                       await updateTransaction(editingTransaction.id, {
-                        reminderDate: editReminderDate || null,
-                        reminderTime: editReminderTime || null,
-                        reminderStatus: editReminderDate ? 'pending' : null,
-                        reminderNote: editNote || null,
-                        serviceId: editServiceId || null,
-                        vendorId: resolvedVendorId || null,
+                        reminderDate: editReminderDate || undefined,
+                        reminderTime: editReminderTime || undefined,
+                        reminderStatus: editReminderDate ? 'pending' : undefined,
+                        reminderNote: editNote || undefined,
+                        serviceId: editServiceId || undefined,
+                        vendorId: resolvedVendorId || undefined,
                         vendorCost: Number(editVendorCost || 0),
                         vendorPaid: Number(editVendorPaid || 0),
                         vendorDue: Number(editVendorDue || 0),
