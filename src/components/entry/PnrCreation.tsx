@@ -105,6 +105,14 @@ const parseImportedText = (raw: string) => {
   const issueDate=detectValue(text,[/(?:DATE\s*OF\s*ISSUE|ISSUE\s*DATE|ISSUED)\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i]);
   const date=detectValue(text,[/(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\s*(?:DATE)?\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,/\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b/i]);
   const time=detectValue(text,[/(?:DEPARTURE|DEPART|STD|ETD)\s*(?:TIME)?\s*[:#-]?\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i,/(?:DEP(?:ARTS)?|DEPARTURE)\s*[:#-]?[^0-9]{0,30}(\d{1,2}:\d{2})/i]);
+  const tripRoute = namedRoute ? [namedRoute[1].toUpperCase(), namedRoute[2].toUpperCase()] : route;
+  const tripAirline = airline || (text.match(/\\b(US-BANGLA AIRLINES|BIMAN BANGLADESH AIRLINES|AIR ARABIA|EMIRATES|QATAR AIRWAYS|SAUDIA|OMAN AIR|GULF AIR|ETIHAD AIRWAYS)\\b/i)?.[1] || '');
+  const tripFlight = detectValue(text,[/(?:FLIGHT\\s*(?:NO|NUMBER)?|FLIGHT\\s*INFO)\\s*[-:#]?\\s*(\\d{2,4})/i]);
+  const tripTimes=[...text.matchAll(/(?:^|\\s)(\\d{1,2}:\\d{2})\\s+(?:Departs|Departure):/gi)].map(m=>m[1]);
+  const tripDates=[...text.matchAll(/\\b(\\d{1,2}\\s+[A-Z]{3},?\\s+\\d{2,4})\\b/gi)].map(m=>normalizeDateInput(m[1]));
+  const arrivalTime=detectValue(text,[/\\b(?:Arrival|Arrives)\\s*:\s*[^0-9]{0,30}(\\d{1,2}:\\d{2})/i]);
+  const baggage=detectValue(text,[/(?:ADT|CHD|INF)[^\\n]{0,30}?→\\s*(\\d+(?:\\.\\d+)?)\\s*(?:Kg|KG)/i,/(\\d+(?:\\.\\d+)?)\\s*(?:Kg|KG)\\b/i]);
+  const cabin=detectValue(text,[/\\b(Economy|Business|First|Premium Economy)\\b/i]);
   // Parse itinerary rows flexibly: GDS PDF extraction does not preserve table columns.
   const sectors:Sector[]=[];
   const addSector=(s:Sector)=>{
