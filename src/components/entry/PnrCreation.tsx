@@ -11,7 +11,7 @@ type ImportedPassenger = { name: string; passport: string; ticketNumber: string;
 type Sector = {
   airline: string; flightNo: string; from: string; to: string;
   departureDate: string; departureTime: string; arrivalDate: string; arrivalTime: string;
-  bookingClass: string; seat: string; baggage: string;
+  bookingClass: string; seat: string; baggage: string; duration: string; aircraft: string; terminal: string;
 };
 
 const FIXED_TICKET_TEMPLATE = { id: 'siam-v8', name: 'SIAM AIR Ticket View / Print — V8', accent: '#15803d', header: '#0f766e', radius: '12px' };
@@ -417,6 +417,11 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const [customTitle, setCustomTitle] = useState('SIAM AIR AND DIGITAL SERVICE');
   const [customFooter, setCustomFooter] = useState('Ticket information only — no accounting connection.');
   const [importStatus, setImportStatus] = useState('');
+  const [flightAssistNumber, setFlightAssistNumber] = useState('');
+  const [flightAssistDate, setFlightAssistDate] = useState('');
+  const [flightAssistAirline, setFlightAssistAirline] = useState('');
+  const [flightAssistLoading, setFlightAssistLoading] = useState(false);
+  const [flightAssistSources, setFlightAssistSources] = useState<{title:string;url:string}[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const detectedAirline = useMemo(() => {
@@ -442,10 +447,64 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const updateSector = (index: number, key: keyof Sector, value: string) =>
     setSectors(prev => prev.map((s, i) => i === index ? { ...s, [key]: value } : s));
 
+  const findFlightWithAssist = async () => {
+    const flightNumber = flightAssistNumber.trim().toUpperCase();
+    if (!flightNumber || !flightAssistDate) {
+      setImportStatus('Enter Flight Number and Flight Date first.');
+      return;
+    }
+    setFlightAssistLoading(true);
+    setFlightAssistSources([]);
+    setImportStatus('AI is searching current public flight schedule sources…');
+    try {
+      const response = await fetch('/api/flight-assist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ flightNumber, flightDate: flightAssistDate, airline: flightAssistAirline.trim() })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Flight search failed');
+      const data = result?.data;
+      if (!data) throw new Error('No flight data was returned.');
+      setFlightAssistSources(Array.isArray(data.sources) ? data.sources : []);
+      if (!data.matched) {
+        const count = Array.isArray(data.candidates) ? data.candidates.length : 0;
+        setImportStatus(count ? 'Multiple possible flights found. Please verify the route/date before using one.' : 'No reliable public schedule match found. Enter the flight details manually.');
+        return;
+      }
+      const f = data.flight || {};
+      const next: Sector = {
+        ...blankSector(),
+        airline: String(f.airlineCode || f.airline || '').toUpperCase(),
+        flightNo: String(f.flightNo || flightNumber).replace(/[\s/-]+/g, '').toUpperCase(),
+        from: String(f.from || '').toUpperCase(),
+        to: String(f.to || '').toUpperCase(),
+        departureDate: String(f.departureDate || flightAssistDate),
+        departureTime: String(f.departureTime || ''),
+        arrivalDate: String(f.arrivalDate || ''),
+        arrivalTime: String(f.arrivalTime || ''),
+        bookingClass: String(f.bookingClass || '').toUpperCase(),
+        seat: '',
+        baggage: String(f.baggage || ''),
+        duration: String(f.duration || ''),
+        aircraft: String(f.aircraft || ''),
+        terminal: String(f.terminal || '')
+      };
+      setSectors(prev => prev.length === 1 && !Object.values(prev[0]).some(Boolean) ? [next] : [...prev, next]);
+      setImportStatus('Flight schedule found. Route, date/time, airline and available public schedule details were filled. PNR, ticket number, passenger and passport still need your input.');
+    } catch (error) {
+      setImportStatus(error instanceof Error ? error.message : 'Flight search failed. Please enter the flight details manually.');
+    } finally {
+      setFlightAssistLoading(false);
+    }
+  };
+
   const clearAll = () => {
     setAirlinePnr(''); setGdsPnr(''); setTicketNumber(''); setIssueDate(''); setPassenger('');
     setPassport(''); setFrequentFlyer(''); setImportedPassengers([]); setStatus('CONFIRMED'); setLogo(''); setSectors([blankSector()]);
     setImportStatus('');
+    setFlightAssistNumber(''); setFlightAssistDate(''); setFlightAssistAirline(''); setFlightAssistSources([]);
   };
 
   const enhanceWithAi = async (rawText: string, parsed: ReturnType<typeof parseImportedText>) => {
@@ -481,7 +540,10 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
         arrivalTime: String(x?.arrivalTime || '').trim(),
         bookingClass: String(x?.bookingClass || '').trim().toUpperCase(),
         seat: String(x?.seat || '').trim().toUpperCase(),
-        baggage: String(x?.baggage || '').trim()
+        baggage: String(x?.baggage || '').trim(),
+        duration: String(x?.duration || '').trim(),
+        aircraft: String(x?.aircraft || '').trim(),
+        terminal: String(x?.terminal || '').trim()
       })) : [];
       return {
         ...parsed,
@@ -592,7 +654,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
         '<td class="route"><b>' + escapeHtml(s.from || '-') + '</b></td><td class="route"><b>' + escapeHtml(s.to || '-') + '</b></td>' +
         '<td><div class="date">' + escapeHtml(s.departureDate || '-') + '</div><div class="time">' + escapeHtml(s.departureTime || '-') + '</div></td>' +
         '<td><div class="date">' + escapeHtml(s.arrivalDate || '-') + '</div><div class="time">' + escapeHtml(s.arrivalTime || '-') + '</div></td>' +
-        '<td>' + escapeHtml(s.seat || '-') + '</td><td class="info">Baggage : ' + escapeHtml(s.baggage || '-') + '<br>Class : ' + escapeHtml(s.bookingClass || '-') + '</td></tr>').join('');
+        '<td>' + escapeHtml(s.seat || '-') + '</td><td class="info">Baggage : ' + escapeHtml(s.baggage || '-') + '<br>Class : ' + escapeHtml(s.bookingClass || '-') + '<br>Duration : ' + escapeHtml(s.duration || '-') + '<br>Aircraft : ' + escapeHtml(s.aircraft || '-') + '</td></tr>').join('');
       const qr = settings.whatsappQrCode ? '<div class="qr"><img src="' + escapeHtml(settings.whatsappQrCode) + '" /><span>WhatsApp</span></div>' : '';
       return '<div class="ticket' + (personIndex ? ' page-break' : '') + '"><div class="tp-head"><div class="tp-agency"><b>' + escapeHtml(settings.name || 'SIAM AIR AND DIGITAL SERVICE') + '</b><br>' + escapeHtml(settings.address || '') + '<br>Mobile: ' + escapeHtml(settings.mobile || '') + (settings.email ? '<br>Email: ' + escapeHtml(settings.email) : '') + '</div><div class="tp-right"><div class="brand"><img src="' + escapeHtml(logoSrc) + '" /><div>' + escapeHtml(settings.tagline || '') + '</div></div></div></div>' +
       '<div class="tp-title">Electronic Ticket</div><div class="tp-section-title">Passenger Information</div>' +
@@ -643,6 +705,27 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
           </div>}
         </section>
 
+        <section className="rounded-2xl border border-violet-200 bg-violet-50/60 p-3 sm:p-4">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+            <div>
+              <div className="text-xs font-extrabold text-slate-900">MANUAL + AI FLIGHT ASSIST</div>
+              <div className="text-[11px] text-slate-600 mt-1">Give Flight Number + Date. SIAM will search current public web schedule data and fill the flight details. Private PNR, passenger, passport and ticket number are never fetched.</div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full lg:max-w-3xl">
+              <input value={flightAssistNumber} onChange={e=>setFlightAssistNumber(e.target.value)} placeholder="Flight No. e.g. BS307" className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm" />
+              <input type="date" value={flightAssistDate} onChange={e=>setFlightAssistDate(e.target.value)} className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm" />
+              <input value={flightAssistAirline} onChange={e=>setFlightAssistAirline(e.target.value)} placeholder="Airline code/name (optional)" className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm" />
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button onClick={findFlightWithAssist} disabled={flightAssistLoading} className="rounded-xl bg-violet-600 text-white px-4 py-2.5 text-xs font-bold disabled:opacity-60">
+              {flightAssistLoading ? 'Searching…' : '🔎 Find Flight & Auto-Fill'}
+            </button>
+            <span className="text-[10px] text-slate-500">Search is grounded on public sources; always review before printing.</span>
+          </div>
+          {flightAssistSources.length > 0 && <div className="mt-2 text-[10px] text-slate-500">Sources: {flightAssistSources.map((s,i)=><a key={i} href={s.url} target="_blank" rel="noreferrer" className="underline mr-2">{s.title || new URL(s.url).hostname}</a>)}</div>}
+        </section>
+
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3 sm:p-4">
           <div className="flex items-center justify-between gap-3">
             <div><div className="text-xs font-extrabold text-slate-900">SIAM AIR TICKET VIEW / PRINT</div><div className="text-[11px] text-slate-600 mt-1">Fixed V8 ticket view and print format from the supplied calculator. Previous ticket templates are removed.</div></div>
@@ -674,7 +757,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
               {field('From',s.from,v=>updateSector(i,'from',v))}{field('To',s.to,v=>updateSector(i,'to',v))}
               {field('Departure Date',s.departureDate,v=>updateSector(i,'departureDate',v))}{field('Departure Time',s.departureTime,v=>updateSector(i,'departureTime',v),'time')}
               {field('Arrival Date',s.arrivalDate,v=>updateSector(i,'arrivalDate',v))}{field('Arrival Time',s.arrivalTime,v=>updateSector(i,'arrivalTime',v),'time')}
-              {field('Booking Class',s.bookingClass,v=>updateSector(i,'bookingClass',v))}{field('Seat',s.seat,v=>updateSector(i,'seat',v))}{field('Baggage',s.baggage,v=>updateSector(i,'baggage',v))}
+              {field('Booking Class',s.bookingClass,v=>updateSector(i,'bookingClass',v))}{field('Seat',s.seat,v=>updateSector(i,'seat',v))}{field('Baggage',s.baggage,v=>updateSector(i,'baggage',v))}{field('Duration',s.duration,v=>updateSector(i,'duration',v))}{field('Aircraft',s.aircraft,v=>updateSector(i,'aircraft',v))}{field('Terminal',s.terminal,v=>updateSector(i,'terminal',v))}
             </div>
           </div>)}</div>
         </section>
