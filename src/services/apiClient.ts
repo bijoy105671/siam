@@ -209,6 +209,8 @@ function mapServerTransaction(tx: ServerTransaction): ServerTransaction {
     vendorPaid: Number(tx.vendor_paid || 0),
     vendorDue: Number(tx.vendor_due || 0),
     vendorPaymentMethod: tx.vendor_payment_method || tx.vendorPaymentMethod || undefined,
+    accountCost: Number(tx.account_cost || 0),
+    accountCostPaymentMethod: tx.account_cost_payment_method || tx.accountCostPaymentMethod || undefined,
     grossProfit: Number(tx.gross_profit || 0),
     reminderDate: tx.reminder_date,
     reminderTime: tx.reminder_time,
