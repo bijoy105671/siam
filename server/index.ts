@@ -19,6 +19,18 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL, options: '-c
 const PASSWORD_RESET_EMAIL = 'bijoy105671@gmail.com';
 const hashOtp = (otp: string) => createHash('sha256').update(otp).digest('hex');
 
+const seedFlightDirectory = async () => {
+  for (const flight of DAC_FLIGHT_DIRECTORY) {
+    await pool.query(`INSERT INTO flight_directory
+      (flight_no, airline, airline_code, from_airport, from_name, to_airport, to_name, departure_time, arrival_time, terminal)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      ON CONFLICT (flight_no, from_airport, to_airport) DO NOTHING`,
+      [flight.flightNo, flight.airline, flight.airlineCode, flight.from, flight.fromName, flight.to, flight.toName,
+       flight.departureTime || '', flight.arrivalTime || '', flight.terminal || '']);
+  }
+  console.log('SIAM AIR flight directory seed checked: ' + DAC_FLIGHT_DIRECTORY.length + ' records');
+};
+
 const initializeDatabase = async () => {
   const schemaUrl = new URL('./schema.sql', import.meta.url);
   const schema = await readFile(schemaUrl, 'utf8');
@@ -1838,6 +1850,7 @@ app.get('*', (_req, res) => {
 const start = async () => {
   await initializeDatabase();
   await pool.query('SELECT 1');
+  await seedFlightDirectory();
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
