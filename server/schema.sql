@@ -259,3 +259,29 @@ ALTER TABLE appointment_reminders ADD COLUMN IF NOT EXISTS transaction_id uuid R
 ALTER TABLE appointment_reminders ADD COLUMN IF NOT EXISTS service_id uuid REFERENCES services(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_appointment_reminders_date ON appointment_reminders(appointment_date, appointment_time);
 CREATE INDEX IF NOT EXISTS idx_appointment_reminders_transaction ON appointment_reminders(transaction_id);
+
+
+CREATE TABLE IF NOT EXISTS flight_directory (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  flight_no text NOT NULL,
+  airline text,
+  airline_code text,
+  from_airport text NOT NULL,
+  from_name text,
+  to_airport text NOT NULL,
+  to_name text,
+  departure_time text,
+  arrival_time text,
+  duration text,
+  aircraft text,
+  terminal text,
+  booking_class text,
+  baggage text,
+  notes text,
+  created_by uuid REFERENCES users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (flight_no, from_airport, to_airport)
+);
+CREATE INDEX IF NOT EXISTS idx_flight_directory_flight_no ON flight_directory(flight_no);
+CREATE INDEX IF NOT EXISTS idx_flight_directory_route ON flight_directory(from_airport, to_airport);
