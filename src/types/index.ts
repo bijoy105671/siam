@@ -144,6 +144,8 @@ export interface Transaction {
   vendorPaid: number;
   vendorDue: number; // vendorCost - vendorPaid
   vendorPaymentMethod?: PaymentMethod;
+  accountCost?: number;
+  accountCostPaymentMethod?: PaymentMethod;
   
   // Profit calculations
   grossProfit: number; // sellingPrice - vendorCost
