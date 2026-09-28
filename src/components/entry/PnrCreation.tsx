@@ -610,11 +610,23 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     }
   };
 
+  const enhancePdfWithAi = async (dataBase64: string) => {
+    const response = await fetch('/api/ticket-import/pdf-ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ dataBase64 })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(String(result.error || 'Visual PDF reader failed'));
+    return result?.data;
+  };
+
   const importFile = async (file: File) => {
     setImportStatus('Reading ticket file…');
     try {
       if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-        setImportStatus('Extracting text from PDF…');
+        setImportStatus('Reading PDF and detecting ticket layout…');
         const buffer = await file.arrayBuffer();
         const bytes = new Uint8Array(buffer);
         let binary = '';
@@ -623,15 +635,77 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
           binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
         }
         const dataBase64 = btoa(binary);
-        const response = await fetch('/api/ticket-import/pdf', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-          body: JSON.stringify({ dataBase64, filename: file.name })
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error || 'PDF extraction failed');
-        const rawText = String(result.text || '');
-        applyParsed(await enhanceWithAi(rawText, parseImportedText(rawText)));
-        setImportStatus('PDF data extracted successfully. Please review all fields before generating the e-ticket.');
+
+        let rawText = '';
+        let textError = '';
+        try {
+          const response = await fetch('/api/ticket-import/pdf', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+            body: JSON.stringify({ dataBase64, filename: file.name })
+          });
+          const result = await response.json().catch(() => ({}));
+          if (response.ok) rawText = String(result.text || '');
+          else textError = String(result.error || 'PDF text extraction failed');
+        } catch (e) {
+          textError = e instanceof Error ? e.message : 'PDF text extraction failed';
+        }
+
+        if (rawText.trim()) {
+          const parsed = await enhanceWithAi(rawText, parseImportedText(rawText));
+          applyParsed(parsed);
+          const detected = [parsed.airlinePnr, parsed.gdsPnr, parsed.ticketNumber, parsed.passenger, ...parsed.sectors.flatMap(s => [s.flightNo, s.from, s.to])].filter(Boolean).length;
+          if (detected) {
+            setImportStatus('PDF imported successfully. Text fields were detected; please review every field before printing.');
+            return;
+          }
+        }
+
+        setImportStatus(textError.includes('no selectable text') || !rawText.trim()
+          ? 'Scanned/image PDF detected. Reading the PDF visually…'
+          : 'Text was incomplete. Reading the PDF visually for missing fields…');
+
+        const ai = await enhancePdfWithAi(dataBase64);
+        const aiPassengers: ImportedPassenger[] = Array.isArray(ai?.passengers)
+          ? ai.passengers.map((x: any) => ({
+              name: String(x?.name || '').trim(),
+              passport: String(x?.passport || '').trim().toUpperCase(),
+              ticketNumber: normalizeTicket(String(x?.ticketNumber || ''))
+            })).filter((x: ImportedPassenger) => x.name || x.passport || x.ticketNumber)
+          : [];
+        const aiSectors: Sector[] = Array.isArray(ai?.sectors)
+          ? ai.sectors.slice(0, 12).map((x: any) => ({
+              ...blankSector(),
+              airline: normalizeAirlineCode(String(x?.airline || '').trim()) || String(x?.airline || '').trim().toUpperCase(),
+              flightNo: String(x?.flightNo || '').replace(/[\s/-]+/g, '').toUpperCase(),
+              from: String(x?.from || '').trim().toUpperCase(),
+              to: String(x?.to || '').trim().toUpperCase(),
+              departureDate: normalizeDateInput(String(x?.departureDate || '').trim()),
+              departureTime: String(x?.departureTime || '').trim(),
+              arrivalDate: normalizeDateInput(String(x?.arrivalDate || '').trim()),
+              arrivalTime: String(x?.arrivalTime || '').trim(),
+              bookingClass: String(x?.bookingClass || '').trim().toUpperCase(),
+              seat: String(x?.seat || '').trim().toUpperCase(),
+              baggage: String(x?.baggage || '').trim(),
+              duration: String(x?.duration || '').trim(),
+              aircraft: String(x?.aircraft || '').trim(),
+              terminal: String(x?.terminal || '').trim()
+            })).filter((x: Sector) => x.flightNo || x.from || x.to)
+          : [];
+        const aiParsed = {
+          airlinePnr: normalizePnr(String(ai?.airlinePnr || '')),
+          gdsPnr: normalizePnr(String(ai?.gdsPnr || '')),
+          ticketNumber: normalizeTicket(String(ai?.ticketNumber || '')),
+          issueDate: normalizeDateInput(String(ai?.issueDate || '')),
+          passenger: String(ai?.passenger || '').trim(),
+          passport: String(ai?.passport || '').trim().toUpperCase(),
+          passengers: aiPassengers,
+          sectors: aiSectors.length ? aiSectors : [blankSector()],
+          rawText: ''
+        };
+        const detected = [aiParsed.airlinePnr, aiParsed.gdsPnr, aiParsed.ticketNumber, aiParsed.passenger, ...aiParsed.sectors.flatMap(s => [s.flightNo, s.from, s.to])].filter(Boolean).length;
+        if (!detected) throw new Error('The PDF was opened, but no ticket fields could be detected. Try the original PDF or a clear image.');
+        applyParsed(aiParsed);
+        setImportStatus('PDF visual import completed. Please review all passenger, passport, ticket and flight fields before printing.');
         return;
       }
 
