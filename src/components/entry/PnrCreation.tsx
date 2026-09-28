@@ -103,7 +103,7 @@ const parseImportedText = (raw: string) => {
   const namedRoute=text.match(/\b[A-Z][A-Z .'-]*\(([A-Z]{3})\)\s*(?:-|–|—|→|TO|\/)\s*[A-Z][A-Z .'-]*\(([A-Z]{3})\)\b/i);
   const routeMatch=namedRoute || text.match(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/i);
   const route=routeMatch?[routeMatch[1].toUpperCase(),routeMatch[2].toUpperCase()]:['',''];
-  const issueDate=detectValue(text,[/(?:DATE\s*OF\s*ISSUE|ISSUE\s*DATE|ISSUED)\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i]);
+  const issueDate=detectValue(text,[/(?:DATE\s*OF\s*ISSUE|ISSUE\s*DATE|DATE\s*ISSUED|ISSUED)\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+[A-Z]{3,9},?\s+\d{2,4})/i]);
   const normalizeFlightDateToken=(value:string)=>{
     const v=value.trim().toUpperCase().replace(/,/g,'');
     if(/^\d{1,2}[A-Z]{3}\d{0,4}$/.test(v)){
@@ -166,9 +166,9 @@ const parseImportedText = (raw: string) => {
     const dates=extractDateTokens(upper);
     const times=[...upper.matchAll(/\b(?:[01]?\d|2[0-3]):[0-5]\d(?:\s*[AP]M)?\b/g)].map(m=>m[0]);
     const baggageMatch=upper.match(/\b(\d+(?:\.\d+)?)\s*(?:KG|KGS)\b/);
-    const cabinMatch=upper.match(/\b(PREMIUM\s+ECONOMY|ECONOMY|BUSINESS|FIRST)\b/);
+    const cabinMatch=upper.match(/\b(PREMIUM\s+ECONOMY|ECONOMY|BUSINESS|FIRST|PREMIUM)\b/);
     const classMatch=upper.match(/(?:\s|^)([A-Z0-9])(?:\s|$)/);
-    addSector({...blankSector(),airline:airlineCode,flightNo:flightCode,from,to,departureDate:dates[0]||'',departureTime:times[0]||'',arrivalDate:dates[1]||'',arrivalTime:times[1]||'',bookingClass:cabinMatch?.[1]||classMatch?.[1]||'',baggage:baggageMatch?.[1]?`${baggageMatch[1]} KG`:''});
+    addSector({...blankSector(),airline:airlineCode,flightNo:flightCode,from,to,departureDate:dates[0]||'',departureTime:times[0]||'',arrivalDate:dates[1]||'',arrivalTime:times[1]||'',bookingClass:cabinMatch?.[0]||classMatch?.[1]||'',baggage:baggageMatch?.[1]?`${baggageMatch[1]} KG`:''});
   };
   for(const line of lines){
     if(/\b(?:\d{1,2}\s+)?[A-Z0-9]{2,3}\s*-?\s*\d{2,4}\b/.test(line)) parseSectorLine(line);
