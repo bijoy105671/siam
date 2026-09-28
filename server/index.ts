@@ -355,11 +355,13 @@ app.get('/api/flight-directory', auth, async (req, res) => {
   const q = String(req.query.flightNo || '').trim().toUpperCase().replace(/[\\s/-]+/g, '');
   const from = String(req.query.from || '').trim().toUpperCase();
   const to = String(req.query.to || '').trim().toUpperCase();
+  const airline = String(req.query.airline || '').trim().toUpperCase();
   const params: any[] = [];
   const where: string[] = [];
   if (q) { params.push(q); where.push("UPPER(REPLACE(REPLACE(REPLACE(flight_no,' ',''),'-',''),'/',''))=$"+params.length); }
   if (from) { params.push(from); where.push("from_airport=$"+params.length); }
   if (to) { params.push(to); where.push("to_airport=$"+params.length); }
+  if (airline) { params.push(airline); where.push("(UPPER(airline_code)=$"+params.length+" OR UPPER(airline)=$"+params.length+")"); }
   const { rows } = await pool.query(`SELECT * FROM flight_directory ${where.length ? 'WHERE '+where.join(' AND ') : ''} ORDER BY airline_code, flight_no, from_airport, to_airport LIMIT 500`, params);
   res.json(rows);
 });
