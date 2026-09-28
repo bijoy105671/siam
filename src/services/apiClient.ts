@@ -263,4 +263,13 @@ export const createServerOneEntry = async (input: Record<string, any>) => {
     { method: 'POST', body: JSON.stringify(payload) }
   );
   return { ...result, transaction: mapServerTransaction(result.transaction) };
+export const flightDirectory = async (flightNo = '', from = '', to = '') => {
+  const params = new URLSearchParams();
+  if (flightNo) params.set('flightNo', flightNo);
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  return apiRequest<any[]>(`/api/flight-directory?${params.toString()}`);
+};
+
+
 };
