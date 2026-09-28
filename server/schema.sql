@@ -241,6 +241,8 @@ WHERE t.id::text=x.source_id AND COALESCE(t.account_cost,0)=0;
 CREATE TABLE IF NOT EXISTS appointment_reminders (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   customer_id uuid REFERENCES customers(id) ON DELETE SET NULL,
+  transaction_id uuid REFERENCES transactions(id) ON DELETE SET NULL,
+  service_id uuid REFERENCES services(id) ON DELETE SET NULL,
   customer_name text NOT NULL,
   customer_mobile text,
   customer_email text,
@@ -253,4 +255,7 @@ CREATE TABLE IF NOT EXISTS appointment_reminders (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE appointment_reminders ADD COLUMN IF NOT EXISTS transaction_id uuid REFERENCES transactions(id) ON DELETE SET NULL;
+ALTER TABLE appointment_reminders ADD COLUMN IF NOT EXISTS service_id uuid REFERENCES services(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_appointment_reminders_date ON appointment_reminders(appointment_date, appointment_time);
+CREATE INDEX IF NOT EXISTS idx_appointment_reminders_transaction ON appointment_reminders(transaction_id);
