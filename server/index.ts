@@ -316,8 +316,7 @@ app.post('/api/flight-assist', auth, async (req, res) => {
         status: 'SCHEDULE DIRECTORY'
       }));
 
-    // If the sector already indicates an arrival into DAC, reverse the stored DAC route.
-    const arrivalMode = toHint === 'DAC' && fromHint !== 'DAC';
+    // Arrival mode is handled above when mapping the candidate records.
     const adjusted = candidates.map(x => arrivalMode ? ({
       ...x,
       from: x.to,
