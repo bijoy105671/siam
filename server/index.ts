@@ -183,6 +183,66 @@ app.post('/api/ticket-import/pdf', auth, async (req, res) => {
   }
 });
 
+app.post('/api/ticket-import/ai', auth, async (req, res) => {
+  try {
+    const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
+    if (!apiKey) return res.status(503).json({ error: 'AI importer is not configured' });
+    const rawText = String(req.body?.text || '').trim();
+    if (!rawText) return res.status(400).json({ error: 'Ticket text is required' });
+    const input = rawText.slice(0, 28000);
+    const prompt = `You are a strict airline e-ticket data extraction engine for SIAM AIR & DIGITAL SERVICE.
+Extract ONLY facts explicitly present in the ticket text. Never guess, infer, autocomplete, or invent missing values.
+Return JSON only in this exact shape:
+{"airlinePnr":"","gdsPnr":"","ticketNumber":"","issueDate":"","passenger":"","passport":"","airline":"","passengers":[{"name":"","passport":"","ticketNumber":""}],"sectors":[{"airline":"","flightNo":"","from":"","to":"","departureDate":"","departureTime":"","arrivalDate":"","arrivalTime":"","bookingClass":"","seat":"","baggage":""}]}
+Rules:
+- Preserve passenger document order.
+- Each passenger-specific ticketNumber must belong to that passenger. NEVER reuse one ticket number for another passenger.
+- If a ticket number cannot be confidently matched to a passenger, leave it empty.
+- Keep airline codes and airport IATA codes exactly when present.
+- Normalize dates to YYYY-MM-DD only when unambiguous.
+- Return [] for missing arrays and empty strings for unknown fields.
+Ticket text:
+${input}`;
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(apiKey), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json', temperature: 0 }
+      })
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      return res.status(502).json({ error: 'AI importer request failed: ' + body.slice(0, 240) });
+    }
+    const payload = await response.json() as any;
+    const output = payload?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join('').trim() || '';
+    if (!output) return res.status(422).json({ error: 'AI returned no structured ticket data' });
+    let parsed: any;
+    try { parsed = JSON.parse(output); } catch { return res.status(422).json({ error: 'AI returned invalid structured data' }); }
+    const passengers = Array.isArray(parsed.passengers) ? parsed.passengers.map((p: any) => ({
+      name: String(p?.name || '').trim(),
+      passport: String(p?.passport || '').trim().toUpperCase(),
+      ticketNumber: String(p?.ticketNumber || '').replace(/\D/g, '').slice(0, 13)
+    })).filter((p: any) => p.name || p.passport || p.ticketNumber) : [];
+    const tickets = passengers.map((p: any) => p.ticketNumber).filter(Boolean);
+    if (new Set(tickets).size !== tickets.length) return res.status(422).json({ error: 'AI produced duplicate passenger ticket numbers; data rejected for safety' });
+    parsed.passengers = passengers;
+    parsed.ticketNumber = String(parsed.ticketNumber || '').replace(/\D/g, '').slice(0, 13);
+    parsed.airlinePnr = String(parsed.airlinePnr || '').trim().toUpperCase();
+    parsed.gdsPnr = String(parsed.gdsPnr || '').trim().toUpperCase();
+    parsed.passport = String(parsed.passport || '').trim().toUpperCase();
+    parsed.passenger = String(parsed.passenger || '').trim();
+    parsed.airline = String(parsed.airline || '').trim();
+    parsed.issueDate = String(parsed.issueDate || '').trim();
+    parsed.sectors = Array.isArray(parsed.sectors) ? parsed.sectors.slice(0, 12) : [];
+    res.json({ data: parsed });
+  } catch (error) {
+    console.error('AI ticket extraction failed:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'AI ticket extraction failed' });
+  }
+});
+
 app.get('/api/health', async (_req, res) => {
   try {
     await pool.query('SELECT 1');
