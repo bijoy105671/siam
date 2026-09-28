@@ -417,11 +417,9 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const [customTitle, setCustomTitle] = useState('SIAM AIR AND DIGITAL SERVICE');
   const [customFooter, setCustomFooter] = useState('Ticket information only — no accounting connection.');
   const [importStatus, setImportStatus] = useState('');
-  const [flightAssistNumber, setFlightAssistNumber] = useState('');
-  const [flightAssistDate, setFlightAssistDate] = useState('');
-  const [flightAssistAirline, setFlightAssistAirline] = useState('');
-  const [flightAssistLoading, setFlightAssistLoading] = useState(false);
-  const [flightAssistSources, setFlightAssistSources] = useState<{title:string;url:string}[]>([]);
+  const [flightAssistLoading, setFlightAssistLoading] = useState<Record<number, boolean>>({});
+  const [flightAssistStatus, setFlightAssistStatus] = useState<Record<number, string>>({});
+  const [flightAssistSources, setFlightAssistSources] = useState<Record<number, {title:string;url:string}[]>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   const detectedAirline = useMemo(() => {
@@ -448,55 +446,66 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     setSectors(prev => prev.map((s, i) => i === index ? { ...s, [key]: value } : s));
 
   const findFlightWithAssist = async (sectorIndex = 0) => {
-    const flightNumber = flightAssistNumber.trim().toUpperCase();
-    if (!flightNumber || !flightAssistDate) {
-      setImportStatus('Enter Flight Number and Flight Date first.');
+    const sector = sectors[sectorIndex];
+    const flightNumber = String(sector?.flightNo || '').trim().toUpperCase();
+    const flightDate = String(sector?.departureDate || '').trim();
+    const airline = String(sector?.airline || '').trim();
+
+    if (!flightNumber || !flightDate) {
+      setFlightAssistStatus(prev => ({ ...prev, [sectorIndex]: 'Enter Flight Number and Departure Date first.' }));
       return;
     }
-    setFlightAssistLoading(true);
-    setFlightAssistSources([]);
-    setImportStatus('AI is searching current public flight schedule sources…');
+
+    setFlightAssistLoading(prev => ({ ...prev, [sectorIndex]: true }));
+    setFlightAssistSources(prev => ({ ...prev, [sectorIndex]: [] }));
+    setFlightAssistStatus(prev => ({ ...prev, [sectorIndex]: 'Searching public flight data…' }));
+
     try {
       const response = await fetch('/api/flight-assist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ flightNumber, flightDate: flightAssistDate, airline: flightAssistAirline.trim() })
+        body: JSON.stringify({ flightNumber, flightDate, airline })
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) { const message = String(result.error || 'Flight search failed'); if (response.status === 429 || /quota|rate.?limit|exceeded/i.test(message)) throw new Error('Flight search quota is temporarily exhausted. You can still enter this sector manually below; no ticket data was lost.'); throw new Error(message); }
+      if (!response.ok) throw new Error(String(result.error || 'Flight search failed.'));
+
       const data = result?.data;
       if (!data) throw new Error('No flight data was returned.');
-      setFlightAssistSources(Array.isArray(data.sources) ? data.sources : []);
+
+      setFlightAssistSources(prev => ({ ...prev, [sectorIndex]: Array.isArray(data.sources) ? data.sources : [] }));
+
       if (!data.matched) {
-        const count = Array.isArray(data.candidates) ? data.candidates.length : 0;
-        setImportStatus(count ? 'Multiple possible flights found. Please verify the route/date before using one.' : 'No reliable public schedule match found. Enter the flight details manually.');
+        setFlightAssistStatus(prev => ({ ...prev, [sectorIndex]: 'No matching public schedule found. You can enter this sector manually.' }));
         return;
       }
+
       const f = data.flight || {};
-      const next: Sector = {
-        ...blankSector(),
-        airline: String(f.airlineCode || f.airline || '').toUpperCase(),
-        flightNo: String(f.flightNo || flightNumber).replace(/[\s/-]+/g, '').toUpperCase(),
-        from: String(f.from || '').toUpperCase(),
-        to: String(f.to || '').toUpperCase(),
-        departureDate: String(f.departureDate || flightAssistDate),
-        departureTime: String(f.departureTime || ''),
-        arrivalDate: String(f.arrivalDate || ''),
-        arrivalTime: String(f.arrivalTime || ''),
-        bookingClass: String(f.bookingClass || '').toUpperCase(),
-        seat: '',
-        baggage: String(f.baggage || ''),
-        duration: String(f.duration || ''),
-        aircraft: String(f.aircraft || ''),
-        terminal: String(f.terminal || '')
-      };
-      setSectors(prev => prev.map((sector, index) => index === sectorIndex ? next : sector));
-      setImportStatus('Flight schedule found. Route, date/time, airline and available public schedule details were filled. PNR, ticket number, passenger and passport still need your input.');
+      updateSector(sectorIndex, 'airline', String(f.airlineCode || f.airline || airline).toUpperCase());
+      updateSector(sectorIndex, 'flightNo', String(f.flightNo || flightNumber).replace(/[\s/-]+/g, '').toUpperCase());
+      updateSector(sectorIndex, 'from', String(f.from || '').toUpperCase());
+      updateSector(sectorIndex, 'to', String(f.to || '').toUpperCase());
+      updateSector(sectorIndex, 'departureDate', String(f.departureDate || flightDate));
+      updateSector(sectorIndex, 'departureTime', String(f.departureTime || ''));
+      updateSector(sectorIndex, 'arrivalDate', String(f.arrivalDate || flightDate));
+      updateSector(sectorIndex, 'arrivalTime', String(f.arrivalTime || ''));
+      updateSector(sectorIndex, 'bookingClass', String(f.bookingClass || '').toUpperCase());
+      updateSector(sectorIndex, 'baggage', String(f.baggage || ''));
+      updateSector(sectorIndex, 'duration', String(f.duration || ''));
+      updateSector(sectorIndex, 'aircraft', String(f.aircraft || ''));
+      updateSector(sectorIndex, 'terminal', String(f.terminal || ''));
+
+      setFlightAssistStatus(prev => ({
+        ...prev,
+        [sectorIndex]: 'Flight data found. Route/time details were filled from a public flight-data provider. Please review before printing.'
+      }));
     } catch (error) {
-      setImportStatus(error instanceof Error ? error.message : 'Flight search failed. Please enter the flight details manually.');
+      setFlightAssistStatus(prev => ({
+        ...prev,
+        [sectorIndex]: error instanceof Error ? error.message : 'Flight search failed. You can enter the sector manually.'
+      }));
     } finally {
-      setFlightAssistLoading(false);
+      setFlightAssistLoading(prev => ({ ...prev, [sectorIndex]: false }));
     }
   };
 
@@ -504,7 +513,9 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     setAirlinePnr(''); setGdsPnr(''); setTicketNumber(''); setIssueDate(''); setPassenger('');
     setPassport(''); setFrequentFlyer(''); setImportedPassengers([]); setStatus('CONFIRMED'); setLogo(''); setSectors([blankSector()]);
     setImportStatus('');
-    setFlightAssistNumber(''); setFlightAssistDate(''); setFlightAssistAirline(''); setFlightAssistSources([]);
+    setFlightAssistLoading({});
+    setFlightAssistStatus({});
+    setFlightAssistSources({});
   };
 
   const enhanceWithAi = async (rawText: string, parsed: ReturnType<typeof parseImportedText>) => {
@@ -726,16 +737,12 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
             <div className="flex items-center justify-between mb-3"><span className="text-[11px] font-bold text-slate-600">SECTOR {i+1}</span>{sectors.length>1&&<button onClick={()=>setSectors(p=>p.filter((_,x)=>x!==i))} className="text-rose-500"><Trash2 className="w-4 h-4"/></button>}</div>
             <div className="mb-3 rounded-xl border border-violet-200 bg-violet-50 p-3">
               <div className="text-[10px] font-extrabold uppercase tracking-wide text-violet-800">FLIGHT SEARCH / AUTO-FILL — SECTOR {i+1}</div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
-                <input value={flightAssistNumber} onChange={e=>setFlightAssistNumber(e.target.value)} placeholder="Flight No. e.g. BS307" className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm" />
-                <input type="date" value={flightAssistDate} onChange={e=>setFlightAssistDate(e.target.value)} className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm" />
-                <input value={flightAssistAirline} onChange={e=>setFlightAssistAirline(e.target.value)} placeholder="Airline code/name (optional)" className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm" />
-              </div>
+              <div className="text-[10px] text-violet-700 mt-1">Non-AI lookup. Uses public flight-data provider; no Gemini quota is used.</div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <button onClick={()=>findFlightWithAssist(i)} disabled={flightAssistLoading} className="rounded-xl bg-violet-600 text-white px-4 py-2 text-xs font-bold disabled:opacity-60">{flightAssistLoading ? 'Searching…' : '🔎 Find & Auto-Fill This Sector'}</button>
-                {importStatus && <span className="text-[10px] text-slate-600">{importStatus}</span>}
+                <button onClick={()=>findFlightWithAssist(i)} disabled={!!flightAssistLoading[i]} className="rounded-xl bg-violet-600 text-white px-4 py-2 text-xs font-bold disabled:opacity-60">{flightAssistLoading[i] ? 'Searching…' : '🔎 Find & Auto-Fill This Sector'}</button>
+                {flightAssistStatus[i] && <span className="text-[10px] text-slate-600">{flightAssistStatus[i]}</span>}
               </div>
-              {flightAssistSources.length > 0 && <div className="mt-2 text-[10px] text-slate-500">Sources: {flightAssistSources.map((src,k)=><a key={k} href={src.url} target="_blank" rel="noreferrer" className="underline mr-2">{src.title || new URL(src.url).hostname}</a>)}</div>}
+              {(flightAssistSources[i] || []).length > 0 && <div className="mt-2 text-[10px] text-slate-500">Source: {(flightAssistSources[i] || []).map((src,k)=><a key={k} href={src.url} target="_blank" rel="noreferrer" className="underline mr-2">{src.title || src.url}</a>)}</div>}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {field('Airline / IATA Code',s.airline,v=>updateSector(i,'airline',v))}{field('Flight Number',s.flightNo,v=>updateSector(i,'flightNo',v))}
