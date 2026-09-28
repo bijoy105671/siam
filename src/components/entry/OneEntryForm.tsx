@@ -50,7 +50,7 @@ interface AdditionalServiceLine {
   departureTime: string;
 }
 export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoice }) => {
-  const { customers, vendors, services, createOneEntry, createOneEntryAsync, settings } = useApp();
+  const { customers, vendors, services, createOneEntry, createOneEntryAsync, settings, createAppointment } = useApp();
 
   // Customer state
   const [customerQuery, setCustomerQuery] = useState('');
@@ -155,6 +155,10 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
   );
   const [reminderTime, setReminderTime] = useState('11:00');
   const [reminderNote, setReminderNote] = useState('');
+  const [setAppointment, setSetAppointment] = useState(false);
+  const [appointmentDate, setAppointmentDate] = useState(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+  const [appointmentTime, setAppointmentTime] = useState('10:00');
+  const [appointmentNote, setAppointmentNote] = useState('');
 
   // General notes & description
   const [description, setDescription] = useState('');
@@ -271,6 +275,9 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
       };
       const created = USE_SERVER_API ? await createOneEntryAsync(input) : createOneEntry(input);
       let lastTx = created;
+      if (setAppointment) {
+        await createAppointment({ customerId: created.customerId, transactionId: created.id, serviceId: created.serviceId, serviceName: created.serviceName, customerName: created.customerName, customerMobile: created.customerMobile, customerEmail: customerEmail || undefined, title: `${created.serviceName} Appointment`, appointmentDate, appointmentTime, note: appointmentNote || description || `Scheduled ${created.serviceName}`, status: 'pending' });
+      }
 
       // Additional services are saved as separate linked transaction records under the same customer.
       // This preserves clean Customer/Vendor ledgers and keeps each service's vendor/cost independent.
@@ -343,6 +350,10 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
 
   const handleResetForm = () => {
     setCreatedTx(null);
+    setSetAppointment(false);
+    setAppointmentDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+    setAppointmentTime('10:00');
+    setAppointmentNote('');
     setCustomerQuery('');
     setSelectedCustomer(null);
     setCustomerMobile('');
@@ -1249,6 +1260,23 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* 7. SERVICE APPOINTMENT / SCHEDULE */}
+        <div className="p-4 rounded-xl border border-violet-200 bg-violet-50/60 space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-violet-900 uppercase">
+            <input type="checkbox" checked={setAppointment} onChange={(e) => setSetAppointment(e.target.checked)} className="rounded text-violet-600 focus:ring-violet-500" />
+            <Calendar className="w-4 h-4" />
+            <span>Service Appointment / Schedule</span>
+          </label>
+          <p className="text-[11px] text-violet-700">Schedule any service here. It will automatically appear in Calendar and Appointment Reminders.</p>
+          {setAppointment && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div><label className="block text-xs font-medium text-slate-700 mb-1">Appointment Date</label><input type="date" value={appointmentDate} onChange={(e)=>setAppointmentDate(e.target.value)} className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white" required /></div>
+              <div><label className="block text-xs font-medium text-slate-700 mb-1">Appointment Time</label><input type="time" value={appointmentTime} onChange={(e)=>setAppointmentTime(e.target.value)} className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white" required /></div>
+              <div><label className="block text-xs font-medium text-slate-700 mb-1">Schedule Note</label><input type="text" value={appointmentNote} onChange={(e)=>setAppointmentNote(e.target.value)} placeholder="Visa / medical / passport / interview / collection..." className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white" /></div>
             </div>
           )}
         </div>
