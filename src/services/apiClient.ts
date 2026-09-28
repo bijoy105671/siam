@@ -113,6 +113,10 @@ export const api = {
     apiRequest<unknown[]>(`/api/transactions?limit=${limit}`),
   paymentRecords: () =>
     apiRequest<unknown[]>('/api/payment-records'),
+  appointments: () => apiRequest<unknown[]>('/api/appointments'),
+  createAppointment: (input: Record<string, any>) => apiRequest<{ appointment: unknown }>('/api/appointments', { method: 'POST', body: JSON.stringify(input) }),
+  updateAppointment: (id: string, input: Record<string, any>) => apiRequest<{ appointment: unknown }>('/api/appointments/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(input) }),
+  deleteAppointment: (id: string) => apiRequest<{ ok: boolean }>('/api/appointments/' + encodeURIComponent(id), { method: 'DELETE' }),
   recycleBin: () => apiRequest<unknown[]>('/api/admin/recycle-bin'),
   restoreTransaction: (id: string) =>
     apiRequest<{ ok: boolean }>(`/api/admin/recycle-bin/${encodeURIComponent(id)}/restore`, { method: 'POST' }),
