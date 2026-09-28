@@ -464,7 +464,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
         body: JSON.stringify({ flightNumber, flightDate: flightAssistDate, airline: flightAssistAirline.trim() })
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || 'Flight search failed');
+      if (!response.ok) { const message = String(result.error || 'Flight search failed'); if (response.status === 429 || /quota|rate.?limit|exceeded/i.test(message)) throw new Error('Flight search quota is temporarily exhausted. You can still enter this sector manually below; no ticket data was lost.'); throw new Error(message); }
       const data = result?.data;
       if (!data) throw new Error('No flight data was returned.');
       setFlightAssistSources(Array.isArray(data.sources) ? data.sources : []);
@@ -669,7 +669,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   };
 
   const field = (label: string, value: string, setValue: (v: string) => void, type = 'text') => (
-    <label className="block"><span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">{label}</span>
+    <label className="block"><span className="block min-h-[28px] leading-tight text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">{label}</span>
       <input type={type} value={value} onChange={e=>setValue(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
     </label>
   );
