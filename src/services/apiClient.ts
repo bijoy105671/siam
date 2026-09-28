@@ -75,6 +75,7 @@ export const api = {
     }),
   logout: () => apiRequest<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
   me: () => apiRequest<{ user: any }>('/api/auth/me'),
+  me: () => apiRequest<{ user: any }>('/api/auth/me'),
   changePassword: (currentPassword: string, newPassword: string) =>
     apiRequest<{ ok: boolean }>('/api/auth/change-password', {
       method: 'POST',
