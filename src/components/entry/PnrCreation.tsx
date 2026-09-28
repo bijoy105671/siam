@@ -95,6 +95,7 @@ const parseImportedText = (raw: string) => {
   const flightNo=detectValue(text,[/(?:FLIGHT|FLT)\s*(?:NUMBER|NO|NUM)?\s*[:#-]?\s*([A-Z0-9]{2,3}\s*[-]?\s*\d{2,4})/i,/\b([A-Z]{2}\s*[-]?\s*\d{2,4})\b/i]).replace(/\s+/g,'').toUpperCase();
   const routeMatch=text.match(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/i);
   const route=routeMatch?[routeMatch[1].toUpperCase(),routeMatch[2].toUpperCase()]:['',''];
+  const issueDate=detectValue(text,[/(?:DATE\s*OF\s*ISSUE|ISSUE\s*DATE|ISSUED)\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i]);
   const date=detectValue(text,[/(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\s*(?:DATE)?\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,/\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b/i]);
   const time=detectValue(text,[/(?:DEPARTURE|DEPART|STD|ETD)\s*(?:TIME)?\s*[:#-]?\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i]);
   const sectors:Sector[]=[];
@@ -110,7 +111,7 @@ const parseImportedText = (raw: string) => {
     for(let i=0;i<count;i++)addSector({...blankSector(),airline:flights[i]?.[1]?.toUpperCase()||airline,flightNo:flights[i]?(flights[i][1]+flights[i][2]).toUpperCase():flightNo,from:routes[i]?.[1]?.toUpperCase()||route[0],to:routes[i]?.[2]?.toUpperCase()||route[1],departureDate:date,departureTime:time});
   }
   const firstAirline=sectors[0]?.airline||airline||inferAirlineCode(flightNo);
-  return {airlinePnr,gdsPnr,ticketNumber,passenger,passport,sectors:sectors.length?sectors:[{...blankSector(),airline:firstAirline,flightNo,from:route[0],to:route[1],departureDate:date,departureTime:time}],rawText:text.slice(0,30000)};
+  return {airlinePnr,gdsPnr,ticketNumber,issueDate,passenger,passport,sectors:sectors.length?sectors:[{...blankSector(),airline:firstAirline,flightNo,from:route[0],to:route[1],departureDate:date,departureTime:time}],rawText:text.slice(0,30000)};
 };
 
 export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
@@ -151,6 +152,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     if (parsed.airlinePnr) setAirlinePnr(parsed.airlinePnr);
     if (parsed.gdsPnr) setGdsPnr(parsed.gdsPnr);
     if (parsed.ticketNumber) setTicketNumber(parsed.ticketNumber);
+    if (parsed.issueDate) setIssueDate(parsed.issueDate);
     if (parsed.passenger) setPassenger(parsed.passenger);
     if (parsed.passport) setPassport(parsed.passport);
     const parsedLogo=airlineLogoUrl(parsed.sectors.find(s=>s.airline)?.airline||''); if(parsedLogo) setLogo(parsedLogo);
@@ -364,8 +366,8 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {field('Airline / IATA Code',s.airline,v=>updateSector(i,'airline',v))}{field('Flight Number',s.flightNo,v=>updateSector(i,'flightNo',v))}
               {field('From',s.from,v=>updateSector(i,'from',v))}{field('To',s.to,v=>updateSector(i,'to',v))}
-              {field('Departure Date',s.departureDate,v=>updateSector(i,'departureDate',v),'date')}{field('Departure Time',s.departureTime,v=>updateSector(i,'departureTime',v),'time')}
-              {field('Arrival Date',s.arrivalDate,v=>updateSector(i,'arrivalDate',v),'date')}{field('Arrival Time',s.arrivalTime,v=>updateSector(i,'arrivalTime',v),'time')}
+              {field('Departure Date',s.departureDate,v=>updateSector(i,'departureDate',v))}{field('Departure Time',s.departureTime,v=>updateSector(i,'departureTime',v),'time')}
+              {field('Arrival Date',s.arrivalDate,v=>updateSector(i,'arrivalDate',v))}{field('Arrival Time',s.arrivalTime,v=>updateSector(i,'arrivalTime',v),'time')}
               {field('Booking Class',s.bookingClass,v=>updateSector(i,'bookingClass',v))}{field('Seat',s.seat,v=>updateSector(i,'seat',v))}{field('Baggage',s.baggage,v=>updateSector(i,'baggage',v))}
             </div>
           </div>)}</div>
