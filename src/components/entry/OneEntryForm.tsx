@@ -46,6 +46,19 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
     selectedService?.category === 'Air Ticket' ||
     selectedService?.name.toLowerCase().includes('ticket') ||
     selectedService?.name.toLowerCase().includes('flight');
+  // Passport is required only for air-ticket and ticket-related services.
+  const isTicketRelatedService = (() => {
+    const serviceName = (selectedService?.name || '').toLowerCase();
+    const serviceCategory = (selectedService?.category || '').toLowerCase();
+    return isFlightService ||
+      serviceName.includes('reissue') ||
+      serviceName.includes('refund') ||
+      serviceName.includes('void') ||
+      serviceName.includes('date change') ||
+      serviceName.includes('ticket') ||
+      serviceName.includes('flight') ||
+      serviceCategory.includes('air ticket');
+  })();
 
   // Flight specific state
   const [pnr, setPnr] = useState('');
@@ -483,32 +496,38 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
               />
             </div>
 
-            {/* Passport Number */}
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">
-                Passport Number (Optional)
-              </label>
-              <input
-                type="text"
-                value={customerPassport}
-                placeholder="e.g. A03891244"
-                onChange={(e) => setCustomerPassport(e.target.value.toUpperCase())}
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none uppercase font-mono"
-              />
-            </div>
+            {isTicketRelatedService && (
+              <>
+                {/* Passport Number */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Passport Number <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required={isTicketRelatedService}
+                    value={customerPassport}
+                    placeholder="e.g. A03891244"
+                    onChange={(e) => setCustomerPassport(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none uppercase font-mono"
+                  />
+                </div>
 
-            {/* Passport Expiry */}
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">
-                Passport Expiry
-              </label>
-              <input
-                type="date"
-                value={customerPassportExpiry}
-                onChange={(e) => setCustomerPassportExpiry(e.target.value)}
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
+                {/* Passport Expiry */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Passport Expiry <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required={isTicketRelatedService}
+                    value={customerPassportExpiry}
+                    onChange={(e) => setCustomerPassportExpiry(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              </>
+            )}
 
             {/* Address */}
             <div>
