@@ -45,6 +45,7 @@ import {
   Vendor,
   LoanAdvanceRecord,
   LoanAdvanceAdjustment,
+  AppointmentReminder,
 } from '../types';
 import {
   decryptDatabasePayload,
@@ -140,6 +141,7 @@ interface AppContextType {
   upcomingFlights: (Transaction & { flightDetails: FlightDetails })[];
   todayReminders: Transaction[];
   overdueReminders: (Transaction & { overdueDays: number })[];
+  appointments: AppointmentReminder[];
 
   // Actions
   createOneEntry: (input: OneEntryInput) => Transaction;
@@ -189,6 +191,9 @@ interface AppContextType {
 
   completeReminder: (txId: string) => void;
   snoozeReminder: (txId: string, days: number) => void;
+  createAppointment: (input: Omit<AppointmentReminder, 'id' | 'createdBy' | 'createdAt' | 'updatedAt'>) => Promise<AppointmentReminder>;
+  updateAppointment: (id: string, updates: Partial<AppointmentReminder>) => Promise<AppointmentReminder>;
+  deleteAppointment: (id: string) => Promise<void>;
 
   // Backup & Restore & Automated Scheduling
   backupSchedule: AutomatedBackupSchedule;
@@ -282,6 +287,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           backupLogs: parsed.backupLogs || INITIAL_BACKUP_LOGS,
           loanAdvances: parsed.loanAdvances || [],
           loanAdvanceAdjustments: parsed.loanAdvanceAdjustments || [],
+          appointments: parsed.appointments || [],
         };
       } catch (e) {
         console.error('Failed to parse stored business data:', e);
@@ -301,6 +307,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       transfers: INITIAL_TRANSFERS,
       loanAdvances: [],
       loanAdvanceAdjustments: [],
+      appointments: [],
       auditLogs: INITIAL_AUDIT_LOGS,
       openingBalances: INITIAL_OPENING_BALANCES,
       backupSchedule: INITIAL_BACKUP_SCHEDULE,
@@ -335,6 +342,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setData((prev: any) => ({
           ...prev,
           loanAdvances: (loanRows as any[]).map(mapServerLoanAdvance),
+          appointments: (appointmentRows as any[]).map((row) => ({ id: String(row.id), customerId: row.customer_id ? String(row.customer_id) : undefined, customerName: String(row.customer_name || ''), customerMobile: row.customer_mobile || undefined, customerEmail: row.customer_email || undefined, title: String(row.title || 'Appointment'), appointmentDate: String(row.appointment_date || ''), appointmentTime: String(row.appointment_time || '00:00'), note: row.note || undefined, status: row.status === 'completed' ? 'completed' : 'pending', createdBy: String(row.created_by_name || 'Staff'), createdAt: String(row.created_at || new Date().toISOString()), updatedAt: row.updated_at || undefined } as AppointmentReminder)),
           loanAdvanceAdjustments: (adjustmentRows as any[]).map(mapServerLoanAdjustment),
         }));
         setServerAccountBalances(mapBalances(balances.balances || {}));
@@ -381,7 +389,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (cancelled || refreshing || document.visibilityState === 'hidden') return;
       refreshing = true;
       try {
-        const [balances, dashboard, customerRows, vendorRows, transactionRows, paymentRows, loanRows, adjustmentRows] = await Promise.all([
+        const [balances, dashboard, customerRows, vendorRows, transactionRows, paymentRows, loanRows, adjustmentRows, appointmentRows] = await Promise.all([
           api.accountBalances(),
           api.dashboard(),
           api.customers(),
@@ -390,6 +398,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           api.paymentRecords(),
           api.loanAdvances(),
           api.loanAdvanceAdjustments(),
+          api.appointments(),
         ]);
         if (cancelled) return;
 
@@ -1772,6 +1781,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     recordAudit('Updated Services', 'Service', 'all', undefined, `Updated services catalog`);
   };
 
+  const createAppointment = async (input: Omit<AppointmentReminder, 'id' | 'createdBy' | 'createdAt' | 'updatedAt'>): Promise<AppointmentReminder> => {
+    if (USE_SERVER_API) { const r:any = await api.createAppointment(input as any); const row=r.appointment; const mapped:AppointmentReminder={id:String(row.id),customerId:row.customer_id?String(row.customer_id):input.customerId,customerName:String(row.customer_name||input.customerName),customerMobile:row.customer_mobile||input.customerMobile,customerEmail:row.customer_email||input.customerEmail,title:String(row.title||input.title),appointmentDate:String(row.appointment_date||input.appointmentDate),appointmentTime:String(row.appointment_time||input.appointmentTime),note:row.note||input.note,status:row.status==='completed'?'completed':'pending',createdBy:String(row.created_by_name||currentUser?.fullName||'Staff'),createdAt:String(row.created_at||new Date().toISOString()),updatedAt:row.updated_at||undefined}; setData((p:any)=>({...p,appointments:[mapped,...(p.appointments||[])]})); return mapped; }
+    const mapped:AppointmentReminder={...input,id:'appt_'+Date.now(),createdBy:currentUser?.fullName||'Staff',createdAt:new Date().toISOString()}; setData((p:any)=>({...p,appointments:[mapped,...(p.appointments||[])]})); return mapped;
+  };
+  const updateAppointment = async (id:string, updates:Partial<AppointmentReminder>):Promise<AppointmentReminder> => { if(USE_SERVER_API){const r:any=await api.updateAppointment(id,updates as any); const row=r.appointment; const old=(data.appointments||[]).find((a:AppointmentReminder)=>a.id===id); const mapped:AppointmentReminder={...(old as any),...updates,id:String(row.id),customerId:row.customer_id?String(row.customer_id):updates.customerId,customerName:String(row.customer_name||updates.customerName||''),customerMobile:row.customer_mobile||updates.customerMobile,customerEmail:row.customer_email||updates.customerEmail,title:String(row.title||updates.title||'Appointment'),appointmentDate:String(row.appointment_date||updates.appointmentDate||''),appointmentTime:String(row.appointment_time||updates.appointmentTime||'00:00'),note:row.note||updates.note,status:row.status==='completed'?'completed':'pending',createdBy:String(row.created_by_name||old?.createdBy||'Staff'),createdAt:String(row.created_at||old?.createdAt||new Date().toISOString()),updatedAt:row.updated_at||new Date().toISOString()}; setData((p:any)=>({...p,appointments:(p.appointments||[]).map((a:AppointmentReminder)=>a.id===id?mapped:a)})); return mapped;} const old=(data.appointments||[]).find((a:AppointmentReminder)=>a.id===id); if(!old) throw new Error('Appointment not found'); const mapped={...old,...updates,updatedAt:new Date().toISOString()} as AppointmentReminder; setData((p:any)=>({...p,appointments:(p.appointments||[]).map((a:AppointmentReminder)=>a.id===id?mapped:a)})); return mapped; };
+  const deleteAppointment = async (id:string):Promise<void> => { if(USE_SERVER_API) await api.deleteAppointment(id); setData((p:any)=>({...p,appointments:(p.appointments||[]).filter((a:AppointmentReminder)=>a.id!==id)})); };
+
   const completeReminder = (txId: string) => {
     setData((prev: any) => ({
       ...prev,
@@ -2452,6 +2468,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         upcomingFlights,
         todayReminders,
         overdueReminders,
+        appointments: data.appointments || [],
         createOneEntry,
         createOneEntryAsync,
         updateTransaction,
@@ -2483,6 +2500,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateServices,
         completeReminder,
         snoozeReminder,
+        createAppointment,
+        updateAppointment,
+        deleteAppointment,
         backupSchedule: data.backupSchedule || INITIAL_BACKUP_SCHEDULE,
         backupLogs: data.backupLogs || INITIAL_BACKUP_LOGS,
         updateBackupSchedule,
