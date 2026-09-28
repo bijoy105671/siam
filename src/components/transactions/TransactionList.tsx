@@ -40,6 +40,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [serviceFilter, setServiceFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [recordFilter, setRecordFilter] = useState<'all' | 'sale' | 'customer_payment' | 'vendor_payment' | 'transfer'>('all');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<'all' | PaymentMethod>('all');
   const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -172,6 +173,11 @@ export const TransactionList: React.FC<TransactionListProps> = ({
             tx.flightDetails.passengerName.toLowerCase().includes(q) ||
             tx.flightDetails.route.toLowerCase().includes(q)));
       if (!match) return false;
+    }
+
+    if (paymentMethodFilter !== 'all') {
+      const methods = tx.recordType === 'payment' ? [tx.paymentMethodDisplay] : tx.recordType === 'transfer' ? [tx.transferFrom, tx.transferTo] : [tx.customerPaymentMethod, tx.vendorPaymentMethod];
+      if (!methods.some((m) => String(m || '').toLowerCase() === paymentMethodFilter.toLowerCase())) return false;
     }
 
     // Record type filter keeps SALES visually distinct from due-settlement/payment records.
