@@ -126,7 +126,8 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
   const numVendorPaid = hasVendor ? Number(vendorPaid) || 0 : 0;
   const calculatedVendorDue = hasVendor ? Math.max(0, numVendorCost - numVendorPaid) : 0;
 
-  const grossProfit = numSellingPrice - numVendorCost;
+  const numAccountCost = hasVendor ? 0 : Number(accountCost) || 0;
+  const grossProfit = numSellingPrice - numVendorCost - numAccountCost;
 
   // Auto-sync passenger name with customer name if empty
   useEffect(() => {
@@ -185,6 +186,8 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
     try {
       const input: Parameters<typeof createOneEntry>[0] = {
         customerMode: selectedCustomer ? 'existing' : 'new', customerId: selectedCustomer?.id,
+        accountCost: numAccountCost,
+        accountCostPaymentMethod,
         customerName: customerQuery, customerMobile, customerEmail, customerAddress,
         customerPassportNumber: customerPassport, customerPassportExpiry: customerPassportExpiry,
         serviceId, serviceName: selectedService?.name || 'General Service',
