@@ -53,6 +53,19 @@ const MainLayout: React.FC = () => {
   const [inspectCustomerId, setInspectCustomerId] = useState<string | null>(null);
   const [inspectVendorId, setInspectVendorId] = useState<string | null>(null);
 
+  // Prevent accidental mouse-wheel changes on number fields while scrolling forms.
+  useEffect(() => {
+    const handleNumberWheel = (event: WheelEvent) => {
+      const target = event.target as HTMLInputElement | null;
+      if (target?.matches('input[type="number"]')) {
+        event.preventDefault();
+        target.blur();
+      }
+    };
+    document.addEventListener('wheel', handleNumberWheel, { passive: false, capture: true });
+    return () => document.removeEventListener('wheel', handleNumberWheel, true);
+  }, []);
+
   // Global keyboard shortcuts (Ctrl+K or Cmd+K)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
