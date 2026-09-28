@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { createWorker } from 'tesseract.js';
-import { ArrowLeft, Palette, Plane, Printer, Plus, RotateCcw, Save, Ticket, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, Palette, Printer, Plus, RotateCcw, Save, Ticket, Trash2, Upload } from 'lucide-react';
 
 interface PnrCreationProps { onClose: () => void; }
 
@@ -30,57 +30,145 @@ const blankSector = (): Sector => ({
 
 const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c] || c));
 
+const cleanText = (raw: string) => raw
+  .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+  .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+  .replace(/<[^>]+>/g, ' ')
+  .replace(/&nbsp;/gi, ' ')
+  .replace(/&amp;/gi, '&')
+  .replace(/&quot;/gi, '"')
+  .replace(/&#39;/gi, "'")
+  .replace(/\s+/g, ' ')
+  .trim();
+
 const detectValue = (text: string, patterns: RegExp[]) => {
-  for (const p of patterns) { const m = text.match(p); if (m?.[1]) return m[1].trim(); }
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m?.[1]) return m[1].trim().replace(/\s+/g, ' ');
+  }
   return '';
 };
 
+const normalizePnr = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+const normalizeTicket = (value: string) => value.replace(/[^\d]/g, '').slice(0, 13);
+
 const parseImportedText = (raw: string) => {
-  const text = raw
-    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')
-    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
+  const text = cleanText(raw);
+  const lines = raw
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, '\n')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
-    .replace(/\\s+/g, ' ')
-    .trim();
-  const airlinePnr = detectValue(text, [
-    /(?:AIRLINE\\s*)?PNR\\s*[:#-]?\\s*([A-Z0-9]{5,8})/i,
-    /BOOKING\\s*(?:REFERENCE|REF)\\s*[:#-]?\\s*([A-Z0-9]{5,8})/i,
-    /RECORD\\s*LOCATOR\\s*[:#-]?\\s*([A-Z0-9]{5,8})/i
-  ]);
-  const ticketNumber = detectValue(text, [
-    /TICKET(?:\\s*(?:NUMBER|NO|NUM))?\\s*[:#-]?\\s*([0-9]{10,14})/i,
-    /\\b(\\d{3}-?\\d{10})\\b/
-  ]);
-  const passport = detectValue(text, [/PASSPORT(?:\\s*(?:NUMBER|NO))?\\s*[:#-]?\\s*([A-Z0-9]{6,12})/i]);
+    .split(/\r?\n/)
+    .map(x => x.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  const airlinePnr = normalizePnr(detectValue(text, [
+    /(?:AIRLINE\s*)?PNR\s*[:#-]?\s*([A-Z0-9]{5,8})/i,
+    /(?:BOOKING|RESERVATION)\s*(?:REFERENCE|REF|CODE)\s*[:#-]?\s*([A-Z0-9]{5,8})/i,
+    /RECORD\s*LOCATOR\s*[:#-]?\s*([A-Z0-9]{5,8})/i,
+    /\bPNR\s*([A-Z0-9]{5,8})\b/i
+  ]));
+
+  const ticketNumber = normalizeTicket(detectValue(text, [
+    /(?:E-?TICKET|TICKET)\s*(?:NUMBER|NO|NUM)?\s*[:#-]?\s*(\d{3}[-\s]?\d{10})/i,
+    /\b(\d{3}-\d{10})\b/,
+    /\b(\d{13})\b/
+  ]));
+
+  const passport = detectValue(text, [
+    /PASSPORT(?:\s*(?:NUMBER|NO|NUM))?\s*[:#-]?\s*([A-Z0-9]{6,12})/i
+  ]).toUpperCase();
+
   const passenger = detectValue(text, [
-    /(?:PASSENGER|PAX)(?:\\s*(?:NAME|NAME/S))?\\s*[:#-]?\\s*([A-Z][A-Z .,'/-]{3,})/i,
-    /(?:TRAVELER|TRAVELLER)\\s*(?:NAME)?\\s*[:#-]?\\s*([A-Z][A-Z .,'/-]{3,})/i
-  ]);
-  const gdsPnr = detectValue(text, [
-    /(?:GDS|GALILEO|AMADEUS|SABRE|TRAVELPORT)(?:\\s*)PNR\\s*[:#-]?\\s*([A-Z0-9]{5,8})/i
-  ]);
-  const airline = detectValue(text, [/(?:AIRLINE|CARRIER)\\s*[:#-]?\\s*([A-Z][A-Z &.-]{2,})/i]);
+    /(?:PASSENGER|PAX|TRAVELER|TRAVELLER)(?:\s*(?:NAME|NAME\/S))?\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,})/i,
+    /(?:PASSENGER|PAX)\s*[:#-]?\s*([A-Z][A-Z .,'\/-]{3,})/i,
+    /\b(?:MR|MRS|MS|MISS)\s+([A-Z][A-Z .,'\/-]{3,})/i
+  ]).replace(/\s+(?:TICKET|PNR|PASSPORT|AIRLINE|FLIGHT)\b.*$/i, '').trim();
+
+  const gdsPnr = normalizePnr(detectValue(text, [
+    /(?:GDS|GALILEO|AMADEUS|SABRE|TRAVELPORT|WORLDSPAN)\s*(?:PNR|LOCATOR|REFERENCE)\s*[:#-]?\s*([A-Z0-9]{5,8})/i
+  ]));
+
+  const airline = detectValue(text, [
+    /(?:AIRLINE|CARRIER)\s*[:#-]\s*([A-Z][A-Z &.'-]{2,})/i,
+    /(?:MARKETING\s*CARRIER|OPERATING\s*CARRIER)\s*[:#-]\s*([A-Z][A-Z &.'-]{2,})/i
+  ]).replace(/\s+(?:FLIGHT|PNR|TICKET|ROUTE)\b.*$/i, '').trim();
+
   const flightNo = detectValue(text, [
-    /FLIGHT(?:\\s*(?:NUMBER|NO))?\\s*[:#-]?\\s*([A-Z0-9]{2,8})/i,
-    /\\b([A-Z]{2}\\s*\\d{2,4})\\b/
-  ]);
+    /(?:FLIGHT|FLT)\s*(?:NUMBER|NO|NUM)?\s*[:#-]?\s*([A-Z]{2,3}\s*[-]?\s*\d{2,4})/i,
+    /\b([A-Z]{2,3}\s*[-]?\s*\d{2,4})\b/
+  ]).replace(/\s+/g, '').toUpperCase();
+
+  const routeMatch = text.match(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/i);
+  const route = routeMatch ? [routeMatch[1].toUpperCase(), routeMatch[2].toUpperCase()] : ['', ''];
+
   const date = detectValue(text, [
-    /(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\\s*(?:DATE)?\\s*[:#-]?\\s*(\\d{1,2}[\\/-]\\d{1,2}[\\/-]\\d{2,4}|\\d{4}-\\d{2}-\\d{2})/i
+    /(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\s*(?:DATE)?\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,
+    /\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b/i,
+    /\b((?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{1,2},?\s+\d{2,4})\b/i
   ]);
-  const time = detectValue(text, [/(?:DEPARTURE|DEPART)\\s*TIME\\s*[:#-]?\\s*(\\d{1,2}:\\d{2})/i]);
-  const route = text.match(/\\b([A-Z]{3})\\s*(?:-|→|TO)\\s*([A-Z]{3})\\b/i);
-  const sector: Sector = {
-    ...blankSector(),
-    airline,
-    flightNo,
-    from: route?.[1]?.toUpperCase() || '',
-    to: route?.[2]?.toUpperCase() || '',
-    departureDate: date,
-    departureTime: time
+
+  const time = detectValue(text, [
+    /(?:DEPARTURE|DEPART|STD|ETD)\s*(?:TIME)?\s*[:#-]?\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i
+  ]);
+
+  const sectors: Sector[] = [];
+  const sectorPattern = /\b([A-Z]{2,3})\s*[-]?\s*(\d{2,4})\b[^A-Z0-9]{0,30}\b([A-Z]{3})\b[^A-Z0-9]{0,10}(?:-|–|—|→|TO|\/)\s*\b([A-Z]{3})\b/gi;
+  let match: RegExpExecArray | null;
+  while ((match = sectorPattern.exec(text)) && sectors.length < 12) {
+    const sector: Sector = {
+      ...blankSector(),
+      airline: airline || match[1].toUpperCase(),
+      flightNo: (match[1] + match[2]).toUpperCase(),
+      from: match[3].toUpperCase(),
+      to: match[4].toUpperCase(),
+      departureDate: date,
+      departureTime: time
+    };
+    if (!sectors.some(s => s.flightNo === sector.flightNo && s.from === sector.from && s.to === sector.to)) sectors.push(sector);
+  }
+
+  if (!sectors.length) {
+    const flightMatches = [...text.matchAll(/\b([A-Z]{2,3})\s*[-]?\s*(\d{2,4})\b/g)];
+    const routeMatches = [...text.matchAll(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/gi)];
+    const count = Math.min(12, Math.max(flightMatches.length, routeMatches.length, 1));
+    for (let i = 0; i < count; i++) {
+      sectors.push({
+        ...blankSector(),
+        airline,
+        flightNo: flightMatches[i] ? (flightMatches[i][1] + flightMatches[i][2]).toUpperCase() : flightNo,
+        from: routeMatches[i]?.[1]?.toUpperCase() || route[0],
+        to: routeMatches[i]?.[2]?.toUpperCase() || route[1],
+        departureDate: date,
+        departureTime: time
+      });
+    }
+  }
+
+  // Common GDS itinerary rows: "1 EK 585 DAC DXB 03OCT 0245 0550".
+  const rowPattern = /^\s*\d{1,2}\s+([A-Z0-9]{2,3})\s*(\d{2,4})\s+([A-Z]{3})\s+([A-Z]{3})\s+([0-9A-Z]{3,9})(?:\s+([0-9:]{3,5}))?(?:\s+([0-9:]{3,5}))?/i;
+  for (const line of lines) {
+    const m = line.match(rowPattern);
+    if (!m) continue;
+    const flight = (m[1] + m[2]).toUpperCase();
+    const existing = sectors.find(s => s.flightNo === flight);
+    const target = existing || { ...blankSector(), airline: m[1].toUpperCase(), flightNo: flight, from: m[3].toUpperCase(), to: m[4].toUpperCase() };
+    target.airline = target.airline || m[1].toUpperCase();
+    target.from = m[3].toUpperCase();
+    target.to = m[4].toUpperCase();
+    target.departureDate = target.departureDate || m[5];
+    if (m[6]) target.departureTime = m[6];
+    if (m[7]) target.arrivalTime = m[7];
+    if (!existing && sectors.length < 12) sectors.push(target);
+  }
+
+  return {
+    airlinePnr, gdsPnr, ticketNumber, passenger, passport,
+    sectors: sectors.length ? sectors : [{ ...blankSector(), airline, flightNo, from: route[0], to: route[1], departureDate: date, departureTime: time }],
+    rawText: text.slice(0, 30000)
   };
-  return { airlinePnr, gdsPnr, ticketNumber, passenger, passport, sectors: [sector], rawText: text.slice(0, 20000) };
 };
 
 export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
@@ -114,6 +202,15 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     setShowPassport(t.showPassport); setShowFrequentFlyer(t.showFrequentFlyer);
   };
 
+  const applyParsed = (parsed: ReturnType<typeof parseImportedText>) => {
+    if (parsed.airlinePnr) setAirlinePnr(parsed.airlinePnr);
+    if (parsed.gdsPnr) setGdsPnr(parsed.gdsPnr);
+    if (parsed.ticketNumber) setTicketNumber(parsed.ticketNumber);
+    if (parsed.passenger) setPassenger(parsed.passenger);
+    if (parsed.passport) setPassport(parsed.passport);
+    if (parsed.sectors.some(s => Object.values(s).some(Boolean))) setSectors(parsed.sectors);
+  };
+
   const updateSector = (index: number, key: keyof Sector, value: string) =>
     setSectors(prev => prev.map((s, i) => i === index ? { ...s, [key]: value } : s));
 
@@ -137,80 +234,73 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
         }
         const dataBase64 = btoa(binary);
         const response = await fetch('/api/ticket-import/pdf', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
           body: JSON.stringify({ dataBase64, filename: file.name })
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || 'PDF extraction failed');
-        const parsed = parseImportedText(String(result.text || ''));
-        if (parsed.airlinePnr) setAirlinePnr(parsed.airlinePnr);
-        if (parsed.gdsPnr) setGdsPnr(parsed.gdsPnr);
-        if (parsed.ticketNumber) setTicketNumber(parsed.ticketNumber);
-        if (parsed.passenger) setPassenger(parsed.passenger);
-        if (parsed.passport) setPassport(parsed.passport);
-        if (parsed.sectors[0]) setSectors(parsed.sectors);
+        applyParsed(parseImportedText(String(result.text || '')));
         setImportStatus('PDF data extracted successfully. Please review all fields before generating the e-ticket.');
         return;
       }
-      if (file.type.startsWith('image/')) {
+
+      if (file.type.startsWith('image/') || /\.(jpe?g|png|gif|webp)$/i.test(file.name)) {
         setImportStatus('Reading ticket image with OCR…');
         const worker = await createWorker('eng');
         try {
           const { data } = await worker.recognize(file);
-          const parsed = parseImportedText(String(data.text || ''));
-          if (parsed.airlinePnr) setAirlinePnr(parsed.airlinePnr);
-          if (parsed.gdsPnr) setGdsPnr(parsed.gdsPnr);
-          if (parsed.ticketNumber) setTicketNumber(parsed.ticketNumber);
-          if (parsed.passenger) setPassenger(parsed.passenger);
-          if (parsed.passport) setPassport(parsed.passport);
-          if (parsed.sectors[0]) setSectors(parsed.sectors);
-          if (!String(data.text || '').trim()) throw new Error('No readable text was found in the image.');
-          setImportStatus('JPG/PNG/GIF ticket read successfully with OCR. Please review the detected fields before generating.');
+          const ocrText = String(data.text || '').trim();
+          if (!ocrText) throw new Error('No readable text was found in the image. Try a clearer ticket image.');
+          applyParsed(parseImportedText(ocrText));
+          setImportStatus('JPG / PNG / GIF ticket OCR completed. Detected fields have been filled; please review them before generating.');
         } finally {
           await worker.terminate();
         }
         return;
       }
+
       const raw = await file.text();
-      const parsed = parseImportedText(raw);
-      if (parsed.airlinePnr) setAirlinePnr(parsed.airlinePnr);
-      if (parsed.gdsPnr) setGdsPnr(parsed.gdsPnr);
-      if (parsed.ticketNumber) setTicketNumber(parsed.ticketNumber);
-      if (parsed.passenger) setPassenger(parsed.passenger);
-      if (parsed.passport) setPassport(parsed.passport);
-      if (parsed.sectors[0]) setSectors(parsed.sectors);
-      setImportStatus('Ticket data detected. Please review before generating.');
+      if (!raw.trim()) throw new Error('The uploaded HTML/text file is empty.');
+      applyParsed(parseImportedText(raw));
+      setImportStatus('HTML ticket data extracted successfully. Please review the detected fields before generating.');
     } catch (error) {
       setImportStatus(error instanceof Error ? error.message : 'Could not read this ticket automatically. Please enter the information manually.');
     }
   };
 
   const importLink = async () => {
-    const url = window.prompt('Paste ticket / booking URL');
+    const url = window.prompt('Paste a public ticket / booking URL');
     if (!url) return;
-    setImportStatus('Trying to read link…');
+    let parsedUrl: URL;
+    try { parsedUrl = new URL(url.trim()); } catch { setImportStatus('Please enter a valid public http(s) ticket URL.'); return; }
+    if (!/^https?:$/.test(parsedUrl.protocol)) { setImportStatus('Only public http(s) ticket links are supported.'); return; }
+
+    setImportStatus('Reading public ticket link…');
     try {
-      const response = await fetch(url);
-      const raw = await response.text();
+      let raw = '';
+      try {
+        const direct = await fetch(parsedUrl.href, { credentials: 'omit' });
+        if (!direct.ok) throw new Error('Direct fetch failed');
+        raw = await direct.text();
+      } catch {
+        const proxy = await fetch('https://r.jina.ai/' + parsedUrl.href, { headers: { Accept: 'text/plain' } });
+        if (!proxy.ok) throw new Error('The public ticket link could not be read. The site may require login or block automated access.');
+        raw = await proxy.text();
+      }
+      if (!raw.trim()) throw new Error('The ticket link returned no readable content.');
       const parsed = parseImportedText(raw);
-      if (parsed.airlinePnr) setAirlinePnr(parsed.airlinePnr);
-      if (parsed.gdsPnr) setGdsPnr(parsed.gdsPnr);
-      if (parsed.ticketNumber) setTicketNumber(parsed.ticketNumber);
-      if (parsed.passenger) setPassenger(parsed.passenger);
-      if (parsed.passport) setPassport(parsed.passport);
-      if (parsed.sectors[0]) setSectors(parsed.sectors);
-      setImportStatus('Link data detected. Please review all fields before generating.');
-    } catch {
-      setImportStatus('This link does not allow browser access (CORS/login protection). Download the ticket and use Upload instead.');
+      applyParsed(parsed);
+      const detected = [parsed.airlinePnr, parsed.gdsPnr, parsed.ticketNumber, parsed.passenger, ...parsed.sectors.flatMap(s => [s.flightNo, s.from, s.to])].filter(Boolean).length;
+      if (!detected) throw new Error('The link was opened, but no standard ticket fields could be detected. Download the ticket as PDF/image and upload it instead.');
+      setImportStatus('Public ticket link imported successfully. Detected fields have been filled; please review them before generating.');
+    } catch (error) {
+      setImportStatus(error instanceof Error ? error.message : 'Unable to read this public ticket link. Download the ticket and use Upload instead.');
     }
   };
 
   const saveCustomTemplate = () => {
     localStorage.setItem('siam_ticket_custom_template', JSON.stringify({ accent, header, radius, showPassport, showFrequentFlyer, showBaggage, showTicketNumber, showGdsPnr, customTitle, customFooter }));
-    setTemplateId('custom');
-    setImportStatus('Custom ticket template saved on this device.');
+    setTemplateId('custom'); setImportStatus('Custom ticket template saved on this device.');
   };
 
   const loadCustomTemplate = () => {
@@ -269,10 +359,10 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
       <div className="p-4 sm:p-5 space-y-5">
         <section className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3 sm:p-4">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-            <div><div className="text-xs font-extrabold text-slate-900">IMPORT / AUTO READ TICKET</div><div className="text-[11px] text-slate-500 mt-1">PDF, HTML/text and ticket links can be scanned for common fields. Images are loaded for review; full OCR can be added when a server OCR/AI provider is configured.</div></div>
+            <div><div className="text-xs font-extrabold text-slate-900">IMPORT / AUTO READ TICKET</div><div className="text-[11px] text-slate-500 mt-1">PDF, HTML, JPG, PNG and GIF tickets can be read automatically. Public links use direct access first and a public-reader fallback when browser CORS blocks the ticket page.</div></div>
             <div className="flex flex-wrap gap-2">
               <button onClick={()=>fileRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 text-white px-3 py-2 text-xs font-bold"><Upload className="w-4 h-4"/> Upload PDF / JPG / PNG / GIF / HTML</button>
-              <input ref={fileRef} type="file" hidden accept=".pdf,.html,.htm,.txt,image/jpeg,image/png,image/gif" onChange={e=>{const f=e.target.files?.[0]; if(f) void importFile(f); e.currentTarget.value='';}} />
+              <input ref={fileRef} type="file" hidden accept=".pdf,.html,.htm,.txt,image/jpeg,image/png,image/gif,image/webp" onChange={e=>{const f=e.target.files?.[0]; if(f) void importFile(f); e.currentTarget.value='';}} />
               <button onClick={importLink} className="inline-flex items-center gap-1.5 rounded-xl bg-white border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700">🔗 Import Link</button>
             </div>
           </div>
