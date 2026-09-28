@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { createWorker } from 'tesseract.js';
-import { ArrowLeft, Palette, Printer, Plus, RotateCcw, Save, Ticket, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, Printer, Plus, Ticket, Trash2, Upload } from 'lucide-react';
+import siamAirLogo from '../../assets/images/siam_air_logo_1790325286013.jpg';
 
 interface PnrCreationProps { onClose: () => void; }
 
@@ -10,18 +11,7 @@ type Sector = {
   bookingClass: string; seat: string; baggage: string;
 };
 
-type Template = {
-  id: string; name: string; accent: string; header: string; radius: string;
-  compact: boolean; showPassport: boolean; showFrequentFlyer: boolean;
-};
-
-const TEMPLATES: Template[] = [
-  { id: 'gds', name: 'GDS Classic (Amadeus / Travelport style)', accent: '#0b5cab', header: '#0f172a', radius: '12px', compact: true, showPassport: true, showFrequentFlyer: true },
-  { id: 'sabre', name: 'GDS Redline (Sabre-inspired)', accent: '#b91c1c', header: '#111827', radius: '10px', compact: true, showPassport: true, showFrequentFlyer: true },
-  { id: 'siam', name: 'SIAM AIR Professional', accent: '#15803d', header: '#0f766e', radius: '18px', compact: false, showPassport: true, showFrequentFlyer: true },
-  { id: 'modern', name: 'Modern E-Ticket', accent: '#0369a1', header: '#075985', radius: '22px', compact: false, showPassport: false, showFrequentFlyer: true },
-  { id: 'custom', name: 'My Custom Template', accent: '#7c3aed', header: '#312e81', radius: '18px', compact: false, showPassport: true, showFrequentFlyer: true }
-];
+const FIXED_TICKET_TEMPLATE = { id: 'siam-v8', name: 'SIAM AIR Ticket View / Print — V8', accent: '#15803d', header: '#0f766e', radius: '12px' };
 
 const AIRLINE_CODES: Record<string, string> = {
   'AIR ARABIA':'G9','AIR ARABIA ABU DHABI':'3L','AIR ASTANA':'KC','AIR INDIA':'AI','AIR INDIA EXPRESS':'IX',
@@ -149,10 +139,10 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const [status, setStatus] = useState('CONFIRMED');
   const [logo, setLogo] = useState('');
   const [sectors, setSectors] = useState<Sector[]>([blankSector()]);
-  const [templateId, setTemplateId] = useState('siam');
-  const [accent, setAccent] = useState('#15803d');
-  const [header, setHeader] = useState('#0f766e');
-  const [radius, setRadius] = useState('18px');
+  const templateId = FIXED_TICKET_TEMPLATE.id;
+  const accent = FIXED_TICKET_TEMPLATE.accent;
+  const header = FIXED_TICKET_TEMPLATE.header;
+  const radius = FIXED_TICKET_TEMPLATE.radius;
   const [showPassport, setShowPassport] = useState(true);
   const [showFrequentFlyer, setShowFrequentFlyer] = useState(true);
   const [showBaggage, setShowBaggage] = useState(true);
@@ -166,11 +156,6 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const detectedAirline = useMemo(() => { const s=sectors.find(x=>x.airline||x.flightNo); return s?.airline || inferAirlineCode(s?.flightNo||''); }, [sectors]);
   React.useEffect(() => { const u=airlineLogoUrl(detectedAirline); if(u) setLogo(u); }, [detectedAirline]);
 
-  const applyTemplate = (id: string) => {
-    const t = TEMPLATES.find(x => x.id === id) || TEMPLATES[2];
-    setTemplateId(id); setAccent(t.accent); setHeader(t.header); setRadius(t.radius);
-    setShowPassport(t.showPassport); setShowFrequentFlyer(t.showFrequentFlyer);
-  };
 
   const applyParsed = (parsed: ReturnType<typeof parseImportedText>) => {
     if (parsed.airlinePnr) setAirlinePnr(parsed.airlinePnr);
@@ -270,46 +255,29 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     }
   };
 
-  const saveCustomTemplate = () => {
-    localStorage.setItem('siam_ticket_custom_template', JSON.stringify({ accent, header, radius, showPassport, showFrequentFlyer, showBaggage, showTicketNumber, showGdsPnr, customTitle, customFooter }));
-    setTemplateId('custom'); setImportStatus('Custom ticket template saved on this device.');
-  };
-
-  const loadCustomTemplate = () => {
-    try {
-      const x = JSON.parse(localStorage.getItem('siam_ticket_custom_template') || '{}');
-      if (x.accent) setAccent(x.accent); if (x.header) setHeader(x.header); if (x.radius) setRadius(x.radius);
-      if (typeof x.showPassport === 'boolean') setShowPassport(x.showPassport);
-      if (typeof x.showFrequentFlyer === 'boolean') setShowFrequentFlyer(x.showFrequentFlyer);
-      if (typeof x.showBaggage === 'boolean') setShowBaggage(x.showBaggage);
-      if (typeof x.showTicketNumber === 'boolean') setShowTicketNumber(x.showTicketNumber);
-      if (typeof x.showGdsPnr === 'boolean') setShowGdsPnr(x.showGdsPnr);
-      if (x.customTitle) setCustomTitle(x.customTitle); if (x.customFooter) setCustomFooter(x.customFooter);
-      setTemplateId('custom'); setImportStatus('Saved custom template loaded.');
-    } catch { setImportStatus('No saved custom template found on this device.'); }
-  };
 
   const printable = useMemo(() => ({ airlinePnr, gdsPnr, ticketNumber, issueDate, passenger, passport, frequentFlyer, status, logo, sectors }), [airlinePnr,gdsPnr,ticketNumber,issueDate,passenger,passport,frequentFlyer,status,logo,sectors]);
 
   const printTicket = () => {
     const w = window.open('', '_blank', 'width=900,height=900');
     if (!w) return;
-    const logoHtml = printable.logo ? '<img src="' + printable.logo + '" style="height:42px;max-width:150px;object-fit:contain;background:#fff;border-radius:8px;padding:3px" />' : '';
-    const rows = printable.sectors.map(s => '<tr><td>' + escapeHtml(s.airline || '-') + '</td><td><b>' + escapeHtml(s.flightNo || '-') + '</b></td><td><b>' + escapeHtml(s.from || '-') + ' → ' + escapeHtml(s.to || '-') + '</b></td><td>' + escapeHtml(s.departureDate || '-') + ' ' + escapeHtml(s.departureTime || '') + '</td><td>' + escapeHtml(s.arrivalDate || '-') + ' ' + escapeHtml(s.arrivalTime || '') + '</td><td>' + escapeHtml(s.bookingClass || '-') + '</td><td>' + escapeHtml(s.seat || '-') + '</td>' + (showBaggage ? '<td>' + escapeHtml(s.baggage || '-') + '</td>' : '') + '</tr>').join('');
-    const passengerCells = '<div><div class="label">Passenger Name</div><div class="value">' + escapeHtml(printable.passenger || '-') + '</div></div>' +
-      (showTicketNumber ? '<div><div class="label">Ticket Number</div><div class="value">' + escapeHtml(printable.ticketNumber || '-') + '</div></div>' : '') +
-      (showGdsPnr ? '<div><div class="label">GDS PNR</div><div class="value">' + escapeHtml(printable.gdsPnr || '-') + '</div></div>' : '') +
-      (showPassport ? '<div><div class="label">Passport</div><div class="value">' + escapeHtml(printable.passport || '-') + '</div></div>' : '') +
-      (showFrequentFlyer ? '<div><div class="label">Frequent Flyer</div><div class="value">' + escapeHtml(printable.frequentFlyer || '-') + '</div></div>' : '') +
-      '<div><div class="label">Date of Issue</div><div class="value">' + escapeHtml(printable.issueDate || '-') + '</div></div>';
+    const logoHtml = '<img src="' + siamAirLogo + '" style="height:58px;width:58px;object-fit:contain;border-radius:10px;background:#fff;padding:3px" />';
+    const rows = printable.sectors.map(s => '<tr>' +
+      '<td><div class="flight-airline">' + escapeHtml(s.airline || '-') + '</div><div class="flight-no">' + escapeHtml(s.flightNo || '-') + '</div></td>' +
+      '<td class="route"><b>' + escapeHtml(s.from || '-') + '</b></td><td class="route"><b>' + escapeHtml(s.to || '-') + '</b></td>' +
+      '<td><div class="date">' + escapeHtml(s.departureDate || '-') + '</div><div class="time">' + escapeHtml(s.departureTime || '-') + '</div></td>' +
+      '<td><div class="date">' + escapeHtml(s.arrivalDate || '-') + '</div><div class="time">' + escapeHtml(s.arrivalTime || '-') + '</div></td>' +
+      '<td>' + escapeHtml(s.seat || '-') + '</td><td class="info">Baggage : ' + escapeHtml(s.baggage || '-') + '<br>Class : ' + escapeHtml(s.bookingClass || '-') + '</td></tr>').join('');
     w.document.write('<!doctype html><html><head><title>SIAM AIR E-Ticket</title><style>' +
-      'body{font-family:Arial,sans-serif;margin:30px;color:#172033;background:#f8fafc}.ticket{max-width:820px;margin:auto;border:1px solid #d7deea;border-radius:' + radius + ';overflow:hidden;background:#fff}' +
-      '.head{padding:18px 22px;background:' + header + ';color:#fff;display:flex;justify-content:space-between;gap:20px;align-items:center}.title{font-size:20px;font-weight:800}.sub{font-size:11px;opacity:.85;margin-top:3px}.pnr{font-size:12px;text-align:right}' +
-      '.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:18px;border-bottom:1px solid #e5eaf1}.label{font-size:9px;color:#718096;text-transform:uppercase;letter-spacing:.05em}.value{font-weight:700;margin-top:3px;font-size:12px}' +
-      'table{width:100%;border-collapse:collapse;font-size:' + (TEMPLATES.find(t=>t.id===templateId)?.compact ? '10px' : '11px') + '}th,td{padding:9px;border-bottom:1px solid #edf1f5;text-align:left}th{background:#f7f9fc;color:#667085;font-size:9px;text-transform:uppercase}' +
-      '.note{padding:14px;font-size:9px;color:#667085}.logo{height:42px;max-width:150px;object-fit:contain;background:#fff;border-radius:8px;padding:3px}@media print{body{margin:0;background:#fff}.ticket{border:0;max-width:none}}' +
-      '</style></head><body><div class="ticket"><div class="head"><div>' + logoHtml + '<div class="title">' + escapeHtml(customTitle) + '</div><div class="sub">PNR CREATION & E-TICKET</div></div><div class="pnr"><b>' + escapeHtml(printable.status) + '</b><br>PNR: ' + escapeHtml(printable.airlinePnr || '-') + '</div></div>' +
-      '<div class="grid">' + passengerCells + '</div><table><thead><tr><th>Airline</th><th>Flight</th><th>Route</th><th>Departure</th><th>Arrival</th><th>Class</th><th>Seat</th>' + (showBaggage ? '<th>Baggage</th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table><div class="note">' + escapeHtml(customFooter) + '</div></div><script>window.onload=()=>window.print()</script></body></html>');
+      '@page{size:A4 portrait;margin:0}body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#111;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+      '.ticket{width:210mm;min-height:297mm;box-sizing:border-box;padding:13mm 12mm 10mm;background:#fff}.tp-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:25px}.tp-agency{font-size:11px;line-height:1.28}.tp-agency b{font-size:16px}.tp-right{display:flex;align-items:center;gap:10px;color:#1760b5}.tp-right .accred{font-size:21px;line-height:.9;text-align:right}.tp-title{font-size:20px;font-weight:700;margin:0 0 13px}.tp-section-title{font-size:18px;font-weight:700;margin:13px 0 7px}.tp-table{width:100%;border-collapse:collapse;table-layout:fixed}.tp-table th,.tp-table td{border:1px solid #333;padding:4px;vertical-align:top;font-size:10px;line-height:1.15}.tp-table th{background:#b9e3e9;text-align:left;font-weight:700}.tp-table td{height:28px}.itin th:nth-child(1){width:12%}.itin th:nth-child(2){width:17%}.itin th:nth-child(3){width:17%}.itin th:nth-child(4){width:14%}.itin th:nth-child(5){width:14%}.itin th:nth-child(6){width:5%}.itin th:nth-child(7){width:21%}.itin td{height:90px}.flight-airline{font-size:11px;font-weight:700}.flight-no{font-size:13px;font-weight:700;margin-top:13px}.route b{font-size:11px}.date{font-weight:700;font-size:11px}.time{font-size:14px;font-weight:700;margin-top:8px}.info{font-size:10px;line-height:1.25}.tp-notes{font-size:9px;line-height:1.18;margin-top:34px}.tp-important{font-size:9px;line-height:1.15;margin-top:18px}' +
+      '</style></head><body><div class="ticket"><div class="tp-head"><div class="tp-agency">' + logoHtml + '<br><b>SIAM AIR AND DIGITAL SERVICE</b><br>Ramkrisnapur (Shutradhar Super Market), Homna, Cumilla, Bangladesh<br>Mobile: 01883400808<br>Proprietor: MD Khairul Islam</div><div class="tp-right"><div class="accred">PNR<br>CREATION</div></div></div>' +
+      '<div class="tp-title">Electronic Ticket</div><div class="tp-section-title">Passenger Information</div>' +
+      '<table class="tp-table"><tr><th>Passenger Information</th><th>Passport<br>Number</th><th>Frequent Flyer<br>Number</th><th>Ticket</th></tr><tr><td>' + escapeHtml(printable.passenger || '-') + '</td><td>' + escapeHtml(printable.passport || '-') + '</td><td>' + escapeHtml(printable.frequentFlyer || '-') + '</td><td>' + escapeHtml(printable.ticketNumber || '-') + '</td></tr></table>' +
+      '<table class="tp-table" style="margin-top:10px"><tr><th>Airline PNR</th><th>Galileo PNR</th><th>Date of Issue</th><th>Status</th></tr><tr><td>' + escapeHtml(printable.airlinePnr || '-') + '</td><td>' + escapeHtml(printable.gdsPnr || '-') + '</td><td>' + escapeHtml(printable.issueDate || '-') + '</td><td>' + escapeHtml(printable.status || '-') + '</td></tr></table>' +
+      '<div class="tp-section-title">Itinerary Information</div><table class="tp-table itin"><tr><th>Flight #</th><th>From</th><th>To</th><th>Depart</th><th>Arrive</th><th>Seat</th><th>Info</th></tr>' + rows + '</table>' +
+      '<div class="tp-notes"><b>Notes:</b><br>Baggage allowance and carrier conditions are subject to the airline and fare rules.</div><div class="tp-important"><b>IMPORTANT INFORMATION FOR TRAVELERS WITH ELECTRONIC TICKETS - PLEASE READ:</b><br>Carriage and other services provided by the carrier are subject to the conditions of carriage of the issuing carrier. Please carry valid passport, visa and other required travel documents.</div>' +
+      '</div><script>window.onload=()=>window.print()</script></body></html>');
     w.document.close();
   };
 
@@ -341,17 +309,10 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
           {importStatus && <div className="mt-2 rounded-xl bg-white px-3 py-2 text-[11px] text-slate-600 border border-blue-100">{importStatus}</div>}
         </section>
 
-        <section className="rounded-2xl border border-slate-200 p-3 sm:p-4">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
-            <div><div className="text-xs font-extrabold text-slate-900">TICKET TEMPLATE</div><div className="text-[11px] text-slate-500 mt-1">Choose a ready layout, then customize it for your own SIAM AIR ticket format.</div></div>
-            <select value={templateId} onChange={e=>applyTemplate(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold min-w-[260px]">
-              {TEMPLATES.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            {TEMPLATES.map(t=><button key={t.id} onClick={()=>applyTemplate(t.id)} className={'text-left rounded-xl border p-3 ' + (templateId===t.id ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white')}>
-              <div className="h-2 rounded-full mb-2" style={{background:t.accent}}/><div className="text-[11px] font-extrabold text-slate-800">{t.name}</div><div className="text-[10px] text-slate-500 mt-1">{t.compact ? 'Compact GDS-style' : 'Modern customer-facing'}</div>
-            </button>)}
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3 sm:p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div><div className="text-xs font-extrabold text-slate-900">SIAM AIR TICKET VIEW / PRINT</div><div className="text-[11px] text-slate-600 mt-1">Fixed V8 ticket view and print format from the supplied calculator. Previous ticket templates are removed.</div></div>
+            <span className="rounded-full bg-emerald-600 text-white px-3 py-1.5 text-[10px] font-extrabold">SIAM AIR V8</span>
           </div>
         </section>
 
@@ -367,21 +328,8 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-3 sm:p-4">
-          <div className="flex items-center gap-2 mb-3"><Palette className="w-4 h-4 text-emerald-600"/><div className="text-xs font-extrabold text-slate-900">CUSTOMIZE TEMPLATE</div></div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <label className="text-[10px] font-bold text-slate-500">Accent<input type="color" value={accent} onChange={e=>setAccent(e.target.value)} className="block mt-1 w-full h-9 rounded-lg"/></label>
-            <label className="text-[10px] font-bold text-slate-500">Header<input type="color" value={header} onChange={e=>setHeader(e.target.value)} className="block mt-1 w-full h-9 rounded-lg"/></label>
-            <label className="text-[10px] font-bold text-slate-500">Corner Radius<select value={radius} onChange={e=>setRadius(e.target.value)} className="block mt-1 w-full rounded-lg border px-2 py-2 text-xs"><option>0px</option><option>10px</option><option>18px</option><option>22px</option></select></label>
-            <label className="text-[10px] font-bold text-slate-500">Title<input value={customTitle} onChange={e=>setCustomTitle(e.target.value)} className="block mt-1 w-full rounded-lg border px-2 py-2 text-xs"/></label>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-3 text-[11px]">
-            {([['Passport',showPassport,setShowPassport],['Frequent Flyer',showFrequentFlyer,setShowFrequentFlyer],['Baggage',showBaggage,setShowBaggage],['Ticket No.',showTicketNumber,setShowTicketNumber],['GDS PNR',showGdsPnr,setShowGdsPnr]] as [string,boolean,(v:boolean)=>void][]).map(([label,value,set])=><label key={label} className="flex items-center gap-2 rounded-xl bg-white border px-3 py-2"><input type="checkbox" checked={value} onChange={e=>set(e.target.checked)}/>{label}</label>)}
-          </div>
-          <textarea value={customFooter} onChange={e=>setCustomFooter(e.target.value)} rows={2} className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs" placeholder="Footer / notes"/>
-          <div className="flex flex-wrap gap-2 mt-3">
-            <button onClick={saveCustomTemplate} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 text-white px-3 py-2 text-xs font-bold"><Save className="w-4 h-4"/> Save Custom Template</button>
-            <button onClick={loadCustomTemplate} className="inline-flex items-center gap-1.5 rounded-xl bg-white border border-slate-200 px-3 py-2 text-xs font-bold"><RotateCcw className="w-4 h-4"/> Load Saved</button>
-          </div>
+          <div className="text-xs font-extrabold text-slate-900">PRINT TEMPLATE</div>
+          <div className="text-[11px] text-slate-600 mt-1">Your SIAM AIR logo is fixed in the printed ticket. Airline logos are not used in the ticket header.</div>
         </section>
 
         <section><div className="flex items-center justify-between mb-3"><div className="text-xs font-extrabold text-slate-900">ITINERARY / FLIGHT SECTORS</div><button onClick={()=>setSectors(p=>[...p,blankSector()])} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 text-white px-2.5 py-1.5 text-[11px] font-bold"><Plus className="w-3.5 h-3.5"/> Add Sector</button></div>
