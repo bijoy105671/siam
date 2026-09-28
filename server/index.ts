@@ -1,3 +1,4 @@
+import { DAC_FLIGHT_DIRECTORY } from './dacFlightDirectory';
 import 'dotenv/config';
 import express from 'express';
 import session from 'express-session';
@@ -246,105 +247,69 @@ ${input}`;
 
 app.post('/api/flight-assist', auth, async (req, res) => {
   try {
-    const apiKey = String(process.env.FLIGHTLABS_API_KEY || '').trim();
-    const aviationstackKey = String(process.env.AVIATIONSTACK_API_KEY || '').trim();
-    if (!apiKey && !aviationstackKey) {
-      return res.status(503).json({ error: 'Non-AI flight search is not configured. Add FLIGHTLABS_API_KEY in Render.' });
-    }
-
-    const flightNumberInput = String(req.body?.flightNumber || '').trim().toUpperCase().replace(/[\\s/-]+/g, '');
+    const flightNumberInput = String(req.body?.flightNumber || '').trim().toUpperCase().replace(/[\s/-]+/g, '');
     const flightDate = String(req.body?.flightDate || '').trim();
     const airlineHint = String(req.body?.airline || '').trim().toUpperCase();
+    const fromHint = String(req.body?.from || '').trim().toUpperCase();
+    const toHint = String(req.body?.to || '').trim().toUpperCase();
 
-    if (!/^[A-Z0-9]{2,3}\\d{1,4}[A-Z]?$/.test(flightNumberInput)) {
+    if (!/^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$/.test(flightNumberInput)) {
       return res.status(400).json({ error: 'Enter a valid flight number such as BS307, BG147 or EK585.' });
     }
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(flightDate)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(flightDate)) {
       return res.status(400).json({ error: 'Enter the flight date in YYYY-MM-DD format.' });
     }
 
-    const cleanFlight = (x: any, requestedDate = flightDate) => ({
-      airline: String(x?.airline?.name || x?.airline || '').trim(),
-      airlineCode: String(x?.airline?.iata || x?.airline_iata || x?.airlineCode || '').trim().toUpperCase(),
-      flightNo: String(x?.flight?.iata || x?.flight_iata || x?.flightNo || x?.flight_number || flightNumberInput).replace(/[\\s/-]+/g, '').toUpperCase(),
-      from: String(x?.departure?.iata || x?.dep_iata || x?.from || '').trim().toUpperCase(),
-      fromName: String(x?.departure?.airport || x?.dep_name || x?.fromName || '').trim(),
-      to: String(x?.arrival?.iata || x?.arr_iata || x?.to || '').trim().toUpperCase(),
-      toName: String(x?.arrival?.airport || x?.arr_name || x?.toName || '').trim(),
-      departureDate: String(x?.departure?.scheduled || x?.dep_time || x?.departureDate || requestedDate).slice(0,10),
-      departureTime: String(x?.departure?.scheduled || x?.dep_time || x?.departureTime || '').slice(11,16),
-      arrivalDate: String(x?.arrival?.scheduled || x?.arr_time || x?.arrivalDate || requestedDate).slice(0,10),
-      arrivalTime: String(x?.arrival?.scheduled || x?.arr_time || x?.arrivalTime || '').slice(11,16),
-      duration: String(x?.flight_time || x?.duration || '').trim(),
-      aircraft: String(x?.aircraft?.iata || x?.aircraft || '').trim(),
-      bookingClass: '',
-      baggage: '',
-      terminal: String(x?.departure?.terminal || x?.dep_terminal || x?.terminal || '').trim(),
-      status: String(x?.flight_status || x?.status || '').trim()
-    });
+    const normalize = (v: string) => String(v || '').toUpperCase().replace(/[\s/-]+/g, '');
+    const candidates = DAC_FLIGHT_DIRECTORY
+      .filter(x => normalize(x.flightNo) === flightNumberInput)
+      .filter(x => !airlineHint || x.airlineCode === airlineHint || x.airline.toUpperCase().includes(airlineHint))
+      .map(x => ({
+        ...x,
+        departureDate: flightDate,
+        arrivalDate: flightDate,
+        arrivalTime: x.arrivalTime || '',
+        duration: '',
+        aircraft: '',
+        bookingClass: '',
+        baggage: '',
+        terminal: x.terminal || '',
+        status: 'SCHEDULE DIRECTORY'
+      }));
 
-    let raw: any[] = [];
-    let provider = '';
-    if (apiKey) {
-      provider = 'FlightLabs';
-      const url = 'https://app.goflightlabs.com/flight?access_key=' + encodeURIComponent(apiKey) +
-        '&search_by=number&flight_number=' + encodeURIComponent(flightNumberInput) +
-        '&date=' + encodeURIComponent(flightDate);
-      const response = await fetch(url);
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.success === false) {
-        const message = String(payload?.message || payload?.error?.message || '');
-        if (aviationstackKey) {
-          console.warn('FlightLabs lookup failed, falling back to Aviationstack:', message.slice(0,200));
-        } else {
-          return res.status(response.status === 429 ? 429 : 502).json({ error: 'Flight provider request failed: ' + message.slice(0, 240) });
-        }
-      } else {
-        raw = Array.isArray(payload?.data) ? payload.data : [];
-      }
-    }
+    // If the sector already indicates an arrival into DAC, reverse the stored DAC route.
+    const arrivalMode = toHint === 'DAC' && fromHint !== 'DAC';
+    const adjusted = candidates.map(x => arrivalMode ? ({
+      ...x,
+      from: x.to,
+      fromName: x.toName,
+      to: 'DAC',
+      toName: 'Dhaka',
+      departureTime: '',
+      arrivalTime: x.departureTime
+    }) : x);
 
-    if (!raw.length && aviationstackKey) {
-      provider = 'Aviationstack';
-      const url = 'https://api.aviationstack.com/v1/flights?access_key=' + encodeURIComponent(aviationstackKey) +
-        '&flight_number=' + encodeURIComponent(flightNumberInput.replace(/^[A-Z]{2,3}/, ''));
-      const response = await fetch(url);
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.error) {
-        const message = String(payload?.error?.message || '');
-        return res.status(response.status === 429 ? 429 : 502).json({ error: 'Flight provider request failed: ' + message.slice(0, 240) });
-      }
-      raw = Array.isArray(payload?.data) ? payload.data : [];
-    }
+    const filtered = adjusted.length > 1 && (fromHint || toHint)
+      ? adjusted.filter(x => (!fromHint || x.from === fromHint) && (!toHint || x.to === toHint))
+      : adjusted;
 
-    const flights = raw.map((x: any) => cleanFlight(x, flightDate))
-      .filter((x: any) => x.flightNo || x.from || x.to);
-
-    const exactDate = flights.filter((x: any) => !x.departureDate || x.departureDate === flightDate);
-    const candidates = (exactDate.length ? exactDate : flights).slice(0, 8);
-    const matched = candidates.length > 0;
-    const flight = candidates[0] || cleanFlight({});
-    if (matched) {
-      flight.departureDate = flightDate;
-      if (!flight.arrivalDate) flight.arrivalDate = flightDate;
-    }
-
-    res.json({
+    const chosen = filtered[0] || adjusted[0];
+    const matched = Boolean(chosen);
+    return res.json({
       data: {
         matched,
-        confidence: matched ? (exactDate.length ? 'medium' : 'low') : 'low',
-        provider,
-        flight: matched ? flight : cleanFlight({}),
-        candidates,
-        sources: provider === 'FlightLabs'
-          ? [{ title: 'FlightLabs flight data', url: 'https://www.goflightlabs.com/' }]
-          : provider === 'Aviationstack'
-            ? [{ title: 'Aviationstack flight data', url: 'https://aviationstack.com/' }]
-            : []
+        confidence: matched ? 'medium' : 'low',
+        provider: 'SIAM AIR local DAC flight directory',
+        flight: chosen || {},
+        candidates: filtered.slice(0, 8),
+        sources: [{
+          title: 'Hazrat Shahjalal International Airport flight information',
+          url: 'https://www.hsia.gov.bd/flight-info/int-departures'
+        }]
       }
     });
   } catch (error) {
-    console.error('Non-AI flight assist failed:', error);
+    console.error('Provider-free flight assist failed:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Flight search failed' });
   }
 });
