@@ -60,17 +60,18 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   return request(false);
 }
 
-export const flightDirectory = async (flightNo = '', from = '', to = '') => {
+export const flightDirectory = async (flightNo = '', from = '', to = '', airline = '') => {
   const params = new URLSearchParams();
   if (flightNo) params.set('flightNo', flightNo);
   if (from) params.set('from', from);
   if (to) params.set('to', to);
+  if (airline) params.set('airline', airline);
   return apiRequest<any[]>(`/api/flight-directory?${params.toString()}`);
 };
 
 export const api = {
-  flightDirectory: (flightNo = '', from = '', to = '') =>
-    apiRequest<unknown[]>(`/api/flight-directory?flightNo=${encodeURIComponent(flightNo)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+  flightDirectory: (flightNo = '', from = '', to = '', airline = '') =>
+    apiRequest<unknown[]>(`/api/flight-directory?flightNo=${encodeURIComponent(flightNo)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&airline=${encodeURIComponent(airline)}`),
   saveFlightDirectory: (input: Record<string, any>) =>
     apiRequest<{ flight: unknown }>('/api/flight-directory', { method: 'POST', body: JSON.stringify(input) }),
   health: () => apiRequest<{ ok: boolean }>('/api/health'),
