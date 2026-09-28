@@ -113,6 +113,22 @@ export interface PartialPayment {
   reference?: string;
 }
 
+export interface AppointmentReminder {
+  id: string;
+  customerId?: string;
+  customerName: string;
+  customerMobile?: string;
+  customerEmail?: string;
+  title: string;
+  appointmentDate: string;
+  appointmentTime: string;
+  note?: string;
+  status: 'pending' | 'completed';
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Transaction {
   id: string;
   invoiceNumber: string;
