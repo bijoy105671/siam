@@ -168,20 +168,40 @@ const parseImportedText = (raw: string) => {
     /\b(\d{13})\b/
   ]));
 
-  // Extract passenger-specific rows first. Ticket numbers are paired by local row context;
-  // never reuse the first ticket number for every passenger.
+  // Passenger table extraction: keep passenger rows and ticket numbers one-to-one.
+  // Never copy/reuse a ticket number when several passengers are present.
   const passengerRecords: ImportedPassenger[] = [];
-  const ticketTokens = [...text.matchAll(/\b(\d{3}[-\s]?\d{10}|\d{13})\b/g)].map(m => normalizeTicket(m[1]));
-  const nameCandidates = [...text.matchAll(/(?:^|\s)(?:\d{1,2}\s+)?(?:PRIMARY\s+)?(?:MR|MRS|MS|MISS|DR)\.?\s+([A-Z][A-Z .,'\/-]{1,80}?)(?=\s+(?:ADULT|CHILD|INFANT|ADT|CHD|INF)\b)/gi)]
-    .map(m => m[1].trim().replace(/\s+/g,' '));
-  const uniqueNames = [...new Set(nameCandidates)];
-  const namePositions = [...text.matchAll(/(?:^|\s)(?:\d{1,2}\s+)?(?:PRIMARY\s+)?(?:MR|MRS|MS|MISS|DR)\.?\s+[A-Z][A-Z .,'\/-]{1,80}?\s+(?:ADULT|CHILD|INFANT|ADT|CHD|INF)\b/gi)].map(m=>m.index||0);
-  uniqueNames.forEach((name, idx) => {
-    const pos = namePositions[idx] ?? 0;
-    const windowText = text.slice(Math.max(0,pos-180), Math.min(text.length,pos+420));
-    const localTicket = windowText.match(/\b(\d{3}[-\s]?\d{10}|\d{13})\b/);
-    const localPassport = windowText.match(/(?:PASSPORT|PP)\s*(?:NUMBER|NO|NUM|#)?\s*[:#-]?\s*([A-Z0-9]{6,12})\b/i);
-    passengerRecords.push({name, passport: (localPassport?.[1]||'').toUpperCase(), ticketNumber: localTicket ? normalizeTicket(localTicket[1]) : (ticketTokens[idx]||'')});
+  const passengerMatches = [...text.matchAll(/(?:^|\\s)(?:\\d{1,2}\\s+)?(?:PRIMARY\\s+)?(?:MR|MRS|MS|MISS|DR)\\.?\\s+([A-Z][A-Z .,'\\/-]{1,80}?)(?=\\s+(?:ADULT|CHILD|INFANT|ADT|CHD|INF)\\b)/gi)];
+  const passengerNames: string[] = [];
+  for (const m of passengerMatches) {
+    const n = m[1].trim().replace(/\\s+/g, ' ');
+    if (n && !passengerNames.includes(n)) passengerNames.push(n);
+  }
+  const orderedTickets: string[] = [];
+  const seenTickets = new Set<string>();
+  for (const m of text.matchAll(/\\b(\\d{3}[-\\s]?\\d{10}|\\d{13})\\b/g)) {
+    const t = normalizeTicket(m[1]);
+    if (t.length === 13 && !seenTickets.has(t)) { seenTickets.add(t); orderedTickets.push(t); }
+  }
+  const orderedPassports: string[] = [];
+  const seenPassports = new Set<string>();
+  for (const m of text.matchAll(/(?:PASSPORT|PP)\\s*(?:NUMBER|NO|NUM|#)?\\s*[:#-]?\\s*([A-Z0-9]{6,12})\\b/gi)) {
+    const p = m[1].toUpperCase();
+    if (!seenPassports.has(p)) { seenPassports.add(p); orderedPassports.push(p); }
+  }
+  passengerNames.forEach((name, idx) => {
+    const match = passengerMatches.find(m => m[1].trim().replace(/\\s+/g, ' ') === name);
+    const pos = match?.index ?? -1;
+    const local = pos >= 0 ? text.slice(Math.max(0, pos - 120), Math.min(text.length, pos + 520)) : '';
+    const localTicketMatch = local.match(/\\b(\\d{3}[-\\s]?\\d{10}|\\d{13})\\b/);
+    const localTicket = localTicketMatch ? normalizeTicket(localTicketMatch[1]) : '';
+    const localPassportMatch = local.match(/(?:PASSPORT|PP)\\s*(?:NUMBER|NO|NUM|#)?\\s*[:#-]?\\s*([A-Z0-9]{6,12})\\b/i);
+    const localPassport = localPassportMatch?.[1]?.toUpperCase() || '';
+    // Prefer a ticket found in this passenger's local row. Otherwise consume the next
+    // document-order ticket. If none exists, leave blank; never duplicate another ticket.
+    const ticketNumber = localTicket && seenTickets.has(localTicket) ? localTicket : (orderedTickets[idx] || '');
+    const passport = localPassport || orderedPassports[idx] || '';
+    passengerRecords.push({ name, passport, ticketNumber });
   });
 
   const passport = first([
@@ -196,7 +216,7 @@ const parseImportedText = (raw: string) => {
     if (n && !passengerNames.includes(n)) passengerNames.push(n);
   }
   const passenger = passengerNames.length
-    ? passengerNames.join(' / ')
+    ? passengerNames[0]
     : first([
         /(?:PASSENGER|PAX|TRAVELER|TRAVELLER)\s*(?:NAME|NAMES?)?\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,80})/i,
         /\b(?:MR|MRS|MS|MISS|DR)\.?\s+([A-Z][A-Z .,'\/-]{2,80}?)(?=\s+(?:TICKET|PNR|PASSPORT|AIRLINE|FLIGHT|ROUTE|DATE|BOOKING)\b)/i
@@ -513,7 +533,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     const w = window.open('', '_blank', 'width=900,height=900');
     if (!w) return;
     const logoSrc = settings.logoUrl || siamAirLogo;
-    const people = importedPassengers.length ? importedPassengers : [{ name: passenger, passport, ticketNumber }];
+    const people = importedPassengers.length > 1 ? importedPassengers : [{ name: passenger, passport, ticketNumber }];
     const pages = people.map((person, personIndex) => {
       const rows = printable.sectors.map(s => '<tr>' +
         '<td><div class="flight-airline"><img src="' + escapeHtml(airlineLogoUrl(s.airline || s.flightNo)) + '" onerror="this.onerror=null;this.src=' + JSON.stringify(airlineLogoFallbackUrl(s.airline || s.flightNo)) + ';this.style.display=this.src?\'block\':\'none\';" style="width:28px;height:28px;object-fit:contain;vertical-align:middle;margin-right:4px" />' + escapeHtml(s.airline || '-') + '</div><div class="flight-no">' + escapeHtml(s.flightNo || '-') + '</div></td>' +
@@ -560,6 +580,15 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
             </div>
           </div>
           {importStatus && <div className="mt-2 rounded-xl bg-white px-3 py-2 text-[11px] text-slate-600 border border-blue-100">{importStatus}</div>}
+          {importedPassengers.length > 1 && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <div className="text-xs font-extrabold text-slate-900">MULTI-PASSENGER IMPORT — REVIEW BEFORE PRINT</div>
+            <div className="text-[10px] text-slate-600 mt-1">Each passenger gets a separate e-ticket page. Ticket numbers are kept one-to-one; a missing ticket number stays blank instead of being copied.</div>
+            <div className="mt-3 space-y-2">{importedPassengers.map((p,i)=><div key={i} className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-xl bg-white border border-amber-100 p-2">
+              <input value={p.name} onChange={e=>setImportedPassengers(prev=>prev.map((x,j)=>j===i?{...x,name:e.target.value}:x))} placeholder="Passenger name" className="rounded-lg border border-slate-200 px-2.5 py-2 text-xs" />
+              <input value={p.passport} onChange={e=>setImportedPassengers(prev=>prev.map((x,j)=>j===i?{...x,passport:e.target.value}:x))} placeholder="Passport number" className="rounded-lg border border-slate-200 px-2.5 py-2 text-xs" />
+              <input value={p.ticketNumber} onChange={e=>setImportedPassengers(prev=>prev.map((x,j)=>j===i?{...x,ticketNumber:e.target.value}:x))} placeholder="13-digit ticket number" className="rounded-lg border border-slate-200 px-2.5 py-2 text-xs" inputMode="numeric" />
+            </div>)}</div>
+          </div>}
         </section>
 
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3 sm:p-4">
