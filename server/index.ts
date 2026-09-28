@@ -246,105 +246,106 @@ ${input}`;
 
 app.post('/api/flight-assist', auth, async (req, res) => {
   try {
-    const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
-    if (!apiKey) return res.status(503).json({ error: 'AI flight assist is not configured' });
+    const apiKey = String(process.env.FLIGHTLABS_API_KEY || '').trim();
+    const aviationstackKey = String(process.env.AVIATIONSTACK_API_KEY || '').trim();
+    if (!apiKey && !aviationstackKey) {
+      return res.status(503).json({ error: 'Non-AI flight search is not configured. Add FLIGHTLABS_API_KEY in Render.' });
+    }
 
-    const flightNumberInput = String(req.body?.flightNumber || '').trim().toUpperCase().replace(/[\s/-]+/g, '');
+    const flightNumberInput = String(req.body?.flightNumber || '').trim().toUpperCase().replace(/[\\s/-]+/g, '');
     const flightDate = String(req.body?.flightDate || '').trim();
     const airlineHint = String(req.body?.airline || '').trim().toUpperCase();
 
-    if (!/^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$/.test(flightNumberInput)) {
+    if (!/^[A-Z0-9]{2,3}\\d{1,4}[A-Z]?$/.test(flightNumberInput)) {
       return res.status(400).json({ error: 'Enter a valid flight number such as BS307, BG147 or EK585.' });
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(flightDate)) {
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(flightDate)) {
       return res.status(400).json({ error: 'Enter the flight date in YYYY-MM-DD format.' });
     }
 
-    const prompt = `You are a strict real-time airline flight schedule lookup engine for SIAM AIR & DIGITAL SERVICE.
-Use Google Search grounding and public web sources to find the scheduled flight matching these exact inputs:
-Flight number: ${flightNumberInput}
-Flight date: ${flightDate}
-Airline hint (optional): ${airlineHint || 'none'}
-
-IMPORTANT:
-- Search the web; do not rely only on model memory.
-- Return ONLY JSON in the exact shape below.
-- Do not guess or invent any field.
-- Prefer airline, airport, airport/flight-status, or reputable aviation schedule sources.
-- The date is the scheduled DEPARTURE date unless a source clearly indicates otherwise.
-- If multiple different routes match, return candidates instead of choosing silently.
-- Do NOT return passenger names, PNRs, ticket numbers, passports, or private booking data. Those must be entered by the user.
-- Baggage is usually fare-specific/private; leave it empty unless a public source explicitly states a standard allowance for this exact flight.
-- Times should be local airport times when the source provides them.
-JSON shape:
-{"matched":true,"confidence":"high|medium|low","flight":{"airline":"","airlineCode":"","flightNo":"","from":"","fromName":"","to":"","toName":"","departureDate":"","departureTime":"","arrivalDate":"","arrivalTime":"","duration":"","aircraft":"","bookingClass":"","baggage":"","terminal":"","status":""},"candidates":[],"sources":[{"title":"","url":""}]}
-If no reliable match exists: matched=false and keep flight fields empty.
-If there are multiple plausible matches: matched=false and put each factual candidate in candidates with the same flight field shape.`;
-
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=' + encodeURIComponent(apiKey), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        tools: [{ google_search: {} }],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0 }
-      })
+    const cleanFlight = (x: any, requestedDate = flightDate) => ({
+      airline: String(x?.airline?.name || x?.airline || '').trim(),
+      airlineCode: String(x?.airline?.iata || x?.airline_iata || x?.airlineCode || '').trim().toUpperCase(),
+      flightNo: String(x?.flight?.iata || x?.flight_iata || x?.flightNo || x?.flight_number || flightNumberInput).replace(/[\\s/-]+/g, '').toUpperCase(),
+      from: String(x?.departure?.iata || x?.dep_iata || x?.from || '').trim().toUpperCase(),
+      fromName: String(x?.departure?.airport || x?.dep_name || x?.fromName || '').trim(),
+      to: String(x?.arrival?.iata || x?.arr_iata || x?.to || '').trim().toUpperCase(),
+      toName: String(x?.arrival?.airport || x?.arr_name || x?.toName || '').trim(),
+      departureDate: String(x?.departure?.scheduled || x?.dep_time || x?.departureDate || requestedDate).slice(0,10),
+      departureTime: String(x?.departure?.scheduled || x?.dep_time || x?.departureTime || '').slice(11,16),
+      arrivalDate: String(x?.arrival?.scheduled || x?.arr_time || x?.arrivalDate || requestedDate).slice(0,10),
+      arrivalTime: String(x?.arrival?.scheduled || x?.arr_time || x?.arrivalTime || '').slice(11,16),
+      duration: String(x?.flight_time || x?.duration || '').trim(),
+      aircraft: String(x?.aircraft?.iata || x?.aircraft || '').trim(),
+      bookingClass: '',
+      baggage: '',
+      terminal: String(x?.departure?.terminal || x?.dep_terminal || x?.terminal || '').trim(),
+      status: String(x?.flight_status || x?.status || '').trim()
     });
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      return res.status(502).json({ error: 'Flight search request failed: ' + body.slice(0, 240) });
+    let raw: any[] = [];
+    let provider = '';
+    if (apiKey) {
+      provider = 'FlightLabs';
+      const url = 'https://app.goflightlabs.com/flight?access_key=' + encodeURIComponent(apiKey) +
+        '&search_by=number&flight_number=' + encodeURIComponent(flightNumberInput) +
+        '&date=' + encodeURIComponent(flightDate);
+      const response = await fetch(url);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.success === false) {
+        const message = String(payload?.message || payload?.error?.message || '');
+        if (aviationstackKey) {
+          console.warn('FlightLabs lookup failed, falling back to Aviationstack:', message.slice(0,200));
+        } else {
+          return res.status(response.status === 429 ? 429 : 502).json({ error: 'Flight provider request failed: ' + message.slice(0, 240) });
+        }
+      } else {
+        raw = Array.isArray(payload?.data) ? payload.data : [];
+      }
     }
 
-    const payload = await response.json() as any;
-    const output = payload?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join('').trim() || '';
-    if (!output) return res.status(422).json({ error: 'Flight search returned no structured data' });
-
-    let parsed: any;
-    try { parsed = JSON.parse(output); } catch {
-      return res.status(422).json({ error: 'Flight search returned invalid structured data' });
+    if (!raw.length && aviationstackKey) {
+      provider = 'Aviationstack';
+      const url = 'https://api.aviationstack.com/v1/flights?access_key=' + encodeURIComponent(aviationstackKey) +
+        '&flight_number=' + encodeURIComponent(flightNumberInput.replace(/^[A-Z]{2,3}/, ''));
+      const response = await fetch(url);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.error) {
+        const message = String(payload?.error?.message || '');
+        return res.status(response.status === 429 ? 429 : 502).json({ error: 'Flight provider request failed: ' + message.slice(0, 240) });
+      }
+      raw = Array.isArray(payload?.data) ? payload.data : [];
     }
 
-    const cleanFlight = (x: any) => ({
-      airline: String(x?.airline || '').trim(),
-      airlineCode: String(x?.airlineCode || '').trim().toUpperCase(),
-      flightNo: String(x?.flightNo || '').replace(/[\s/-]+/g, '').toUpperCase(),
-      from: String(x?.from || '').trim().toUpperCase(),
-      fromName: String(x?.fromName || '').trim(),
-      to: String(x?.to || '').trim().toUpperCase(),
-      toName: String(x?.toName || '').trim(),
-      departureDate: String(x?.departureDate || '').trim(),
-      departureTime: String(x?.departureTime || '').trim(),
-      arrivalDate: String(x?.arrivalDate || '').trim(),
-      arrivalTime: String(x?.arrivalTime || '').trim(),
-      duration: String(x?.duration || '').trim(),
-      aircraft: String(x?.aircraft || '').trim(),
-      bookingClass: String(x?.bookingClass || '').trim().toUpperCase(),
-      baggage: String(x?.baggage || '').trim(),
-      terminal: String(x?.terminal || '').trim(),
-      status: String(x?.status || '').trim()
-    });
+    const flights = raw.map((x: any) => cleanFlight(x, flightDate))
+      .filter((x: any) => x.flightNo || x.from || x.to);
 
-    const sources = Array.isArray(parsed.sources) ? parsed.sources.slice(0, 6).map((s: any) => ({
-      title: String(s?.title || '').trim().slice(0, 180),
-      url: String(s?.url || '').trim()
-    })).filter((s: any) => /^https?:\/\//i.test(s.url)) : [];
+    const exactDate = flights.filter((x: any) => !x.departureDate || x.departureDate === flightDate);
+    const candidates = (exactDate.length ? exactDate : flights).slice(0, 8);
+    const matched = candidates.length > 0;
+    const flight = candidates[0] || cleanFlight({});
+    if (matched) {
+      flight.departureDate = flightDate;
+      if (!flight.arrivalDate) flight.arrivalDate = flightDate;
+    }
 
-    const candidates = Array.isArray(parsed.candidates) ? parsed.candidates.slice(0, 6).map(cleanFlight) : [];
-    const flight = cleanFlight(parsed.flight || {});
-    const matched = Boolean(parsed.matched && (flight.flightNo || flight.from || flight.to));
     res.json({
       data: {
         matched,
-        confidence: ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'low',
+        confidence: matched ? (exactDate.length ? 'medium' : 'low') : 'low',
+        provider,
         flight: matched ? flight : cleanFlight({}),
         candidates,
-        sources
+        sources: provider === 'FlightLabs'
+          ? [{ title: 'FlightLabs flight data', url: 'https://www.goflightlabs.com/' }]
+          : provider === 'Aviationstack'
+            ? [{ title: 'Aviationstack flight data', url: 'https://aviationstack.com/' }]
+            : []
       }
     });
   } catch (error) {
-    console.error('AI flight assist failed:', error);
-    res.status(500).json({ error: error instanceof Error ? error.message : 'AI flight assist failed' });
+    console.error('Non-AI flight assist failed:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Flight search failed' });
   }
 });
 
