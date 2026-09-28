@@ -210,13 +210,13 @@ const parseImportedText = (raw: string) => {
   ]).toUpperCase();
 
   // Passenger extraction is intentionally bounded by passenger-type/next-field markers.
-  const passengerNames: string[] = [];
+  const passengerNamesFallback: string[] = [];
   for (const m of text.matchAll(/(?:^|\s)(?:\d{1,2}\s+)?(?:PRIMARY\s+)?(?:MR|MRS|MS|MISS|DR)\.?\s+([A-Z][A-Z .,'\/-]{1,80}?)(?=\s+(?:ADULT|CHILD|INFANT|ADT|CHD|INF)\b)/gi)) {
     const n = m[1].trim().replace(/\s+/g, ' ');
-    if (n && !passengerNames.includes(n)) passengerNames.push(n);
+    if (n && !passengerNamesFallback.includes(n)) passengerNamesFallback.push(n);
   }
-  const passenger = passengerNames.length
-    ? passengerNames[0]
+  const passenger = passengerNamesFallback.length
+    ? passengerNamesFallback[0]
     : first([
         /(?:PASSENGER|PAX|TRAVELER|TRAVELLER)\s*(?:NAME|NAMES?)?\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,80})/i,
         /\b(?:MR|MRS|MS|MISS|DR)\.?\s+([A-Z][A-Z .,'\/-]{2,80}?)(?=\s+(?:TICKET|PNR|PASSPORT|AIRLINE|FLIGHT|ROUTE|DATE|BOOKING)\b)/i
@@ -448,6 +448,57 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     setImportStatus('');
   };
 
+  const enhanceWithAi = async (rawText: string, parsed: ReturnType<typeof parseImportedText>) => {
+    try {
+      const response = await fetch('/api/ticket-import/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ text: rawText })
+      });
+      if (!response.ok) return parsed;
+      const result = await response.json().catch(() => ({}));
+      const ai = result?.data;
+      if (!ai || typeof ai !== 'object') return parsed;
+      const aiPassengers: ImportedPassenger[] = Array.isArray(ai.passengers)
+        ? ai.passengers.map((x: any) => ({
+            name: String(x?.name || '').trim(),
+            passport: String(x?.passport || '').trim().toUpperCase(),
+            ticketNumber: normalizeTicket(String(x?.ticketNumber || ''))
+          })).filter((x: ImportedPassenger) => x.name || x.passport || x.ticketNumber)
+        : [];
+      const aiTickets = aiPassengers.map(x => x.ticketNumber).filter(Boolean);
+      if (new Set(aiTickets).size !== aiTickets.length) return parsed;
+      const aiSectors: Sector[] = Array.isArray(ai.sectors) ? ai.sectors.slice(0, 12).map((x: any) => ({
+        ...blankSector(),
+        airline: String(x?.airline || '').trim().toUpperCase(),
+        flightNo: String(x?.flightNo || '').replace(/[\s/-]+/g, '').toUpperCase(),
+        from: String(x?.from || '').trim().toUpperCase(),
+        to: String(x?.to || '').trim().toUpperCase(),
+        departureDate: String(x?.departureDate || '').trim(),
+        departureTime: String(x?.departureTime || '').trim(),
+        arrivalDate: String(x?.arrivalDate || '').trim(),
+        arrivalTime: String(x?.arrivalTime || '').trim(),
+        bookingClass: String(x?.bookingClass || '').trim().toUpperCase(),
+        seat: String(x?.seat || '').trim().toUpperCase(),
+        baggage: String(x?.baggage || '').trim()
+      })) : [];
+      return {
+        ...parsed,
+        airlinePnr: parsed.airlinePnr || String(ai.airlinePnr || '').trim().toUpperCase(),
+        gdsPnr: parsed.gdsPnr || String(ai.gdsPnr || '').trim().toUpperCase(),
+        ticketNumber: parsed.ticketNumber || normalizeTicket(String(ai.ticketNumber || '')),
+        issueDate: parsed.issueDate || String(ai.issueDate || '').trim(),
+        passenger: parsed.passenger || String(ai.passenger || '').trim(),
+        passport: parsed.passport || String(ai.passport || '').trim().toUpperCase(),
+        passengers: aiPassengers.length ? aiPassengers : parsed.passengers,
+        sectors: parsed.sectors.some(x => x.flightNo || x.from || x.to) ? parsed.sectors : (aiSectors.length ? aiSectors : parsed.sectors)
+      };
+    } catch {
+      return parsed;
+    }
+  };
+
   const importFile = async (file: File) => {
     setImportStatus('Reading ticket file…');
     try {
@@ -467,7 +518,8 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || 'PDF extraction failed');
-        applyParsed(parseImportedText(String(result.text || '')));
+        const rawText = String(result.text || '');
+        applyParsed(await enhanceWithAi(rawText, parseImportedText(rawText)));
         setImportStatus('PDF data extracted successfully. Please review all fields before generating the e-ticket.');
         return;
       }
@@ -479,7 +531,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
           const { data } = await worker.recognize(file);
           const ocrText = String(data.text || '').trim();
           if (!ocrText) throw new Error('No readable text was found in the image. Try a clearer ticket image.');
-          applyParsed(parseImportedText(ocrText));
+          applyParsed(await enhanceWithAi(ocrText, parseImportedText(ocrText)));
           setImportStatus('JPG / PNG / GIF ticket OCR completed. Detected fields have been filled; please review them before generating.');
         } finally {
           await worker.terminate();
@@ -489,7 +541,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
 
       const raw = await file.text();
       if (!raw.trim()) throw new Error('The uploaded HTML/text file is empty.');
-      applyParsed(parseImportedText(raw));
+      applyParsed(await enhanceWithAi(raw, parseImportedText(raw)));
       setImportStatus('HTML ticket data extracted successfully. Please review the detected fields before generating.');
     } catch (error) {
       setImportStatus(error instanceof Error ? error.message : 'Could not read this ticket automatically. Please enter the information manually.');
@@ -516,7 +568,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
         raw = await proxy.text();
       }
       if (!raw.trim()) throw new Error('The ticket link returned no readable content.');
-      const parsed = parseImportedText(raw);
+      const parsed = await enhanceWithAi(raw, parseImportedText(raw));
       applyParsed(parsed);
       const detected = [parsed.airlinePnr, parsed.gdsPnr, parsed.ticketNumber, parsed.passenger, ...parsed.sectors.flatMap(s => [s.flightNo, s.from, s.to])].filter(Boolean).length;
       if (!detected) throw new Error('The link was opened, but no standard ticket fields could be detected. Download the ticket as PDF/image and upload it instead.');
