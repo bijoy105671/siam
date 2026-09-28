@@ -26,6 +26,29 @@ interface OneEntryFormProps {
   onViewInvoice: (tx: Transaction) => void;
 }
 
+interface AdditionalServiceLine {
+  id: string;
+  serviceId: string;
+  description: string;
+  sellingPrice: number | '';
+  customerPaid: number | '';
+  customerPaymentMethod: PaymentMethod;
+  hasVendor: boolean;
+  vendorName: string;
+  vendorCost: number | '';
+  vendorPaid: number | '';
+  vendorPaymentMethod: PaymentMethod;
+  accountCost: number | '';
+  accountCostPaymentMethod: PaymentMethod;
+  pnr: string;
+  ticketNumber: string;
+  passengerName: string;
+  airline: string;
+  flightNumber: string;
+  route: string;
+  departureDate: string;
+  departureTime: string;
+}
 export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoice }) => {
   const { customers, vendors, services, createOneEntry, createOneEntryAsync, settings } = useApp();
 
@@ -41,7 +64,35 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
 
   // Service state
   const [serviceId, setServiceId] = useState(services[0]?.id || 'srv_1');
-  const selectedService = services.find((s) => s.id === serviceId);
+  const [additionalServices, setAdditionalServices] = useState<AdditionalServiceLine[]>([]);
+
+  const createAdditionalServiceLine = (): AdditionalServiceLine => ({
+    id: `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    serviceId: services.find((s) => s.enabled)?.id || services[0]?.id || 'srv_1',
+    description: '',
+    sellingPrice: '',
+    customerPaid: '',
+    customerPaymentMethod: 'Cash',
+    hasVendor: true,
+    vendorName: '',
+    vendorCost: '',
+    vendorPaid: '',
+    vendorPaymentMethod: 'Bank',
+    accountCost: '',
+    accountCostPaymentMethod: 'bKash',
+    pnr: '',
+    ticketNumber: '',
+    passengerName: customerQuery,
+    airline: 'Saudi Arabian Airlines',
+    flightNumber: '',
+    route: 'DAC → ',
+    departureDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    departureTime: '10:00',
+  });
+
+  const updateAdditionalService = (id: string, patch: Partial<AdditionalServiceLine>) => {
+    setAdditionalServices((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
+  };  const selectedService = services.find((s) => s.id === serviceId);
   const isFlightService =
     selectedService?.category === 'Air Ticket' ||
     selectedService?.name.toLowerCase().includes('ticket') ||
@@ -218,8 +269,71 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
         reminderNote: reminderNote || ('Collect remaining balance ' + formatCurrency(calculatedCustomerDue)),
         notes: generalNotes,
       };
-      const tx = USE_SERVER_API ? await createOneEntryAsync(input) : createOneEntry(input);
-      setCreatedTx(tx);
+      const created = USE_SERVER_API ? await createOneEntryAsync(input) : createOneEntry(input);
+      let lastTx = created;
+
+      // Additional services are saved as separate linked transaction records under the same customer.
+      // This preserves clean Customer/Vendor ledgers and keeps each service's vendor/cost independent.
+      for (const line of additionalServices) {
+        const lineService = services.find((s) => s.id === line.serviceId);
+        const lineTicket = (() => {
+          const n = (lineService?.name || '').toLowerCase();
+          const cat = (lineService?.category || '').toLowerCase();
+          return n.includes('ticket') || n.includes('flight') || n.includes('reissue') ||
+            n.includes('refund') || n.includes('void') || n.includes('date change') || cat.includes('air ticket');
+        })();
+        const lineSelling = Number(line.sellingPrice) || 0;
+        const linePaid = Number(line.customerPaid) || 0;
+        if (lineSelling <= 0) throw new Error(`Please enter a valid selling price for ${lineService?.name || 'additional service'}.`);
+        if (lineTicket && !line.pnr.trim()) throw new Error(`PNR is required for ${lineService?.name || 'ticket service'}.`);
+
+        const lineInput: Parameters<typeof createOneEntry>[0] = {
+          customerMode: 'existing',
+          customerId: created.customerId,
+          customerName: customerQuery,
+          customerMobile,
+          customerEmail,
+          customerAddress,
+          customerPassportNumber: customerPassport,
+          customerPassportExpiry: customerPassportExpiry,
+          serviceId: line.serviceId,
+          serviceName: lineService?.name || 'General Service',
+          description: line.description || lineService?.name || 'Additional Service',
+          isFlight: lineTicket,
+          flightDetails: lineTicket ? {
+            pnr: line.pnr.trim().toUpperCase(),
+            ticketNumber: line.ticketNumber.trim(),
+            passengerName: line.passengerName.trim() || customerQuery.trim(),
+            airline: line.airline.trim(),
+            flightNumber: line.flightNumber.trim().toUpperCase(),
+            route: line.route.trim().toUpperCase(),
+            departureDate: line.departureDate,
+            departureTime: line.departureTime,
+            flightClass: 'Economy (V)',
+            ticketStatus: 'Confirmed',
+            notes: '',
+          } : undefined,
+          sellingPrice: lineSelling,
+          customerPaid: linePaid,
+          customerPaymentMethod: line.customerPaymentMethod,
+          hasVendor: line.hasVendor,
+          vendorMode: 'new',
+          vendorName: line.hasVendor ? line.vendorName.trim() : '',
+          vendorMobile: '',
+          vendorCompany: '',
+          vendorCost: line.hasVendor ? (Number(line.vendorCost) || 0) : 0,
+          vendorPaid: line.hasVendor ? (Number(line.vendorPaid) || 0) : 0,
+          vendorPaymentMethod: line.vendorPaymentMethod,
+          accountCost: line.hasVendor ? 0 : (Number(line.accountCost) || 0),
+          accountCostPaymentMethod: line.accountCostPaymentMethod,
+          reminderDate: linePaid < lineSelling ? reminderDate : undefined,
+          reminderTime: linePaid < lineSelling ? reminderTime : undefined,
+          reminderNote: linePaid < lineSelling ? ('Collect remaining balance ' + formatCurrency(Math.max(0, lineSelling - linePaid))) : undefined,
+          notes: generalNotes,
+        };
+        lastTx = USE_SERVER_API ? await createOneEntryAsync(lineInput) : createOneEntry(lineInput);
+      }
+      setCreatedTx(lastTx);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Entry could not be saved.');
     } finally {
@@ -273,6 +387,7 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
     setDescription('');
     setGeneralNotes('');
     setServiceId(services[0]?.id || 'srv_1');
+    setAdditionalServices([]);
   };
 
   // SUCCESS STATE MODAL / BANNER
@@ -970,6 +1085,93 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
               </div>
             )}
           </div>
+        </div>
+
+        {/* ADDITIONAL SERVICES */}
+        {additionalServices.length > 0 && (
+          <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/40 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-bold text-blue-900 uppercase">Additional Services</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">Same customer • each service gets its own vendor, cost, payment & ledger record.</div>
+              </div>
+              <button type="button" onClick={() => setAdditionalServices((rows) => rows.filter((r) => r.id !== additionalServices[additionalServices.length - 1]?.id))} className="text-xs text-rose-600 font-semibold">Remove Last</button>
+            </div>
+
+            {additionalServices.map((line, index) => {
+              const s = services.find((x) => x.id === line.serviceId);
+              const name = (s?.name || '').toLowerCase();
+              const cat = (s?.category || '').toLowerCase();
+              const ticket = name.includes('ticket') || name.includes('flight') || name.includes('reissue') || name.includes('refund') || name.includes('void') || name.includes('date change') || cat.includes('air ticket');
+              const due = Math.max(0, (Number(line.sellingPrice) || 0) - (Number(line.customerPaid) || 0));
+              const cost = line.hasVendor ? (Number(line.vendorCost) || 0) : (Number(line.accountCost) || 0);
+              const profit = (Number(line.sellingPrice) || 0) - cost;
+              return (
+                <div key={line.id} className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800">Service #{index + 2}</span>
+                    <button type="button" onClick={() => setAdditionalServices((rows) => rows.filter((r) => r.id !== line.id))} className="p-1 text-slate-400 hover:text-rose-600"><X className="w-4 h-4" /></button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <select value={line.serviceId} onChange={(e) => updateAdditionalService(line.id, { serviceId: e.target.value })} className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white">
+                      {services.filter((x) => x.enabled).sort((a,b) => a.order-b.order).map((x) => <option key={x.id} value={x.id}>{x.name} ({x.category})</option>)}
+                    </select>
+                    <input value={line.description} onChange={(e) => updateAdditionalService(line.id, { description: e.target.value })} placeholder="Service description" className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg" />
+                  </div>
+
+                  {ticket && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 rounded-lg bg-blue-50 border border-blue-100">
+                      <input required value={line.pnr} onChange={(e) => updateAdditionalService(line.id, { pnr: e.target.value.toUpperCase() })} placeholder="PNR *" className="px-2 py-1.5 text-xs border rounded-lg font-mono uppercase" />
+                      <input value={line.ticketNumber} onChange={(e) => updateAdditionalService(line.id, { ticketNumber: e.target.value })} placeholder="Ticket No." className="px-2 py-1.5 text-xs border rounded-lg" />
+                      <input value={line.flightNumber} onChange={(e) => updateAdditionalService(line.id, { flightNumber: e.target.value.toUpperCase() })} placeholder="Flight No." className="px-2 py-1.5 text-xs border rounded-lg font-mono uppercase" />
+                      <input value={line.route} onChange={(e) => updateAdditionalService(line.id, { route: e.target.value.toUpperCase() })} placeholder="DAC → DMM" className="px-2 py-1.5 text-xs border rounded-lg font-mono uppercase" />
+                      <input value={line.airline} onChange={(e) => updateAdditionalService(line.id, { airline: e.target.value })} placeholder="Airline" className="px-2 py-1.5 text-xs border rounded-lg" />
+                      <input type="date" value={line.departureDate} onChange={(e) => updateAdditionalService(line.id, { departureDate: e.target.value })} className="px-2 py-1.5 text-xs border rounded-lg" />
+                      <input type="time" value={line.departureTime} onChange={(e) => updateAdditionalService(line.id, { departureTime: e.target.value })} className="px-2 py-1.5 text-xs border rounded-lg" />
+                      <input value={line.passengerName} onChange={(e) => updateAdditionalService(line.id, { passengerName: e.target.value })} placeholder="Passenger Name" className="px-2 py-1.5 text-xs border rounded-lg" />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                    <div><label className="text-[11px] font-medium">Selling Price</label><input type="number" min="0" value={line.sellingPrice} onChange={(e) => updateAdditionalService(line.id, { sellingPrice: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full px-2 py-2 text-sm font-bold border rounded-lg" /></div>
+                    <div><label className="text-[11px] font-medium">Customer Paid</label><input type="number" min="0" value={line.customerPaid} onChange={(e) => updateAdditionalService(line.id, { customerPaid: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full px-2 py-2 text-sm font-bold border rounded-lg text-emerald-600" /></div>
+                    <div><label className="text-[11px] font-medium">Payment Method</label><select value={line.customerPaymentMethod} onChange={(e) => updateAdditionalService(line.id, { customerPaymentMethod: e.target.value as PaymentMethod })} className="w-full px-2 py-2 text-xs border rounded-lg"><option>Cash</option><option>bKash</option><option>Nagad</option><option>Rocket</option><option>Bank</option><option>Card</option><option>Other</option></select></div>
+                    <div className="px-2 py-2 rounded-lg bg-slate-50 border text-xs"><span className="text-slate-500">Due</span><div className={due > 0 ? 'font-bold text-rose-600' : 'font-bold text-emerald-600'}>{formatCurrency(due)}</div></div>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-xs">
+                    <label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={line.hasVendor} onChange={(e) => updateAdditionalService(line.id, { hasVendor: e.target.checked })} /> Vendor for this service</label>
+                    <span className="text-slate-500">Vendor can be different for every service.</span>
+                  </div>
+
+                  {line.hasVendor ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                      <input list="siam-vendor-list" value={line.vendorName} onChange={(e) => updateAdditionalService(line.id, { vendorName: e.target.value })} placeholder="Vendor / Agency" className="px-2 py-2 text-xs border rounded-lg" />
+                      <input type="number" min="0" value={line.vendorCost} onChange={(e) => updateAdditionalService(line.id, { vendorCost: e.target.value === '' ? '' : Number(e.target.value) })} placeholder="Vendor Cost" className="px-2 py-2 text-xs border rounded-lg" />
+                      <input type="number" min="0" value={line.vendorPaid} onChange={(e) => updateAdditionalService(line.id, { vendorPaid: e.target.value === '' ? '' : Number(e.target.value) })} placeholder="Vendor Paid" className="px-2 py-2 text-xs border rounded-lg" />
+                      <select value={line.vendorPaymentMethod} onChange={(e) => updateAdditionalService(line.id, { vendorPaymentMethod: e.target.value as PaymentMethod })} className="px-2 py-2 text-xs border rounded-lg"><option>Bank</option><option>bKash</option><option>Cash</option><option>Nagad</option><option>Rocket</option><option>Other</option></select>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200">
+                      <input type="number" min="0" value={line.accountCost} onChange={(e) => updateAdditionalService(line.id, { accountCost: e.target.value === '' ? '' : Number(e.target.value) })} placeholder="Cost from Account" className="px-2 py-2 text-xs border rounded-lg" />
+                      <select value={line.accountCostPaymentMethod} onChange={(e) => updateAdditionalService(line.id, { accountCostPaymentMethod: e.target.value as PaymentMethod })} className="px-2 py-2 text-xs border rounded-lg"><option>Cash</option><option>bKash</option><option>Nagad</option><option>Rocket</option><option>Bank</option><option>Card</option><option>Other</option></select>
+                    </div>
+                  )}
+                  <div className="text-[11px] font-semibold text-slate-600">Service Profit: <span className={profit >= 0 ? 'text-emerald-700' : 'text-rose-600'}>{formatCurrency(profit)}</span></div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <datalist id="siam-vendor-list">
+          {vendors.map((v) => <option key={v.id} value={v.name}>{v.company || v.mobile}</option>)}
+        </datalist>
+
+        <div className="flex justify-center">
+          <button type="button" onClick={() => setAdditionalServices((rows) => [...rows, createAdditionalServiceLine()])} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-blue-300 bg-blue-50 text-blue-700 text-xs font-bold hover:bg-blue-100">
+            <PlusCircle className="w-4 h-4" /> + Add Another Service
+          </button>
         </div>
 
         {/* 5. PROFIT PREVIEW BAR */}
