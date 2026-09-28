@@ -705,13 +705,6 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
           </div>}
         </section>
 
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3 sm:p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div><div className="text-xs font-extrabold text-slate-900">SIAM AIR TICKET VIEW / PRINT</div><div className="text-[11px] text-slate-600 mt-1">Fixed V8 ticket view and print format from the supplied calculator. Previous ticket templates are removed.</div></div>
-            <span className="rounded-full bg-emerald-600 text-white px-3 py-1.5 text-[10px] font-extrabold">SIAM AIR V8</span>
-          </div>
-        </section>
-
         <section><div className="text-xs font-extrabold text-slate-900 mb-3">E-TICKET INFORMATION</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {field('Airline PNR',airlinePnr,setAirlinePnr)}{field('Galileo / GDS PNR',gdsPnr,setGdsPnr)}
