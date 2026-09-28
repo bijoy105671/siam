@@ -447,7 +447,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const updateSector = (index: number, key: keyof Sector, value: string) =>
     setSectors(prev => prev.map((s, i) => i === index ? { ...s, [key]: value } : s));
 
-  const findFlightWithAssist = async () => {
+  const findFlightWithAssist = async (sectorIndex = 0) => {
     const flightNumber = flightAssistNumber.trim().toUpperCase();
     if (!flightNumber || !flightAssistDate) {
       setImportStatus('Enter Flight Number and Flight Date first.');
@@ -491,7 +491,7 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
         aircraft: String(f.aircraft || ''),
         terminal: String(f.terminal || '')
       };
-      setSectors(prev => prev.length === 1 && !Object.values(prev[0]).some(Boolean) ? [next] : [...prev, next]);
+      setSectors(prev => prev.map((sector, index) => index === sectorIndex ? next : sector));
       setImportStatus('Flight schedule found. Route, date/time, airline and available public schedule details were filled. PNR, ticket number, passenger and passport still need your input.');
     } catch (error) {
       setImportStatus(error instanceof Error ? error.message : 'Flight search failed. Please enter the flight details manually.');
@@ -705,42 +705,6 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
           </div>}
         </section>
 
-        <section className="rounded-2xl border border-violet-200 bg-violet-50/60 p-3 sm:p-4">
-          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-            <div>
-              <div className="text-xs font-extrabold text-slate-900">MANUAL + AI FLIGHT ASSIST</div>
-              <div className="text-[11px] text-slate-600 mt-1">Give Flight Number + Date. SIAM will search current public web schedule data and fill the flight details. Private PNR, passenger, passport and ticket number are never fetched.</div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full lg:max-w-3xl">
-              <input value={flightAssistNumber} onChange={e=>setFlightAssistNumber(e.target.value)} placeholder="Flight No. e.g. BS307" className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm" />
-              <input type="date" value={flightAssistDate} onChange={e=>setFlightAssistDate(e.target.value)} className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm" />
-              <input value={flightAssistAirline} onChange={e=>setFlightAssistAirline(e.target.value)} placeholder="Airline code/name (optional)" className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm" />
-            </div>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button onClick={findFlightWithAssist} disabled={flightAssistLoading} className="rounded-xl bg-violet-600 text-white px-4 py-2.5 text-xs font-bold disabled:opacity-60">
-              {flightAssistLoading ? 'Searching…' : '🔎 Find Flight & Auto-Fill'}
-            </button>
-            <span className="text-[10px] text-slate-500">Search is grounded on public sources; always review before printing.</span>
-          </div>
-          {importStatus && <div className="mt-3 rounded-xl border border-violet-200 bg-white p-3 text-xs">
-            <div className="font-extrabold text-slate-900">Flight Assist Status</div>
-            <div className="mt-1 text-slate-600">{importStatus}</div>
-          </div>}
-          {sectors.some(s => s.flightNo) && <div className="mt-3 rounded-xl border border-emerald-200 bg-white p-3">
-            <div className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-700">Auto-filled flight result</div>
-            <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              {(() => { const s = sectors.find(x => x.flightNo) || blankSector(); return <>
-                <div><span className="text-slate-400">Flight</span><div className="font-bold">{s.airline || '—'} {s.flightNo || '—'}</div></div>
-                <div><span className="text-slate-400">Route</span><div className="font-bold">{s.from || '—'} → {s.to || '—'}</div></div>
-                <div><span className="text-slate-400">Departure</span><div className="font-bold">{s.departureDate || '—'} {s.departureTime || ''}</div></div>
-                <div><span className="text-slate-400">Arrival</span><div className="font-bold">{s.arrivalDate || '—'} {s.arrivalTime || ''}</div></div>
-              </> })()}
-            </div>
-          </div>}
-          {flightAssistSources.length > 0 && <div className="mt-2 text-[10px] text-slate-500">Sources: {flightAssistSources.map((s,i)=><a key={i} href={s.url} target="_blank" rel="noreferrer" className="underline mr-2">{s.title || new URL(s.url).hostname}</a>)}</div>}
-        </section>
-
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3 sm:p-4">
           <div className="flex items-center justify-between gap-3">
             <div><div className="text-xs font-extrabold text-slate-900">SIAM AIR TICKET VIEW / PRINT</div><div className="text-[11px] text-slate-600 mt-1">Fixed V8 ticket view and print format from the supplied calculator. Previous ticket templates are removed.</div></div>
@@ -767,6 +731,19 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
         <section><div className="flex items-center justify-between mb-3"><div className="text-xs font-extrabold text-slate-900">ITINERARY / FLIGHT SECTORS</div><button onClick={()=>setSectors(p=>[...p,blankSector()])} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 text-white px-2.5 py-1.5 text-[11px] font-bold"><Plus className="w-3.5 h-3.5"/> Add Sector</button></div>
           <div className="space-y-3">{sectors.map((s,i)=><div key={i} className="rounded-2xl border border-slate-200 p-3 bg-slate-50/60">
             <div className="flex items-center justify-between mb-3"><span className="text-[11px] font-bold text-slate-600">SECTOR {i+1}</span>{sectors.length>1&&<button onClick={()=>setSectors(p=>p.filter((_,x)=>x!==i))} className="text-rose-500"><Trash2 className="w-4 h-4"/></button>}</div>
+            <div className="mb-3 rounded-xl border border-violet-200 bg-violet-50 p-3">
+              <div className="text-[10px] font-extrabold uppercase tracking-wide text-violet-800">FLIGHT SEARCH / AUTO-FILL — SECTOR {i+1}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+                <input value={flightAssistNumber} onChange={e=>setFlightAssistNumber(e.target.value)} placeholder="Flight No. e.g. BS307" className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm" />
+                <input type="date" value={flightAssistDate} onChange={e=>setFlightAssistDate(e.target.value)} className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm" />
+                <input value={flightAssistAirline} onChange={e=>setFlightAssistAirline(e.target.value)} placeholder="Airline code/name (optional)" className="rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm" />
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button onClick={()=>findFlightWithAssist(i)} disabled={flightAssistLoading} className="rounded-xl bg-violet-600 text-white px-4 py-2 text-xs font-bold disabled:opacity-60">{flightAssistLoading ? 'Searching…' : '🔎 Find & Auto-Fill This Sector'}</button>
+                {importStatus && <span className="text-[10px] text-slate-600">{importStatus}</span>}
+              </div>
+              {flightAssistSources.length > 0 && <div className="mt-2 text-[10px] text-slate-500">Sources: {flightAssistSources.map((src,k)=><a key={k} href={src.url} target="_blank" rel="noreferrer" className="underline mr-2">{src.title || new URL(src.url).hostname}</a>)}</div>}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {field('Airline / IATA Code',s.airline,v=>updateSector(i,'airline',v))}{field('Flight Number',s.flightNo,v=>updateSector(i,'flightNo',v))}
               {field('From',s.from,v=>updateSector(i,'from',v))}{field('To',s.to,v=>updateSector(i,'to',v))}
