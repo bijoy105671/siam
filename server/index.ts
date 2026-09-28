@@ -273,12 +273,23 @@ app.post('/api/flight-assist', auth, async (req, res) => {
     }
 
     const normalize = (v: string) => String(v || '').toUpperCase().replace(/[\s/-]+/g, '');
+    const arrivalMode = toHint === 'DAC' && fromHint !== 'DAC';
     const savedResult = await pool.query(`SELECT * FROM flight_directory
       WHERE UPPER(REPLACE(REPLACE(REPLACE(flight_no,' ',''),'-',''),'/',''))=$1
-      AND ($2='' OR from_airport=$2) AND ($3='' OR to_airport=$3)
-      ORDER BY updated_at DESC LIMIT 8`, [flightNumberInput, fromHint, toHint]);
+      AND (
+        (($2='' OR from_airport=$2) AND ($3='' OR to_airport=$3))
+        OR
+        ($4=true AND from_airport=$3 AND to_airport=$2)
+      )
+      ORDER BY updated_at DESC LIMIT 8`, [flightNumberInput, fromHint, toHint, arrivalMode]);
     if (savedResult.rows.length) {
-      const candidates = savedResult.rows.map((x:any) => ({
+      const candidates = savedResult.rows.map((x:any) => arrivalMode ? ({
+        airline: x.airline || '', airlineCode: x.airline_code || '', flightNo: x.flight_no,
+        from: x.to_airport, fromName: x.to_name || '', to: x.from_airport, toName: x.from_name || '',
+        departureDate: flightDate, arrivalDate: flightDate, departureTime: '', arrivalTime: x.departure_time || '',
+        duration: x.duration || '', aircraft: x.aircraft || '', terminal: x.terminal || '',
+        bookingClass: x.booking_class || '', baggage: x.baggage || '', status: 'SAVED IN SIAM AIR DATABASE'
+      }) : ({
         airline: x.airline || '', airlineCode: x.airline_code || '', flightNo: x.flight_no,
         from: x.from_airport, fromName: x.from_name || '', to: x.to_airport, toName: x.to_name || '',
         departureDate: flightDate, arrivalDate: flightDate, departureTime: x.departure_time || '',
