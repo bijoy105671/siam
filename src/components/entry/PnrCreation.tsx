@@ -118,7 +118,7 @@ const parseImportedText = (raw: string) => {
     const s = String(v || '').trim().replace(/,/g, '');
     if (!s) return '';
     const compact = s.match(/^(\d{1,2})([A-Z]{3})(\d{2,4})$/i);
-    if (compact) return normalizeDateInput(\`\${compact[1]} \${compact[2]} \${compact[3]}\`);
+    if (compact) return normalizeDateInput(`\${compact[1]} \${compact[2]} \${compact[3]}`);
     return normalizeDateInput(s);
   };
   const datesIn = (input: string) => {
