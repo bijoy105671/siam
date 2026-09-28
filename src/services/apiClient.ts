@@ -61,6 +61,10 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
 }
 
 export const api = {
+  flightDirectory: (flightNo = '', from = '', to = '') =>
+    apiRequest<unknown[]>(`/api/flight-directory?flightNo=${encodeURIComponent(flightNo)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+  saveFlightDirectory: (input: Record<string, any>) =>
+    apiRequest<{ flight: unknown }>('/api/flight-directory', { method: 'POST', body: JSON.stringify(input) }),
   health: () => apiRequest<{ ok: boolean }>('/api/health'),
   me: () => apiRequest<{ user: unknown }>('/api/auth/me'),
   login: (username: string, password: string) =>
