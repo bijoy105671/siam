@@ -122,6 +122,10 @@ export const INITIAL_SERVICES: ServiceItem[] = [
   { id: 'srv_30', name: 'Courier / Document Delivery', category: 'Digital', enabled: true, order: 30 },
   { id: 'srv_31', name: 'Government / Application Service', category: 'Digital', enabled: true, order: 31 },
   { id: 'srv_32', name: 'Other Service', category: 'Other', enabled: true, order: 32 },
+  { id: 'srv_33', name: 'Flight Schedule / Route Check', category: 'Air Ticket', enabled: true, order: 33 },
+  { id: 'srv_34', name: 'Airline Flight Information', category: 'Air Ticket', enabled: true, order: 34 },
+  { id: 'srv_35', name: 'Ticket / PNR Import', category: 'Air Ticket', enabled: true, order: 35 },
+  { id: 'srv_36', name: 'Flight Time / Airport Check', category: 'Air Ticket', enabled: true, order: 36 },
 ];
 
 export const INITIAL_EXPENSE_CATEGORIES: ExpenseCategory[] = [
