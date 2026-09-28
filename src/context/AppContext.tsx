@@ -341,6 +341,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => { cancelled = true; };
   }, [currentUser?.id]);
 
+  // Restore only a live server session. Closing the browser removes the session cookie,
+  // while a normal page refresh keeps the active session.
+  useEffect(() => {
+    if (!USE_SERVER_API) return;
+    let cancelled = false;
+    api.me().then(({ user }) => {
+      if (cancelled || !user) return;
+      const mapped: User = {
+        id: String(user.id),
+        username: String(user.username),
+        password: '',
+        fullName: String(user.fullName ?? user.full_name ?? user.username),
+        role: user.role,
+        isActive: user.is_active !== false,
+        createdAt: user.created_at ?? new Date().toISOString(),
+        permissions: user.permissions || {},
+      };
+      setData((prev: any) => ({
+        ...prev,
+        users: [...prev.users.filter((u: User) => u.id !== mapped.id), mapped],
+        currentUserId: mapped.id,
+      }));
+    }).catch(() => {
+      if (!cancelled) setData((prev: any) => ({ ...prev, currentUserId: undefined }));
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   // Keep all server-backed data fresh so balances and ledgers never depend on stale login state.
   useEffect(() => {
     if (!USE_SERVER_API || !currentUser) return;
