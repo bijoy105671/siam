@@ -471,14 +471,14 @@ app.get('/api/dashboard', auth, async (_req, res) => {
   const [sales, expenses, customerDue, vendorDue, todaySales, todayPayments, todayVendorPayments, todayExpenses] = await Promise.all([
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(customer_paid),0) total_received,
-                       COALESCE(SUM(selling_price - vendor_cost),0) signed_gross_profit
+                       COALESCE(SUM(selling_price - vendor_cost - account_cost),0) signed_gross_profit
                 FROM transactions
                 WHERE deleted_at IS NULL AND status <> $1`, ['CANCELLED']),
     pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL'),
     pool.query('SELECT COALESCE(SUM(customer_due),0) + COALESCE((SELECT SUM(opening_due) FROM customers),0) customer_receivable FROM transactions WHERE deleted_at IS NULL AND status <> $1', ['CANCELLED']),
     pool.query('SELECT COALESCE(SUM(vendor_due),0) + COALESCE((SELECT SUM(opening_payable) FROM vendors),0) vendor_payable FROM transactions WHERE deleted_at IS NULL AND status <> $1', ['CANCELLED']),
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
-                       COALESCE(SUM(selling_price - vendor_cost),0) signed_gross_profit
+                       COALESCE(SUM(selling_price - vendor_cost - account_cost),0) signed_gross_profit
                 FROM transactions
                 WHERE deleted_at IS NULL AND status <> $1 AND date = CURRENT_DATE`, ['CANCELLED']),
     pool.query("SELECT COALESCE(SUM(p.amount),0) total_received FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND t.status <> 'CANCELLED' AND p.payment_type='customer' AND p.reversed_at IS NULL AND paid_at::date = CURRENT_DATE"),
@@ -1003,7 +1003,9 @@ app.get('/api/transactions', auth, async (req, res) => {
   const { rows } = await pool.query(`
     SELECT t.*, c.name customer_name, c.mobile customer_mobile, s.name service_name, v.name vendor_name,
       (SELECT p.payment_method FROM payments p WHERE p.transaction_id=t.id AND p.payment_type='customer' AND p.reversed_at IS NULL ORDER BY p.paid_at DESC, p.id DESC LIMIT 1) AS customer_payment_method,
-      (SELECT p.payment_method FROM payments p WHERE p.transaction_id=t.id AND p.payment_type='vendor' AND p.reversed_at IS NULL ORDER BY p.paid_at DESC, p.id DESC LIMIT 1) AS vendor_payment_method
+      (SELECT p.payment_method FROM payments p WHERE p.transaction_id=t.id AND p.payment_type='vendor' AND p.reversed_at IS NULL ORDER BY p.paid_at DESC, p.id DESC LIMIT 1) AS vendor_payment_method,
+      COALESCE((SELECT -SUM(a.amount) FROM account_entries a WHERE a.source_id=t.id::text AND a.source_type='service_cost' AND a.reversed_at IS NULL),0) AS account_cost,
+      (SELECT a.account_name FROM account_entries a WHERE a.source_id=t.id::text AND a.source_type='service_cost' AND a.reversed_at IS NULL ORDER BY a.occurred_at DESC LIMIT 1) AS account_cost_payment_method
     FROM transactions t
     JOIN customers c ON c.id=t.customer_id
     LEFT JOIN services s ON s.id=t.service_id
@@ -1392,7 +1394,7 @@ app.post('/api/entries', auth, async (req, res) => {
     const vendorDue = vendorCost - vendorPaid;
     const status = due === 0 ? 'PAID' : customerPaid > 0 ? 'PARTIAL' : 'DUE';
     const grossProfit = sellingPrice - vendorCost - accountCost;
-    const tx = (await client.query(`INSERT INTO transactions (invoice_number,date,time,created_by,customer_id,service_id,description,flight_details,selling_price,customer_paid,customer_due,vendor_id,vendor_cost,vendor_paid,vendor_due,gross_profit,reminder_date,reminder_time,reminder_status,reminder_note,status,notes) VALUES ($1,COALESCE($2::date,CURRENT_DATE),COALESCE($3::time,CURRENT_TIME),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`, [invoice, body.date || null, body.time || null, req.session.userId, customerId, serviceId, body.description || null, body.flightDetails ? JSON.stringify(body.flightDetails) : null, sellingPrice, customerPaid, due, vendorId, vendorCost, vendorPaid, vendorDue, grossProfit, body.reminderDate || null, body.reminderTime || null, body.reminderStatus || null, body.reminderNote || null, status, body.notes || null])).rows[0];
+    const tx = (await client.query(`INSERT INTO transactions (invoice_number,date,time,created_by,customer_id,service_id,description,flight_details,selling_price,customer_paid,customer_due,vendor_id,vendor_cost,vendor_paid,vendor_due,account_cost,account_cost_payment_method,gross_profit,reminder_date,reminder_time,reminder_status,reminder_note,status,notes) VALUES ($1,COALESCE($2::date,CURRENT_DATE),COALESCE($3::time,CURRENT_TIME),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`, [invoice, body.date || null, body.time || null, req.session.userId, customerId, serviceId, body.description || null, body.flightDetails ? JSON.stringify(body.flightDetails) : null, sellingPrice, customerPaid, due, vendorId, vendorCost, vendorPaid, vendorDue, accountCost, accountCost > 0 ? accountCostPaymentMethod : null, grossProfit, body.reminderDate || null, body.reminderTime || null, body.reminderStatus || null, body.reminderNote || null, status, body.notes || null])).rows[0];
 
     if (accountCost > 0) {
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [accountCostPaymentMethod]);
