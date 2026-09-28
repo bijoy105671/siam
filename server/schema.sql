@@ -236,3 +236,21 @@ FROM (
   GROUP BY source_id
 ) x
 WHERE t.id::text=x.source_id AND COALESCE(t.account_cost,0)=0;
+
+
+CREATE TABLE IF NOT EXISTS appointment_reminders (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id uuid REFERENCES customers(id) ON DELETE SET NULL,
+  customer_name text NOT NULL,
+  customer_mobile text,
+  customer_email text,
+  title text NOT NULL,
+  appointment_date date NOT NULL,
+  appointment_time time NOT NULL,
+  note text,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','completed')),
+  created_by uuid REFERENCES users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_appointment_reminders_date ON appointment_reminders(appointment_date, appointment_time);
