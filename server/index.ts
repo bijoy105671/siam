@@ -196,6 +196,66 @@ app.post('/api/ticket-import/pdf', auth, async (req, res) => {
   }
 });
 
+app.post('/api/ticket-import/pdf-ai', auth, async (req, res) => {
+  try {
+    const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
+    if (!apiKey) return res.status(503).json({ error: 'AI importer is not configured' });
+    const dataBase64 = String(req.body?.dataBase64 || '').trim();
+    if (!dataBase64) return res.status(400).json({ error: 'PDF data is required' });
+    if (dataBase64.length > 11_000_000) return res.status(413).json({ error: 'PDF is too large. Please use a PDF under about 8 MB.' });
+    const buffer = Buffer.from(dataBase64, 'base64');
+    if (buffer.length < 5 || buffer.subarray(0, 5).toString() !== '%PDF-') {
+      return res.status(400).json({ error: 'The uploaded file is not a valid PDF.' });
+    }
+
+    const prompt = `You are the SIAM AIR & DIGITAL SERVICE airline e-ticket extraction engine.
+Read the attached PDF visually and extract ONLY information explicitly visible in the document. This includes scanned/image-only PDFs, tables and multi-passenger tickets.
+Never guess, infer, autocomplete or invent values. If a field is not visible, return an empty string.
+Return JSON only in this exact shape:
+{"airlinePnr":"","gdsPnr":"","ticketNumber":"","issueDate":"","passenger":"","passport":"","airline":"","passengers":[{"name":"","passport":"","ticketNumber":""}],"sectors":[{"airline":"","flightNo":"","from":"","to":"","departureDate":"","departureTime":"","arrivalDate":"","arrivalTime":"","bookingClass":"","seat":"","baggage":"","duration":"","aircraft":"","terminal":""}]}
+Rules:
+- Preserve passenger and flight sector document order.
+- Match each passenger ticket number only when the document clearly associates it with that passenger. Never reuse a ticket number.
+- Keep airline IATA codes and airport IATA codes exactly as shown.
+- Normalize dates to YYYY-MM-DD only when unambiguous.
+- Normalize flight numbers like "BS 307" to "BS307".
+- Include every visible sector, up to 12.
+- Return [] for missing arrays and empty strings for unknown fields.`;
+
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=' + encodeURIComponent(apiKey), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: 'application/pdf', data: dataBase64 } }
+          ]
+        }],
+        generationConfig: { responseMimeType: 'application/json', temperature: 0 }
+      })
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      return res.status(502).json({ error: 'AI PDF reader request failed: ' + body.slice(0, 240) });
+    }
+    const payload = await response.json() as any;
+    const output = payload?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join('').trim() || '';
+    if (!output) return res.status(422).json({ error: 'The AI reader returned no ticket data.' });
+    let data: any;
+    try { data = JSON.parse(output); } catch {
+      const cleaned = output.replace(/^\`\`\`json\s*/i, '').replace(/\s*\`\`\`$/i, '').trim();
+      data = JSON.parse(cleaned);
+    }
+    if (!data || typeof data !== 'object') return res.status(422).json({ error: 'The AI reader returned invalid ticket data.' });
+    res.json({ data });
+  } catch (error) {
+    console.error('Ticket PDF AI extraction failed:', error);
+    res.status(422).json({ error: error instanceof Error ? error.message : 'Unable to read this PDF with the AI ticket reader.' });
+  }
+});
+
 app.post('/api/ticket-import/ai', auth, async (req, res) => {
   try {
     const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
