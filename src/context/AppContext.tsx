@@ -711,6 +711,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           password: '',
           fullName: String(u.full_name ?? u.fullName ?? u.username),
           role: u.role,
+          permissions: u.permissions || {
+            canCreateTransaction: true, canEditTransaction: true, canDeleteTransaction: true,
+            canManageExpenses: true, canManageTransfers: true, canManageSettings: true,
+            canViewAudit: true, canBackupRestore: true, canManageUsers: true,
+          },
           isActive: u.is_active !== false,
           createdAt: u.created_at ?? new Date().toISOString(),
         };
