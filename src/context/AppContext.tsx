@@ -336,14 +336,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       Cash: Number(raw.cash || 0), bKash: Number(raw.bkash || 0), Nagad: Number(raw.nagad || 0),
       Rocket: Number(raw.rocket || 0), Bank: Number(raw.bank || 0), Card: Number(raw.card || 0), Other: Number(raw.other || 0),
     });
-    Promise.all([api.loanAdvances(), apiRequestForLoanAdjustments(), api.accountBalances()])
-      .then(([loanRows, adjustmentRows, balances]) => {
+    Promise.all([api.loanAdvances(), apiRequestForLoanAdjustments(), api.accountBalances(), api.appointments()])
+      .then(([loanRows, adjustmentRows, balances, appointmentRows]) => {
         if (cancelled) return;
         setData((prev: any) => ({
           ...prev,
           loanAdvances: (loanRows as any[]).map(mapServerLoanAdvance),
           appointments: (appointmentRows as any[]).map((row) => ({ id: String(row.id), customerId: row.customer_id ? String(row.customer_id) : undefined, customerName: String(row.customer_name || ''), customerMobile: row.customer_mobile || undefined, customerEmail: row.customer_email || undefined, title: String(row.title || 'Appointment'), appointmentDate: String(row.appointment_date || ''), appointmentTime: String(row.appointment_time || '00:00'), note: row.note || undefined, status: row.status === 'completed' ? 'completed' : 'pending', createdBy: String(row.created_by_name || 'Staff'), createdAt: String(row.created_at || new Date().toISOString()), updatedAt: row.updated_at || undefined } as AppointmentReminder)),
           loanAdvanceAdjustments: (adjustmentRows as any[]).map(mapServerLoanAdjustment),
+          appointments: (appointmentRows as any[]).map((row) => ({ id: String(row.id), customerId: row.customer_id ? String(row.customer_id) : undefined, customerName: String(row.customer_name || ''), customerMobile: row.customer_mobile || undefined, customerEmail: row.customer_email || undefined, title: String(row.title || 'Appointment'), appointmentDate: String(row.appointment_date || ''), appointmentTime: String(row.appointment_time || '00:00'), note: row.note || undefined, status: row.status === 'completed' ? 'completed' : 'pending', createdBy: String(row.created_by_name || 'Staff'), createdAt: String(row.created_at || new Date().toISOString()), updatedAt: row.updated_at || undefined } as AppointmentReminder)),
         }));
         setServerAccountBalances(mapBalances(balances.balances || {}));
       })
@@ -484,6 +485,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           partialPayments: mappedPayments,
           loanAdvances: (loanRows as any[]).map(mapServerLoanAdvance),
           loanAdvanceAdjustments: (adjustmentRows as any[]).map(mapServerLoanAdjustment),
+          appointments: (appointmentRows as any[]).map((row) => ({ id: String(row.id), customerId: row.customer_id ? String(row.customer_id) : undefined, customerName: String(row.customer_name || ''), customerMobile: row.customer_mobile || undefined, customerEmail: row.customer_email || undefined, title: String(row.title || 'Appointment'), appointmentDate: String(row.appointment_date || ''), appointmentTime: String(row.appointment_time || '00:00'), note: row.note || undefined, status: row.status === 'completed' ? 'completed' : 'pending', createdBy: String(row.created_by_name || 'Staff'), createdAt: String(row.created_at || new Date().toISOString()), updatedAt: row.updated_at || undefined } as AppointmentReminder)),
         }));
       } catch (error) {
         console.error('Live server refresh failed:', error);
