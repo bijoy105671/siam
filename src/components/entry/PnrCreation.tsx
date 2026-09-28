@@ -35,20 +35,51 @@ const detectValue = (text: string, patterns: RegExp[]) => {
 };
 
 const parseImportedText = (raw: string) => {
-  const text = raw.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\\s+/g, ' ').trim();
-  const upper = text.toUpperCase();
-  const airlinePnr = detectValue(text, [/(?:AIRLINE\\s*)?PNR\\s*[:#-]?\\s*([A-Z0-9]{5,8})/i, /BOOKING\\s*(?:REFERENCE|REF)\\s*[:#-]?\\s*([A-Z0-9]{5,8})/i]);
-  const ticketNumber = detectValue(text, [/TICKET(?:\\s*NUMBER|\\s*NO)?\\s*[:#-]?\\s*([0-9]{10,14})/i, /\\b(\d{3}-?\d{10})\\b/]);
-  const passport = detectValue(text, [/PASSPORT(?:\\s*NUMBER|\\s*NO)?\\s*[:#-]?\\s*([A-Z0-9]{6,12})/i]);
-  const passenger = detectValue(text, [/(?:PASSENGER|PAX)(?:\\s*NAME)?\\s*[:#-]?\\s*([A-Z][A-Z .'-]{3,})/i, /NAME\\s*[:#-]?\\s*([A-Z][A-Z .'-]{3,})/i]);
-  const gdsPnr = detectValue(text, [/(?:GDS|GALILEO|AMADEUS|SABRE|TRAVELPORT)\\s*PNR\\s*[:#-]?\\s*([A-Z0-9]{5,8})/i]);
-  const airline = detectValue(text, [/(?:AIRLINE|CARRIER)\\s*[:#-]?\\s*([A-Z][A-Z &-]{2,})/i]);
-  const flightNo = detectValue(text, [/FLIGHT(?:\\s*NUMBER|\\s*NO)?\\s*[:#-]?\\s*([A-Z0-9]{2,8})/i]);
-  const date = detectValue(text, [/(?:DEPARTURE|DEPART|DATE)\\s*(?:DATE)?\\s*[:#-]?\\s*(\d{1,2}[\\/-]\d{1,2}[\\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i]);
-  const time = detectValue(text, [/(?:DEPARTURE|DEPART)\\s*TIME\\s*[:#-]?\\s*(\d{1,2}:\d{2})/i]);
+  const text = raw
+    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')
+    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\\s+/g, ' ')
+    .trim();
+  const airlinePnr = detectValue(text, [
+    /(?:AIRLINE\\s*)?PNR\\s*[:#-]?\\s*([A-Z0-9]{5,8})/i,
+    /BOOKING\\s*(?:REFERENCE|REF)\\s*[:#-]?\\s*([A-Z0-9]{5,8})/i,
+    /RECORD\\s*LOCATOR\\s*[:#-]?\\s*([A-Z0-9]{5,8})/i
+  ]);
+  const ticketNumber = detectValue(text, [
+    /TICKET(?:\\s*(?:NUMBER|NO|NUM))?\\s*[:#-]?\\s*([0-9]{10,14})/i,
+    /\\b(\\d{3}-?\\d{10})\\b/
+  ]);
+  const passport = detectValue(text, [/PASSPORT(?:\\s*(?:NUMBER|NO))?\\s*[:#-]?\\s*([A-Z0-9]{6,12})/i]);
+  const passenger = detectValue(text, [
+    /(?:PASSENGER|PAX)(?:\\s*(?:NAME|NAME/S))?\\s*[:#-]?\\s*([A-Z][A-Z .,'/-]{3,})/i,
+    /(?:TRAVELER|TRAVELLER)\\s*(?:NAME)?\\s*[:#-]?\\s*([A-Z][A-Z .,'/-]{3,})/i
+  ]);
+  const gdsPnr = detectValue(text, [
+    /(?:GDS|GALILEO|AMADEUS|SABRE|TRAVELPORT)(?:\\s*)PNR\\s*[:#-]?\\s*([A-Z0-9]{5,8})/i
+  ]);
+  const airline = detectValue(text, [/(?:AIRLINE|CARRIER)\\s*[:#-]?\\s*([A-Z][A-Z &.-]{2,})/i]);
+  const flightNo = detectValue(text, [
+    /FLIGHT(?:\\s*(?:NUMBER|NO))?\\s*[:#-]?\\s*([A-Z0-9]{2,8})/i,
+    /\\b([A-Z]{2}\\s*\\d{2,4})\\b/
+  ]);
+  const date = detectValue(text, [
+    /(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\\s*(?:DATE)?\\s*[:#-]?\\s*(\\d{1,2}[\\/-]\\d{1,2}[\\/-]\\d{2,4}|\\d{4}-\\d{2}-\\d{2})/i
+  ]);
+  const time = detectValue(text, [/(?:DEPARTURE|DEPART)\\s*TIME\\s*[:#-]?\\s*(\\d{1,2}:\\d{2})/i]);
   const route = text.match(/\\b([A-Z]{3})\\s*(?:-|→|TO)\\s*([A-Z]{3})\\b/i);
-  const sector: Sector = { ...blankSector(), airline, flightNo, from: route?.[1]?.toUpperCase() || '', to: route?.[2]?.toUpperCase() || '', departureDate: date, departureTime: time };
-  return { airlinePnr, gdsPnr, ticketNumber, passenger, passport, sectors: [sector], rawText: upper.slice(0, 500) };
+  const sector: Sector = {
+    ...blankSector(),
+    airline,
+    flightNo,
+    from: route?.[1]?.toUpperCase() || '',
+    to: route?.[2]?.toUpperCase() || '',
+    departureDate: date,
+    departureTime: time
+  };
+  return { airlinePnr, gdsPnr, ticketNumber, passenger, passport, sectors: [sector], rawText: text.slice(0, 20000) };
 };
 
 export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
@@ -94,8 +125,36 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const importFile = async (file: File) => {
     setImportStatus('Reading ticket file…');
     try {
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        setImportStatus('Extracting text from PDF…');
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
+        }
+        const dataBase64 = btoa(binary);
+        const response = await fetch('/api/ticket-import/pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ dataBase64, filename: file.name })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'PDF extraction failed');
+        const parsed = parseImportedText(String(result.text || ''));
+        if (parsed.airlinePnr) setAirlinePnr(parsed.airlinePnr);
+        if (parsed.gdsPnr) setGdsPnr(parsed.gdsPnr);
+        if (parsed.ticketNumber) setTicketNumber(parsed.ticketNumber);
+        if (parsed.passenger) setPassenger(parsed.passenger);
+        if (parsed.passport) setPassport(parsed.passport);
+        if (parsed.sectors[0]) setSectors(parsed.sectors);
+        setImportStatus('PDF data extracted successfully. Please review all fields before generating the e-ticket.');
+        return;
+      }
       if (file.type.startsWith('image/')) {
-        setImportStatus('Image loaded. Automatic OCR is not available in this browser-only fallback; ticket fields remain editable for review.');
+        setImportStatus('Image uploaded. This image-only ticket needs OCR to extract text automatically; the file is available for review.');
         const rd = new FileReader();
         rd.onload = () => setLogo(String(rd.result || ''));
         rd.readAsDataURL(file);
@@ -109,9 +168,9 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
       if (parsed.passenger) setPassenger(parsed.passenger);
       if (parsed.passport) setPassport(parsed.passport);
       if (parsed.sectors[0]) setSectors(parsed.sectors);
-      setImportStatus('Automatic fields detected from the uploaded text/HTML/PDF content. Please review before generating.');
-    } catch {
-      setImportStatus('Could not read this file automatically. You can enter the ticket information manually.');
+      setImportStatus('Ticket data detected. Please review before generating.');
+    } catch (error) {
+      setImportStatus(error instanceof Error ? error.message : 'Could not read this ticket automatically. Please enter the information manually.');
     }
   };
 
