@@ -7,6 +7,7 @@ import { Pool, PoolClient } from 'pg';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { PDFParse } from 'pdf-parse';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -104,7 +105,7 @@ const sendLoginOtp = async (otp: string) => {
 const PgSession = connectPgSimple(session);
 
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '12mb' }));
 app.use(session({
   store: new PgSession({ pool, tableName: 'user_sessions', createTableIfMissing: true }),
   secret: process.env.SESSION_SECRET,
@@ -157,6 +158,30 @@ const adminOnly = async (req: express.Request, res: express.Response, next: expr
     res.status(500).json({ error: e instanceof Error ? e.message : 'Authorization check failed' });
   }
 };
+
+app.post('/api/ticket-import/pdf', auth, async (req, res) => {
+  try {
+    const dataBase64 = String(req.body?.dataBase64 || '').trim();
+    if (!dataBase64) return res.status(400).json({ error: 'PDF data is required' });
+    if (dataBase64.length > 11_000_000) return res.status(413).json({ error: 'PDF is too large. Please use a PDF under about 8 MB.' });
+    const buffer = Buffer.from(dataBase64, 'base64');
+    if (buffer.length < 5 || buffer.subarray(0, 5).toString() !== '%PDF-') {
+      return res.status(400).json({ error: 'The uploaded file is not a valid PDF.' });
+    }
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const result = await parser.getText();
+      const text = String(result.text || '').trim();
+      if (!text) return res.status(422).json({ error: 'This PDF contains no selectable text. It may be a scanned/image-only PDF and needs OCR.' });
+      res.json({ text, pages: result.total || undefined });
+    } finally {
+      await parser.destroy();
+    }
+  } catch (error) {
+    console.error('Ticket PDF extraction failed:', error);
+    res.status(422).json({ error: error instanceof Error ? error.message : 'Unable to extract text from this PDF.' });
+  }
+});
 
 app.get('/api/health', async (_req, res) => {
   try {
