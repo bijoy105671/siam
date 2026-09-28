@@ -927,8 +927,21 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
                 </div>
               </div>
             ) : (
-              <div className="py-6 text-center text-slate-400 text-xs">
-                Direct in-house digital service (No third party vendor cost)
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+                <div className="text-xs font-semibold text-slate-700">In-house / Account-funded Cost (No Vendor)</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Cost from Account (৳)</label>
+                    <input type="number" min="0" value={accountCost} onChange={(e) => setAccountCost(e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-3 py-2 text-sm font-semibold border border-slate-300 rounded-lg" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Account</label>
+                    <select value={accountCostPaymentMethod} onChange={(e) => setAccountCostPaymentMethod(e.target.value as PaymentMethod)} className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg">
+                      <option value="Cash">Cash</option><option value="bKash">bKash</option><option value="Nagad">Nagad</option><option value="Rocket">Rocket</option><option value="Bank">Bank</option><option value="Card">Card</option><option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="text-[11px] text-slate-500">This amount reduces the selected account and is included in Profit, but creates no Vendor Ledger entry.</div>
               </div>
             )}
           </div>
