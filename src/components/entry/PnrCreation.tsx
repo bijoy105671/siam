@@ -112,7 +112,20 @@ const parseImportedText = (raw: string) => {
   const tripDates=[...text.matchAll(/\b(\d{1,2}\s+[A-Z]{3},?\s+\d{2,4})\b/gi)].map(m=>normalizeDateInput(m[1]));
   const arrivalTime=detectValue(text,[/\b(?:Arrival|Arrives)\s*:\s*[^0-9]{0,30}(\d{1,2}:\d{2})/i]);
   const baggage=detectValue(text,[/(?:ADT|CHD|INF)[^\n]{0,30}?→\s*(\d+(?:\.\d+)?)\s*(?:Kg|KG)/i,/(\d+(?:\.\d+)?)\s*(?:Kg|KG)\b/i]);
-  const cabin=detectValue(text,[/\b(Economy|Business|First|Premium Economy)\b/i]);
+  const cabin=detectValue(text,[/\b(Economy|Business|First|Premium Economy)\b/i]);  // Triplover-style PDFs put the carrier name and flight number on one line,
+  // while departure/arrival date+time are on separate lines.
+  const itineraryCarrier = airline || (text.match(/\b(US[- ]?BANG[A-Z]*\s+AIRLINES|BIMAN\s+BANGLADESH\s+AIRLINES|AIR\s+ARABIA|EMIRATES|QATAR\s+AIRWAYS|SAUDIA|OMAN\s+AIR|GULF\s+AIR|ETIHAD\s+AIRWAYS)\b/i)?.[1] || '');
+  const itineraryFlight = tripFlight || detectValue(text,[/\bFlight\s+No\s*[-:#]?\s*(\d{2,4})/i]);
+  const itineraryRows = lines.filter(l=>/\b(?:Departs|Departure|Arrival|Arrives)\s*:/i.test(l));
+  const depRow = itineraryRows.find(l=>/\b(?:Departs|Departure)\s*:/i.test(l)) || '';
+  const arrRow = itineraryRows.find(l=>/\b(?:Arrival|Arrives)\s*:/i.test(l)) || '';
+  const depDateFromRow = extractDateTokens(depRow)[0] || '';
+  const arrDateFromRow = extractDateTokens(arrRow)[0] || '';
+  const depTimeFromRow = depRow.match(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/)?.[0] || '';
+  const arrTimeFromRow = arrRow.match(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/)?.[0] || '';
+  const routeFromRows = depRow.match(/\(([A-Z]{3})\)/)?.[1] || tripRoute[0] || '';
+  const routeToRows = arrRow.match(/\(([A-Z]{3})\)/)?.[1] || tripRoute[1] || '';
+
   // Parse itinerary rows flexibly: GDS PDF extraction does not preserve table columns.
   const sectors:Sector[]=[];
   const addSector=(s:Sector)=>{
@@ -163,9 +176,21 @@ const parseImportedText = (raw: string) => {
   while((inlineMatch=inlinePattern.exec(text))&&sectors.length<12){
     addSector({...blankSector(),airline:normalizeAirlineCode(inlineMatch[1])||inlineMatch[1].toUpperCase(),flightNo:(inlineMatch[1]+inlineMatch[2]).toUpperCase(),from:inlineMatch[3].toUpperCase(),to:inlineMatch[4].toUpperCase(),departureDate:normalizeDateInput(date),departureTime:time,bookingClass:cabin||''});
   }
-  if(!sectors.length && tripRoute[0] && tripRoute[1] && tripFlight){
-    const inferredCode=normalizeAirlineCode(tripAirline)||inferAirlineCode(tripAirline)||inferAirlineCode(flightNo)||'';
-    addSector({...blankSector(),airline:inferredCode||tripAirline,flightNo:(inferredCode||inferAirlineCode(flightNo)||'')+tripFlight,from:tripRoute[0],to:tripRoute[1],departureDate:tripDates[0]||normalizeDateInput(date),departureTime:tripTimes[0]||time,arrivalDate:tripDates[1]||tripDates[0]||'',arrivalTime,baggage,bookingClass:cabin||''});
+  if(!sectors.length && (routeFromRows||tripRoute[0]) && (routeToRows||tripRoute[1]) && itineraryFlight){
+    const inferredCode=normalizeAirlineCode(itineraryCarrier)||inferAirlineCode(itineraryCarrier)||inferAirlineCode(flightNo)||'';
+    const code=inferredCode||itineraryCarrier.toUpperCase().slice(0,3);
+    addSector({...blankSector(),
+      airline:code,
+      flightNo:code+itineraryFlight,
+      from:routeFromRows||tripRoute[0],
+      to:routeToRows||tripRoute[1],
+      departureDate:depDateFromRow||tripDates[0]||normalizeDateInput(date),
+      departureTime:depTimeFromRow||tripTimes[0]||time,
+      arrivalDate:arrDateFromRow||tripDates[1]||tripDates[0]||'',
+      arrivalTime:arrTimeFromRow||arrivalTime,
+      baggage,
+      bookingClass:cabin||''
+    });
   }
   if(!sectors.length){
     const flights=[...text.matchAll(/\b([A-Z0-9]{2,3})\s*-?\s*(\d{2,4})\b/g)];
@@ -177,7 +202,8 @@ const parseImportedText = (raw: string) => {
     }
   }
   const firstAirline=sectors[0]?.airline||airline||inferAirlineCode(flightNo);
-  const normalizedSectors=sectors.map(s=>({...s,departureDate:normalizeDateInput(s.departureDate),arrivalDate:normalizeDateInput(s.arrivalDate),bookingClass:s.bookingClass||cabin||'',baggage:s.baggage||baggage}));\n  return {airlinePnr,gdsPnr,ticketNumber,issueDate:normalizeDateInput(issueDate),passenger,passport,sectors:normalizedSectors.length?normalizedSectors:[{...blankSector(),airline:firstAirline,flightNo,from:route[0],to:route[1],departureDate:normalizeDateInput(date),departureTime:time}],rawText:text.slice(0,30000)};
+  const normalizedSectors=sectors.map(s=>({...s,departureDate:normalizeDateInput(s.departureDate),arrivalDate:normalizeDateInput(s.arrivalDate),bookingClass:s.bookingClass||cabin||'',baggage:s.baggage||baggage}));
+  return {airlinePnr,gdsPnr,ticketNumber,issueDate:normalizeDateInput(issueDate),passenger,passport,sectors:normalizedSectors.length?normalizedSectors:[{...blankSector(),airline:firstAirline,flightNo,from:route[0],to:route[1],departureDate:normalizeDateInput(date),departureTime:time}],rawText:text.slice(0,30000)};
 };
 
 export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
