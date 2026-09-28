@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createWorker } from 'tesseract.js';
 import { ArrowLeft, Printer, Plus, Ticket, Trash2, Upload } from 'lucide-react';
 import siamAirLogo from '../../assets/images/siam_air_logo_1790325286013.jpg';
@@ -419,7 +419,6 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
   const [customFooter, setCustomFooter] = useState('Ticket information only — no accounting connection.');
   const [importStatus, setImportStatus] = useState('');
   const [flightOptions, setFlightOptions] = useState<Record<number, any[]>>({});
-  const [flightOptionSearch, setFlightOptionSearch] = useState<Record<number, string>>({});
   const [flightAssistLoading, setFlightAssistLoading] = useState<Record<number, boolean>>({});
   const [flightAssistStatus, setFlightAssistStatus] = useState<Record<number, string>>({});
   const [flightAssistSources, setFlightAssistSources] = useState<Record<number, {title:string;url:string}[]>>({});
@@ -718,15 +717,24 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
     w.document.close();
   };
 
-  const loadFlightOptions = async (sectorIndex: number, value: string) => {
-    const q = String(value || '').trim();
-    const s = sectors[sectorIndex];
-    if (!q && !s.from && !s.to) { setFlightOptions(prev => ({...prev, [sectorIndex]: []})); return; }
+  const loadFlightOptions = async (sectorIndex: number, airlineValue: string) => {
+    const code = normalizeAirlineCode(airlineValue) || String(airlineValue || '').toUpperCase();
+    if (!code) { setFlightOptions(prev => ({...prev, [sectorIndex]: []})); return; }
     try {
-      const rows = await flightDirectory(q, s.from, s.to);
-      setFlightOptions(prev => ({...prev, [sectorIndex]: Array.isArray(rows) ? rows : []}));
-    } catch { setFlightOptions(prev => ({...prev, [sectorIndex]: []})); }
+      const rows = await flightDirectory('', '', '');
+      const matches = (Array.isArray(rows) ? rows : []).filter((x:any) =>
+        String(x.airline_code || '').toUpperCase() === code ||
+        normalizeAirlineCode(String(x.airline || '')) === code
+      );
+      setFlightOptions(prev => ({...prev, [sectorIndex]: matches}));
+    } catch {
+      setFlightOptions(prev => ({...prev, [sectorIndex]: []}));
+    }
   };
+
+  useEffect(() => {
+    sectors.forEach((s, i) => { if (s.airline) void loadFlightOptions(i, s.airline); });
+  }, [sectors.map(s => s.airline).join('|')]);
 
   const chooseFlightOption = (sectorIndex: number, x: any) => {
     updateSector(sectorIndex, 'flightNo', x.flight_no || '');
@@ -799,26 +807,25 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
         <section><div className="flex items-center justify-between mb-3"><div className="text-xs font-extrabold text-slate-900">ITINERARY / FLIGHT SECTORS</div><button onClick={()=>setSectors(p=>[...p,blankSector()])} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 text-white px-2.5 py-1.5 text-[11px] font-bold"><Plus className="w-3.5 h-3.5"/> Add Sector</button></div>
           <div className="space-y-3">{sectors.map((s,i)=><div key={i} className="rounded-2xl border border-slate-200 p-3 bg-slate-50/60">
             <div className="flex items-center justify-between mb-3"><span className="text-[11px] font-bold text-slate-600">SECTOR {i+1}</span>{sectors.length>1&&<button onClick={()=>setSectors(p=>p.filter((_,x)=>x!==i))} className="text-rose-500"><Trash2 className="w-4 h-4"/></button>}</div>
-            <div className="mb-3 rounded-xl border border-violet-200 bg-violet-50 p-3">
-              <div className="text-[10px] font-extrabold uppercase tracking-wide text-violet-800">FLIGHT SEARCH / AUTO-FILL — SECTOR {i+1}</div>
-              <div className="text-[10px] text-violet-700 mt-1">Non-AI lookup. Uses public flight-data provider; no Gemini quota is used.</div>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <button onClick={()=>findFlightWithAssist(i)} disabled={!!flightAssistLoading[i]} className="rounded-xl bg-violet-600 text-white px-4 py-2 text-xs font-bold disabled:opacity-60">{flightAssistLoading[i] ? 'Searching…' : '🔎 Find & Auto-Fill This Sector'}</button>
-                <button onClick={()=>saveFlightManually(i)} disabled={!!flightAssistLoading[i]} className="rounded-xl bg-emerald-600 text-white px-4 py-2 text-xs font-bold disabled:opacity-60">💾 Save Flight Data</button>
-                {flightAssistStatus[i] && <span className="text-[10px] text-slate-600">{flightAssistStatus[i]}</span>}
-              </div>
-              {(flightAssistSources[i] || []).length > 0 && <div className="mt-2 text-[10px] text-slate-500">Source: {(flightAssistSources[i] || []).map((src,k)=><a key={k} href={src.url} target="_blank" rel="noreferrer" className="underline mr-2">{src.title || src.url}</a>)}</div>}
+            <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <div className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-800">FLIGHT DETAILS — AUTO FILL</div>
+              <div className="text-[10px] text-emerald-700 mt-1">Select Airline → Flight Number → Departure Date. Saved flight details will fill automatically.</div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {field('Airline / IATA Code',s.airline,v=>updateSector(i,'airline',v))}
-              <label className="block relative"><span className="block min-h-[28px] leading-tight text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Flight Number — Search / List</span>
-                <input value={s.flightNo} onChange={e=>{ updateSector(i,'flightNo',e.target.value); setFlightOptionSearch(p=>({...p,[i]:e.target.value})); void loadFlightOptions(i,e.target.value); }} placeholder="Search flight no. e.g. BS321" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500" autoComplete="off" />
-                {(flightOptions[i] || []).length > 0 && <div className="absolute z-30 left-0 right-0 mt-1 max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
-                  {(flightOptions[i] || []).filter(x=>{const q=(flightOptionSearch[i]||'').toUpperCase(); return !q || String(x.flight_no||'').includes(q) || String(x.airline||'').toUpperCase().includes(q) || String(x.airline_code||'').toUpperCase().includes(q) || String(x.to_airport||'').toUpperCase().includes(q);}).slice(0,20).map((x,k)=><button type="button" key={x.id||k} onClick={()=>chooseFlightOption(i,x)} className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-0"><div className="text-xs font-extrabold text-slate-800">{x.flight_no} — {x.airline || x.airline_code}</div><div className="text-[10px] text-slate-500">{x.from_airport} → {x.to_airport}{x.departure_time ? ` · ${x.departure_time}` : ''}</div></button>)}
-                </div>}
+              <label className="block"><span className="block min-h-[28px] leading-tight text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Airline</span>
+                <select value={s.airline} onChange={e=>{ updateSector(i,'airline',e.target.value); updateSector(i,'flightNo',''); setFlightOptions(p=>({...p,[i]:[]})); void loadFlightOptions(i,e.target.value); }} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500">
+                  <option value="">Select Airline</option>
+                  {Array.from(new Map(Object.entries(AIRLINE_CODES).map(([name,code])=>[code,name])).entries()).map(([code,name])=><option key={code} value={code}>{name} ({code})</option>)}
+                </select>
+              </label>
+              <label className="block"><span className="block min-h-[28px] leading-tight text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Flight Number</span>
+                <select value={s.flightNo} onChange={e=>{ const x=(flightOptions[i]||[]).find((r:any)=>r.flight_no===e.target.value); if(x) chooseFlightOption(i,x); else updateSector(i,'flightNo',e.target.value); }} disabled={!s.airline} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none disabled:bg-slate-100">
+                  <option value="">{s.airline ? 'Select Flight Number' : 'Select Airline First'}</option>
+                  {(flightOptions[i]||[]).map((x:any,k:number)=><option key={x.id||k} value={x.flight_no}>{x.flight_no} — {x.from_airport} → {x.to_airport}</option>)}
+                </select>
               </label>
               {field('From',s.from,v=>updateSector(i,'from',v))}{field('To',s.to,v=>updateSector(i,'to',v))}
-              {field('Departure Date',s.departureDate,v=>updateSector(i,'departureDate',v),'date')}{field('Departure Time',s.departureTime,v=>updateSector(i,'departureTime',v),'time')}
+              {field('Departure Date',s.departureDate,v=>{ updateSector(i,'departureDate',v); if (v && s.airline && s.flightNo) { const x=(flightOptions[i]||[]).find((r:any)=>r.flight_no===s.flightNo); if(x) chooseFlightOption(i,x); } },'date')}{field('Departure Time',s.departureTime,v=>updateSector(i,'departureTime',v),'time')}
               {field('Arrival Date',s.arrivalDate,v=>updateSector(i,'arrivalDate',v),'date')}{field('Arrival Time',s.arrivalTime,v=>updateSector(i,'arrivalTime',v),'time')}
               {field('Booking Class',s.bookingClass,v=>updateSector(i,'bookingClass',v))}{field('Seat',s.seat,v=>updateSector(i,'seat',v))}{field('Baggage',s.baggage,v=>updateSector(i,'baggage',v))}{field('Duration',s.duration,v=>updateSector(i,'duration',v))}{field('Aircraft',s.aircraft,v=>updateSector(i,'aircraft',v))}{field('Terminal',s.terminal,v=>updateSector(i,'terminal',v))}
             </div>
