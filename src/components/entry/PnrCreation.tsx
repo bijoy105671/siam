@@ -145,7 +145,7 @@ const parseImportedText = (raw: string) => {
       G9:'Air Arabia', '3L':'Air Arabia Abu Dhabi', BS:'US-Bangla Airlines', BG:'Biman Bangladesh Airlines',
       EK:'Emirates', EY:'Etihad Airways', FZ:'Flydubai', QR:'Qatar Airways', SV:'Saudia', OV:'SalamAir',
       WY:'Oman Air', GF:'Gulf Air', KU:'Kuwait Airways', MH:'Malaysia Airlines', AI:'Air India',
-      IX:'Air India Express', 6E:'IndiGo', SQ:'Singapore Airlines', UL:'SriLankan Airlines',
+      IX:'Air India Express', '6E':'IndiGo', SQ:'Singapore Airlines', UL:'SriLankan Airlines',
       TK:'Turkish Airlines', TG:'Thai Airways', CX:'Cathay Pacific', BA:'British Airways'
     };
     return names[c] || c;
