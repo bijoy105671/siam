@@ -81,6 +81,17 @@ const detectValue = (text: string, patterns: RegExp[]) => {
 
 const normalizePnr = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
 const normalizeTicket = (value: string) => value.replace(/[^\d]/g, '').slice(0, 13);
+const normalizeDateInput = (value: string) => {
+  const v = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const m = v.match(/^(\d{1,2})[\s/-]+([A-Z]{3,9})[,.\s/-]+(\d{2,4})$/i);
+  if (!m) return v;
+  const months: Record<string,string> = {JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',SEPT:'09',OCT:'10',NOV:'11',DEC:'12'};
+  const mm = months[m[2].slice(0,3).toUpperCase()];
+  if (!mm) return v;
+  const yyyy = m[3].length === 2 ? '20' + m[3] : m[3];
+  return `${yyyy}-${mm}-${m[1].padStart(2,'0')}`;
+};
 
 const parseImportedText = (raw: string) => {
   const text=cleanText(raw);
@@ -90,20 +101,33 @@ const parseImportedText = (raw: string) => {
   const gdsPnr=normalizePnr(detectValue(text,[/(?:GDS|GALILEO|AMADEUS|SABRE|TRAVELPORT|WORLDSPAN)\s*(?:PNR|LOCATOR|REFERENCE)\s*[:#-]?\s*([A-Z0-9]{5,8})/i,/(?:GALILEO|AMADEUS|SABRE|TRAVELPORT)\s*[:#-]?\s*([A-Z0-9]{5,8})/i]));
   const ticketNumber=normalizeTicket(detectValue(text,[/(?:E-?TICKET|TICKET)\s*(?:NUMBER|NO|NUM)?\s*[:#-]?\s*(\d{3}[-\s]?\d{10})/i,/\b(\d{3}-\d{10})\b/,/\b(\d{13})\b/]));
   const passport=detectValue(text,[/PASSPORT(?:\s*(?:NUMBER|NO|NUM))?\s*[:#-]?\s*([A-Z0-9]{6,12})/i]).toUpperCase();
-  const passenger=detectValue(text,[/(?:PASSENGER|PAX|TRAVELER|TRAVELLER)\s*(?:NAME|NAME\/S)?\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,})/i,/(?:NAME|PAX NAME)\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,})/i,/\b(?:MR|MRS|MS|MISS)\.?\s+([A-Z][A-Z .,'\/-]{2,})/i]).replace(/\s+(?:TICKET|PNR|PASSPORT|AIRLINE|FLIGHT|ROUTE|DATE)\b.*$/i,'').trim();
-  const airline=detectValue(text,[/(?:AIRLINE|CARRIER|MARKETING\s*CARRIER|OPERATING\s*CARRIER)\s*[:#-]\s*([A-Z][A-Z0-9 &.'-]{2,})/i]).replace(/\s+(?:FLIGHT|PNR|TICKET|ROUTE|DATE)\b.*$/i,'').trim();
+  const passengerNames=[...text.matchAll(/(?:^|\s)(?:\d{1,2}\s+)?(?:PRIMARY\s+)?(?:MR|MRS|MS|MISS)\.?\s+([A-Z][A-Z .,'\/-]{1,}?)(?=\s+(?:ADULT|CHILD|INFANT)\b)/gi)].map(m=>m[1].trim().replace(/\s+/g,' '));
+  const passenger=passengerNames.length ? [...new Set(passengerNames)].join(' / ') : detectValue(text,[/(?:PASSENGER|PAX|TRAVELER|TRAVELLER)\s*(?:NAME|NAME\/S)?\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,})/i,/(?:NAME|PAX NAME)\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,})/i,/\b(?:MR|MRS|MS|MISS)\.?\s+([A-Z][A-Z .,'\/-]{2,})/i]).replace(/\s+(?:TICKET|PNR|PASSPORT|AIRLINE|FLIGHT|ROUTE|DATE)\b.*$/i,'').trim();
+  const airline=detectValue(text,[/(?:AIRLINE|CARRIER|MARKETING\s*CARRIER|OPERATING\s*CARRIER)\s*[:#-]\s*([A-Z][A-Z0-9 &.'-]{2,})/i,/(?:AIRLINE|CARRIER)\s*\|\s*([A-Z][A-Z0-9 &.'-]{2,})/i]).replace(/\s+(?:FLIGHT|PNR|TICKET|ROUTE|DATE)\b.*$/i,'').trim();
   const flightNo=detectValue(text,[/(?:FLIGHT|FLT)\s*(?:NUMBER|NO|NUM)?\s*[:#-]?\s*([A-Z0-9]{2,3}\s*[-]?\s*\d{2,4})/i,/\b([A-Z]{2}\s*[-]?\s*\d{2,4})\b/i]).replace(/\s+/g,'').toUpperCase();
-  const routeMatch=text.match(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/i);
+  const namedRoute=text.match(/\b[A-Z][A-Z .'-]*\(([A-Z]{3})\)\s*(?:-|–|—|→|TO|\/)\s*[A-Z][A-Z .'-]*\(([A-Z]{3})\)\b/i);\n  const routeMatch=namedRoute || text.match(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/i);
   const route=routeMatch?[routeMatch[1].toUpperCase(),routeMatch[2].toUpperCase()]:['',''];
   const issueDate=detectValue(text,[/(?:DATE\s*OF\s*ISSUE|ISSUE\s*DATE|ISSUED)\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i]);
   const date=detectValue(text,[/(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\s*(?:DATE)?\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,/\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b/i]);
-  const time=detectValue(text,[/(?:DEPARTURE|DEPART|STD|ETD)\s*(?:TIME)?\s*[:#-]?\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i]);
+  const time=detectValue(text,[/(?:DEPARTURE|DEPART|STD|ETD)\s*(?:TIME)?\s*[:#-]?\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)/i,/(?:DEP(?:ARTS)?|DEPARTURE)\s*[:#-]?[^0-9]{0,30}(\d{1,2}:\d{2})/i]);
   const sectors:Sector[]=[];
+  const tripRoute = namedRoute ? [namedRoute[1].toUpperCase(), namedRoute[2].toUpperCase()] : route;
+  const tripAirline = airline || (text.match(/\b(US-BANGLA AIRLINES|BIMAN BANGLADESH AIRLINES|AIR ARABIA|EMIRATES|QATAR AIRWAYS|SAUDIA|OMAN AIR|GULF AIR|ETIHAD AIRWAYS)\b/i)?.[1] || '');
+  const tripFlight = detectValue(text,[/(?:FLIGHT\s*(?:NO|NUMBER)?|FLIGHT\s*INFO)\s*[-:#]?\s*(\d{2,4})/i]);
+  const tripTimes=[...text.matchAll(/(?:^|\s)(\d{1,2}:\d{2})\s+(?:Departs|Departure):/gi)].map(m=>m[1]);
+  const tripDates=[...text.matchAll(/\b(\d{1,2}\s+[A-Z]{3},?\s+\d{2,4})\b/gi)].map(m=>normalizeDateInput(m[1]));
+  const arrivalTime=detectValue(text,[/\b(?:Arrival|Arrives)\s*:\s*[^0-9]{0,30}(\d{1,2}:\d{2})/i]);
+  const baggage=detectValue(text,[/(?:ADT|CHD|INF)[^\n]{0,30}?→\s*(\d+(?:\.\d+)?)\s*(?:Kg|KG)/i,/(\d+(?:\.\d+)?)\s*(?:Kg|KG)\b/i]);
+  const cabin=detectValue(text,[/\b(Economy|Business|First|Premium Economy)\b/i]);
   const addSector=(s:Sector)=>{const d=sectors.find(x=>x.flightNo===s.flightNo&&x.from===s.from&&x.to===s.to);if(d){Object.assign(d,Object.fromEntries(Object.entries(s).filter(([,v])=>v)));}else if(sectors.length<12)sectors.push(s);};
   const rowPattern=/^\s*\d{1,2}\s+([A-Z0-9]{2,3})\s*(\d{2,4})\s+([A-Z]{3})\s+([A-Z]{3})\s+([0-9A-Z]{3,9})(?:\s+([0-9:]{3,5}))?(?:\s+([0-9:]{3,5}))?/i;
   for(const line of lines){const m=line.match(rowPattern);if(m)addSector({...blankSector(),airline:m[1].toUpperCase(),flightNo:(m[1]+m[2]).toUpperCase(),from:m[3].toUpperCase(),to:m[4].toUpperCase(),departureDate:m[5],departureTime:m[6]||'',arrivalTime:m[7]||''});}
   const sectorPattern=/\b([A-Z]{2,3})\s*[-]?\s*(\d{2,4})\b[^A-Z0-9]{0,30}\b([A-Z]{3})\b[^A-Z0-9]{0,12}(?:-|–|—|→|TO|\/)\s*\b([A-Z]{3})\b/gi;
   let match:RegExpExecArray|null; while((match=sectorPattern.exec(text))&&sectors.length<12)addSector({...blankSector(),airline:match[1].toUpperCase(),flightNo:(match[1]+match[2]).toUpperCase(),from:match[3].toUpperCase(),to:match[4].toUpperCase(),departureDate:date,departureTime:time});
+  if(!sectors.length && tripRoute[0] && tripRoute[1] && tripFlight){
+    const inferredCode=normalizeAirlineCode(tripAirline)||inferAirlineCode(tripAirline)||'';
+    addSector({...blankSector(),airline:inferredCode||tripAirline,flightNo:(inferredCode||'')+tripFlight,from:tripRoute[0],to:tripRoute[1],departureDate:tripDates[0]||normalizeDateInput(date),departureTime:tripTimes[0]||time,arrivalDate:tripDates[1]||tripDates[0]||'',arrivalTime,baggage,bookingClass:cabin||''});
+  }
   if(!sectors.length){
     const flights=[...text.matchAll(/\b([A-Z]{2,3})\s*[-]?\s*(\d{2,4})\b/g)];
     const routes=[...text.matchAll(/\b([A-Z]{3})\s+(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/gi)];
@@ -111,7 +135,7 @@ const parseImportedText = (raw: string) => {
     for(let i=0;i<count;i++)addSector({...blankSector(),airline:flights[i]?.[1]?.toUpperCase()||airline,flightNo:flights[i]?(flights[i][1]+flights[i][2]).toUpperCase():flightNo,from:routes[i]?.[1]?.toUpperCase()||route[0],to:routes[i]?.[2]?.toUpperCase()||route[1],departureDate:date,departureTime:time});
   }
   const firstAirline=sectors[0]?.airline||airline||inferAirlineCode(flightNo);
-  return {airlinePnr,gdsPnr,ticketNumber,issueDate,passenger,passport,sectors:sectors.length?sectors:[{...blankSector(),airline:firstAirline,flightNo,from:route[0],to:route[1],departureDate:date,departureTime:time}],rawText:text.slice(0,30000)};
+  const normalizedSectors=sectors.map(s=>({...s,departureDate:normalizeDateInput(s.departureDate),arrivalDate:normalizeDateInput(s.arrivalDate),bookingClass:s.bookingClass||cabin||'',baggage:s.baggage||baggage}));\n  return {airlinePnr,gdsPnr,ticketNumber,issueDate:normalizeDateInput(issueDate),passenger,passport,sectors:normalizedSectors.length?normalizedSectors:[{...blankSector(),airline:firstAirline,flightNo,from:route[0],to:route[1],departureDate:normalizeDateInput(date),departureTime:time}],rawText:text.slice(0,30000)};
 };
 
 export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
