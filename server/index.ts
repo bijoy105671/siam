@@ -260,11 +260,11 @@ app.post('/api/flight-assist', auth, async (req, res) => {
       return res.status(400).json({ error: 'Enter the flight date in YYYY-MM-DD format.' });
     }
 
-    const prompt = \`You are a strict real-time airline flight schedule lookup engine for SIAM AIR & DIGITAL SERVICE.
+    const prompt = `You are a strict real-time airline flight schedule lookup engine for SIAM AIR & DIGITAL SERVICE.
 Use Google Search grounding and public web sources to find the scheduled flight matching these exact inputs:
-Flight number: \${flightNumberInput}
-Flight date: \${flightDate}
-Airline hint (optional): \${airlineHint || 'none'}
+Flight number: ${flightNumberInput}
+Flight date: ${flightDate}
+Airline hint (optional): ${airlineHint || 'none'}
 
 IMPORTANT:
 - Search the web; do not rely only on model memory.
@@ -279,7 +279,7 @@ IMPORTANT:
 JSON shape:
 {"matched":true,"confidence":"high|medium|low","flight":{"airline":"","airlineCode":"","flightNo":"","from":"","fromName":"","to":"","toName":"","departureDate":"","departureTime":"","arrivalDate":"","arrivalTime":"","duration":"","aircraft":"","bookingClass":"","baggage":"","terminal":"","status":""},"candidates":[],"sources":[{"title":"","url":""}]}
 If no reliable match exists: matched=false and keep flight fields empty.
-If there are multiple plausible matches: matched=false and put each factual candidate in candidates with the same flight field shape.\`;
+If there are multiple plausible matches: matched=false and put each factual candidate in candidates with the same flight field shape.`;
 
     const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(apiKey), {
       method: 'POST',
