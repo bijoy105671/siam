@@ -60,6 +60,14 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   return request(false);
 }
 
+export const flightDirectory = async (flightNo = '', from = '', to = '') => {
+  const params = new URLSearchParams();
+  if (flightNo) params.set('flightNo', flightNo);
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  return apiRequest<any[]>(`/api/flight-directory?${params.toString()}`);
+};
+
 export const api = {
   flightDirectory: (flightNo = '', from = '', to = '') =>
     apiRequest<unknown[]>(`/api/flight-directory?flightNo=${encodeURIComponent(flightNo)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
@@ -263,13 +271,4 @@ export const createServerOneEntry = async (input: Record<string, any>) => {
     { method: 'POST', body: JSON.stringify(payload) }
   );
   return { ...result, transaction: mapServerTransaction(result.transaction) };
-export const flightDirectory = async (flightNo = '', from = '', to = '') => {
-  const params = new URLSearchParams();
-  if (flightNo) params.set('flightNo', flightNo);
-  if (from) params.set('from', from);
-  if (to) params.set('to', to);
-  return apiRequest<any[]>(`/api/flight-directory?${params.toString()}`);
-};
-
-
 };
