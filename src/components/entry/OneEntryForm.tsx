@@ -69,6 +69,10 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
   const [customerPaid, setCustomerPaid] = useState<number | ''>('');
   const [customerPaymentMethod, setCustomerPaymentMethod] = useState<PaymentMethod>('Cash');
 
+  // Account-funded cost (used when Vendor is unchecked)
+  const [accountCost, setAccountCost] = useState<number | ''>('');
+  const [accountCostPaymentMethod, setAccountCostPaymentMethod] = useState<PaymentMethod>('bKash');
+
   // Vendor Details
   const [hasVendor, setHasVendor] = useState(true);
   const [vendorQuery, setVendorQuery] = useState('');
@@ -237,6 +241,8 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
     setSellingPrice('');
     setCustomerPaid('');
     setCustomerPaymentMethod('Cash');
+    setAccountCost('');
+    setAccountCostPaymentMethod('bKash');
     setHasVendor(true);
     setVendorCost('');
     setVendorPaid('');
@@ -829,7 +835,7 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
                 <span>Vendor / Consolidator Cost</span>
               </label>
               <span className="text-[11px] font-mono text-slate-500">
-                Formula: Due = Cost - Paid
+                {hasVendor ? 'Formula: Due = Cost - Paid' : 'No Vendor → Account-funded Cost'}
               </span>
             </div>
 
@@ -927,7 +933,7 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
                 </div>
               </div>
             ) : (
-              <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+              <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
                 <div className="text-xs font-semibold text-slate-700">In-house / Account-funded Cost (No Vendor)</div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -957,7 +963,7 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
               {formatCurrency(grossProfit)}
             </div>
             <div className="text-[11px] text-slate-400">
-              {grossProfit >= 0 ? 'Net positive gross margin' : 'Deficit / Loss warning'} (Selling Price {formatCurrency(numSellingPrice)} - Cost {formatCurrency(numVendorCost)})
+              {grossProfit >= 0 ? 'Net positive gross margin' : 'Deficit / Loss warning'} (Selling Price {formatCurrency(numSellingPrice)} - Cost {formatCurrency(numVendorCost + numAccountCost)})
             </div>
           </div>
 
