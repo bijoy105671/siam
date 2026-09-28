@@ -26,7 +26,7 @@ export const FlightCalendar: React.FC<FlightCalendarProps> = ({
   onSelectFlight,
   onOpenPayment,
 }) => {
-  const { transactions, updateFlightStatus, settings } = useApp();
+  const { transactions, updateFlightStatus, settings, appointments } = useApp();
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -163,6 +163,35 @@ export const FlightCalendar: React.FC<FlightCalendarProps> = ({
           </span>
         </div>
       </div>
+
+      {/* SERVICE APPOINTMENTS / SCHEDULES */}
+      {appointments?.length > 0 && (
+        <div className="bg-white border border-violet-200 rounded-xl overflow-hidden shadow-xs">
+          <div className="px-4 py-3 bg-violet-50 border-b border-violet-100 flex items-center justify-between">
+            <div>
+              <h2 className="font-bold text-sm text-violet-900 flex items-center gap-2"><CalendarIcon className="w-4 h-4" /> Service Appointments & Schedules</h2>
+              <p className="text-[11px] text-violet-700">All scheduled services appear here, not only flights.</p>
+            </div>
+            <span className="text-xs font-bold text-violet-700">{appointments.filter(a => a.status !== 'completed').length} pending</span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {appointments.slice().sort((a,b) => (a.appointmentDate+a.appointmentTime).localeCompare(b.appointmentDate+b.appointmentTime)).map((a) => (
+              <div key={a.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-violet-100 text-violet-800">{a.serviceName || 'Service'}</span>
+                    <span className="text-sm font-bold text-slate-900">{a.customerName}</span>
+                    {a.customerMobile && <span className="text-[11px] text-slate-500">{a.customerMobile}</span>}
+                  </div>
+                  <div className="text-xs font-semibold text-slate-700 mt-1">{a.title}</div>
+                  <div className="text-[11px] font-mono text-slate-500 mt-0.5">📅 {formatDate(a.appointmentDate)} · {formatTime(a.appointmentTime)} {a.note ? '· ' + a.note : ''}</div>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-1 rounded ${a.status === 'completed' ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-700'}`}>{a.status === 'completed' ? 'COMPLETED' : 'SCHEDULED'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* VIEW: LIST VIEW */}
       {viewMode === 'list' && (
