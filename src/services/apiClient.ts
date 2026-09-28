@@ -96,7 +96,6 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(settings),
     }),
-  dashboard: () => apiRequest<Record<string, unknown>>('/api/dashboard'),
   customers: (q = '') =>
     apiRequest<unknown[]>(`/api/customers${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   vendors: (q = '') =>
