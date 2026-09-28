@@ -28,7 +28,7 @@ import { Customer, Transaction, Vendor } from './types';
 import { USE_SERVER_API } from './services/apiClient';
 
 const MainLayout: React.FC = () => {
-  const { currentUser } = useApp();
+  const { currentUser, appointments } = useApp();
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -65,6 +65,33 @@ const MainLayout: React.FC = () => {
     document.addEventListener('wheel', handleNumberWheel, { passive: false, capture: true });
     return () => document.removeEventListener('wheel', handleNumberWheel, true);
   }, []);
+
+  // Appointment notifications: alert the user shortly before a scheduled service.
+  useEffect(() => {
+    if (!currentUser || !appointments?.length) return;
+    const notifiedKey = 'siam_appointment_notifications';
+    const notified = JSON.parse(localStorage.getItem(notifiedKey) || '{}') as Record<string, boolean>;
+    const check = () => {
+      const now = new Date();
+      appointments.forEach((a) => {
+        if (a.status === 'completed') return;
+        const when = new Date(a.appointmentDate + 'T' + a.appointmentTime + ':00+06:00');
+        const diff = when.getTime() - now.getTime();
+        if (diff >= 0 && diff <= 30 * 60 * 1000 && !notified[a.id]) {
+          const message = a.title + ' — ' + a.customerName + ' at ' + a.appointmentTime;
+          if ('Notification' in window) {
+            if (Notification.permission === 'granted') new Notification('SIAM AIR — Appointment Reminder', { body: message });
+            else if (Notification.permission !== 'denied') Notification.requestPermission().catch(() => {});
+          }
+          notified[a.id] = true;
+          localStorage.setItem(notifiedKey, JSON.stringify(notified));
+        }
+      });
+    };
+    check();
+    const timer = window.setInterval(check, 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [currentUser, appointments]);
 
   // Global keyboard shortcuts (Ctrl+K or Cmd+K)
   useEffect(() => {
