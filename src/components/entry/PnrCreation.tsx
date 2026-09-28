@@ -95,7 +95,8 @@ const parseImportedText = (raw: string) => {
   const passenger=passengerNames.length ? [...new Set(passengerNames)].join(' / ') : detectValue(text,[/(?:PASSENGER|PAX|TRAVELER|TRAVELLER)\s*(?:NAME|NAME\/S)?\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,})/i,/(?:NAME|PAX NAME)\s*[:#-]\s*([A-Z][A-Z .,'\/-]{2,})/i,/\b(?:MR|MRS|MS|MISS)\.?\s+([A-Z][A-Z .,'\/-]{2,})/i]).replace(/\s+(?:TICKET|PNR|PASSPORT|AIRLINE|FLIGHT|ROUTE|DATE)\b.*$/i,'').trim();
   const airline=detectValue(text,[/(?:AIRLINE|CARRIER|MARKETING\s*CARRIER|OPERATING\s*CARRIER)\s*[:#-]\s*([A-Z][A-Z0-9 &.'-]{2,})/i,/(?:AIRLINE|CARRIER)\s*\|\s*([A-Z][A-Z0-9 &.'-]{2,})/i]).replace(/\s+(?:FLIGHT|PNR|TICKET|ROUTE|DATE)\b.*$/i,'').trim();
   const flightNo=detectValue(text,[/(?:FLIGHT|FLT)\s*(?:NUMBER|NO|NUM)?\s*[:#-]?\s*([A-Z0-9]{2,3}\s*[-]?\s*\d{2,4})/i,/\b([A-Z]{2}\s*[-]?\s*\d{2,4})\b/i]).replace(/\s+/g,'').toUpperCase();
-  const namedRoute=text.match(/\b[A-Z][A-Z .'-]*\(([A-Z]{3})\)\s*(?:-|–|—|→|TO|\/)\s*[A-Z][A-Z .'-]*\(([A-Z]{3})\)\b/i);\n  const routeMatch=namedRoute || text.match(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/i);
+  const namedRoute=text.match(/\b[A-Z][A-Z .'-]*\(([A-Z]{3})\)\s*(?:-|–|—|→|TO|\/)\s*[A-Z][A-Z .'-]*\(([A-Z]{3})\)\b/i);
+  const routeMatch=namedRoute || text.match(/\b([A-Z]{3})\s*(?:-|–|—|→|TO|\/)\s*([A-Z]{3})\b/i);
   const route=routeMatch?[routeMatch[1].toUpperCase(),routeMatch[2].toUpperCase()]:['',''];
   const issueDate=detectValue(text,[/(?:DATE\s*OF\s*ISSUE|ISSUE\s*DATE|ISSUED)\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i]);
   const date=detectValue(text,[/(?:DEPARTURE|DEPART|TRAVEL|FLIGHT)\s*(?:DATE)?\s*[:#-]?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{2}-\d{2})/i,/\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b/i]);
