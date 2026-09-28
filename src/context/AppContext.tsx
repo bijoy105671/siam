@@ -86,6 +86,8 @@ interface OneEntryInput {
   vendorCost: number;
   vendorPaid: number;
   vendorPaymentMethod?: PaymentMethod;
+  accountCost?: number;
+  accountCostPaymentMethod?: PaymentMethod;
 
   // Reminder
   reminderDate?: string;
