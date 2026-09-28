@@ -361,7 +361,7 @@ app.get('/api/flight-directory', auth, async (req, res) => {
   if (q) { params.push(q); where.push("UPPER(REPLACE(REPLACE(REPLACE(flight_no,' ',''),'-',''),'/',''))=$"+params.length); }
   if (from) { params.push(from); where.push("from_airport=$"+params.length); }
   if (to) { params.push(to); where.push("to_airport=$"+params.length); }
-  const { rows } = await pool.query(`SELECT * FROM flight_directory ${where.length ? 'WHERE '+where.join(' AND ') : ''} ORDER BY updated_at DESC LIMIT 50`, params);
+  const { rows } = await pool.query(`SELECT * FROM flight_directory ${where.length ? 'WHERE '+where.join(' AND ') : ''} ORDER BY airline_code, flight_no, from_airport, to_airport LIMIT 500`, params);
   res.json(rows);
 });
 
