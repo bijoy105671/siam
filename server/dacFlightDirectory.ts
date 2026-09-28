@@ -60,7 +60,7 @@ export const DAC_FLIGHT_DIRECTORY: DacFlightRecord[] = [
   {flightNo:'BG376',airline:'Biman Bangladesh Airlines',airlineCode:'BG',from:'DAC',fromName:'Dhaka',to:'NRT',toName:'Tokyo',departureTime:'02:25'},
   {flightNo:'BG366',airline:'Biman Bangladesh Airlines',airlineCode:'BG',from:'DAC',fromName:'Dhaka',to:'CAN',toName:'Guangzhou',departureTime:'21:45'},
   {flightNo:'CZ392',airline:'China Southern Airlines',airlineCode:'CZ',from:'DAC',fromName:'Dhaka',to:'CAN',toName:'Guangzhou',departureTime:'23:25'},
-  {flightNo:'AK70',airline:'AirAsia',airlineCode:'AK',from:'DAC',fromName:'Dhaka',to:'KUL',toName:'Kuala Lumpur',departureTime:'23:10'}
+  {flightNo:'AK70',airline:'AirAsia',airlineCode:'AK',from:'DAC',fromName:'Dhaka',to:'KUL',toName:'Kuala Lumpur',departureTime:'23:10'},
 
   // Bangladesh domestic / regional carriers (approximate reusable schedule seed)
   {flightNo:'BG101',airline:'Biman Bangladesh Airlines',airlineCode:'BG',from:'DAC',fromName:'Dhaka',to:'CGP',toName:'Chattogram',departureTime:'07:00'},
