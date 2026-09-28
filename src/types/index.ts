@@ -116,6 +116,9 @@ export interface PartialPayment {
 export interface AppointmentReminder {
   id: string;
   customerId?: string;
+  transactionId?: string;
+  serviceId?: string;
+  serviceName?: string;
   customerName: string;
   customerMobile?: string;
   customerEmail?: string;
