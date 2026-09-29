@@ -244,6 +244,7 @@ interface AppContextType {
     totalPaid: number;
     invoicePayable: number;
     loanAdvanceGiven: number;
+    loanAdvanceReceived: number;
     loanAdvanceApplied: number;
     availableAdvance: number;
     currentPayable: number;
