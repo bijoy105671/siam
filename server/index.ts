@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { PDFParse } from 'pdf-parse';
+import { registerStorefrontRoutes } from './storefront';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -171,6 +172,8 @@ const adminOnly = async (req: express.Request, res: express.Response, next: expr
     res.status(500).json({ error: e instanceof Error ? e.message : 'Authorization check failed' });
   }
 };
+
+registerStorefrontRoutes(app, pool, auth, adminOnly);
 
 app.post('/api/ticket-import/pdf', auth, async (req, res) => {
   try {
