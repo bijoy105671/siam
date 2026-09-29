@@ -775,8 +775,22 @@ app.get('/api/dashboard', auth, async (_req, res) => {
                 FROM transactions
                 WHERE deleted_at IS NULL AND status <> $1`, ['CANCELLED']),
     pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL'),
-    pool.query('SELECT COALESCE(SUM(customer_due),0) + COALESCE((SELECT SUM(opening_due) FROM customers),0) customer_receivable FROM transactions WHERE deleted_at IS NULL AND status <> $1', ['CANCELLED']),
-    pool.query('SELECT COALESCE(SUM(vendor_due),0) + COALESCE((SELECT SUM(opening_payable) FROM vendors),0) vendor_payable FROM transactions WHERE deleted_at IS NULL AND status <> $1', ['CANCELLED']),
+    pool.query(`SELECT
+         COALESCE(SUM(t.customer_due),0)
+         + COALESCE((SELECT SUM(opening_due) FROM customers),0)
+         + COALESCE((SELECT SUM(amount) FROM loan_advances la WHERE la.party_type='customer' AND la.direction='given' AND la.reversed_at IS NULL),0)
+         - COALESCE((SELECT SUM(la.amount - COALESCE((SELECT SUM(a.amount) FROM loan_advance_adjustments a WHERE a.loan_advance_id=la.id AND a.reversed_at IS NULL),0)) FROM loan_advances la WHERE la.party_type='customer' AND la.direction='received' AND la.reversed_at IS NULL),0)
+         customer_receivable
+       FROM transactions t
+       WHERE t.deleted_at IS NULL AND t.status <> $1`, ['CANCELLED']),
+    pool.query(`SELECT
+         COALESCE(SUM(t.vendor_due),0)
+         + COALESCE((SELECT SUM(opening_payable) FROM vendors),0)
+         + COALESCE((SELECT SUM(amount) FROM loan_advances la WHERE la.party_type='vendor' AND la.direction='received' AND la.reversed_at IS NULL),0)
+         - COALESCE((SELECT SUM(la.amount - COALESCE((SELECT SUM(a.amount) FROM loan_advance_adjustments a WHERE a.loan_advance_id=la.id AND a.reversed_at IS NULL),0)) FROM loan_advances la WHERE la.party_type='vendor' AND la.direction='given' AND la.reversed_at IS NULL),0)
+         vendor_payable
+       FROM transactions t
+       WHERE t.deleted_at IS NULL AND t.status <> $1`, ['CANCELLED']),
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(selling_price - vendor_cost - account_cost),0) signed_gross_profit
                 FROM transactions
@@ -1615,7 +1629,9 @@ app.patch('/api/loan-advances/:id', auth, async (req, res) => {
       const oldBalance = await accountBalance(client, oldMethod);
       if (oldDelta < 0 && oldBalance + oldDelta < 0) throw new Error('Invalid source balance for reversal');
       const newBalance = await accountBalance(client, method);
-      const effectiveNewBalance = newBalance + (oldMethod === method ? Math.max(0, oldDelta) : 0);
+      // accountBalance() already includes the original loan/advance entry.
+      // Remove that original delta before validating the replacement entry.
+      const effectiveNewBalance = oldMethod === method ? newBalance - oldDelta : newBalance;
       if (newDelta < 0 && effectiveNewBalance < amount) throw new Error('Insufficient balance for updated loan/advance');
       await client.query('UPDATE account_entries SET reversed_at=now() WHERE source_type=$1 AND source_id=$2 AND reversed_at IS NULL',['loan_advance',old.id]);
       if (oldMethod !== method) await addAccountEntry(client, oldMethod, -oldDelta, 'loan_advance_edit', old.id, req.session.userId!, 'Reversal of original loan/advance');
