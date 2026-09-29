@@ -889,7 +889,15 @@ app.get('/api/customers/:id/ledger', auth, async (req, res) => {
   const payments = (await pool.query("SELECT p.* FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE p.entity_id=$1 AND p.payment_type='customer' AND p.reversed_at IS NULL AND t.deleted_at IS NULL ORDER BY p.paid_at DESC", [customerId])).rows;
   const totalSales = transactions.filter((t:any) => t.status !== 'CANCELLED').reduce((s:number,t:any)=>s+Number(t.selling_price),0);
   const totalPaid = payments.reduce((s:number,p:any)=>s+Number(p.amount),0);
-  res.json({ customer, totalSales, totalPaid, currentDue: Number(customer.opening_due || 0) + totalSales - totalPaid, transactions, payments });
+  const loanRows = (await pool.query(`SELECT la.*, COALESCE((SELECT SUM(a.amount) FROM loan_advance_adjustments a WHERE a.loan_advance_id=la.id AND a.reversed_at IS NULL),0) AS applied_amount
+    FROM loan_advances la WHERE la.party_type='customer' AND la.party_id=$1 AND la.reversed_at IS NULL ORDER BY la.occurred_at DESC`, [customerId])).rows;
+  const loanAdvanceReceived = loanRows.filter((r:any)=>r.direction==='received').reduce((s:number,r:any)=>s+Number(r.amount),0);
+  const loanAdvanceGiven = loanRows.filter((r:any)=>r.direction==='given').reduce((s:number,r:any)=>s+Number(r.amount),0);
+  const loanAdvanceApplied = loanRows.reduce((s:number,r:any)=>s+Number(r.applied_amount||0),0);
+  const availableAdvanceReceived = Math.max(0, loanRows.filter((r:any)=>r.direction==='received').reduce((s:number,r:any)=>s+Math.max(0,Number(r.amount)-Number(r.applied_amount||0)),0));
+  const invoiceDue = Number(customer.opening_due || 0) + totalSales - totalPaid;
+  const currentDue = Math.max(0, invoiceDue + loanAdvanceGiven - availableAdvanceReceived);
+  res.json({ customer, totalSales, totalPaid, invoiceDue, currentDue, loanAdvanceReceived, loanAdvanceGiven, loanAdvanceApplied, availableAdvance: availableAdvanceReceived, transactions, payments, loanAdvances: loanRows });
 });
 
 app.post('/api/vendors', auth, async (req,res) => {
@@ -927,7 +935,15 @@ app.get('/api/vendors/:id/ledger', auth, async (req, res) => {
   const payments = (await pool.query("SELECT p.* FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE p.entity_id=$1 AND p.payment_type='vendor' AND p.reversed_at IS NULL AND t.deleted_at IS NULL ORDER BY p.paid_at DESC", [vendorId])).rows;
   const totalCost = transactions.filter((t:any) => t.status !== 'CANCELLED').reduce((s:number,t:any)=>s+Number(t.vendor_cost),0);
   const totalPaid = payments.reduce((s:number,p:any)=>s+Number(p.amount),0);
-  res.json({ vendor, totalCost, totalPaid, currentPayable: Number(vendor.opening_payable || 0) + totalCost - totalPaid, transactions, payments });
+  const loanRows = (await pool.query(`SELECT la.*, COALESCE((SELECT SUM(a.amount) FROM loan_advance_adjustments a WHERE a.loan_advance_id=la.id AND a.reversed_at IS NULL),0) AS applied_amount
+    FROM loan_advances la WHERE la.party_type='vendor' AND la.party_id=$1 AND la.reversed_at IS NULL ORDER BY la.occurred_at DESC`, [vendorId])).rows;
+  const loanAdvanceReceived = loanRows.filter((r:any)=>r.direction==='received').reduce((s:number,r:any)=>s+Number(r.amount),0);
+  const loanAdvanceGiven = loanRows.filter((r:any)=>r.direction==='given').reduce((s:number,r:any)=>s+Number(r.amount),0);
+  const loanAdvanceApplied = loanRows.reduce((s:number,r:any)=>s+Number(r.applied_amount||0),0);
+  const availableAdvanceGiven = Math.max(0, loanRows.filter((r:any)=>r.direction==='given').reduce((s:number,r:any)=>s+Math.max(0,Number(r.amount)-Number(r.applied_amount||0)),0));
+  const invoicePayable = Number(vendor.opening_payable || 0) + totalCost - totalPaid;
+  const currentPayable = Math.max(0, invoicePayable + loanAdvanceReceived - availableAdvanceGiven);
+  res.json({ vendor, totalCost, totalPaid, invoicePayable, currentPayable, loanAdvanceReceived, loanAdvanceGiven, loanAdvanceApplied, availableAdvance: availableAdvanceGiven, transactions, payments, loanAdvances: loanRows });
 });
 
 app.patch('/api/vendors/:id', auth, async (req,res) => {
