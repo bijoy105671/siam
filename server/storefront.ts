@@ -120,7 +120,7 @@ export const registerStorefrontRoutes = (app: Express, pool: Pool, auth: Guard, 
     res.setHeader('Access-Control-Allow-Origin','*'); res.setHeader('Access-Control-Allow-Methods','GET,POST,PATCH,PUT,OPTIONS'); res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');
     if(_req.method==='OPTIONS') return res.sendStatus(204); next();
   });
-  app.use(async (_req,_res,next)=>{ try { await ensureEcommerceSchema(pool); next(); } catch(e){ next(e); } });
+  app.use(['/api/storefront','/api/ecommerce'], async (_req,_res,next)=>{ try { await ensureEcommerceSchema(pool); next(); } catch(e){ next(e); } });
 
   app.get('/api/storefront', async (_req,res)=>{
     try {
