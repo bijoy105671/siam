@@ -33,13 +33,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   paymentFocus = null,
   onOpenPayment,
 }) => {
-  const { transactions, partialPayments, transfers, services, vendors, addVendorAsync, deleteTransaction, updateTransaction, currentUser } = useApp();
+  const { transactions, partialPayments, transfers, loanAdvances, services, vendors, addVendorAsync, deleteTransaction, updateTransaction, currentUser } = useApp();
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [recordFilter, setRecordFilter] = useState<'all' | 'sale' | 'customer_payment' | 'vendor_payment' | 'transfer'>('all');
+  const [recordFilter, setRecordFilter] = useState<'all' | 'sale' | 'customer_payment' | 'vendor_payment' | 'loan_advance' | 'transfer'>('all');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<'all' | PaymentMethod>('all');
   const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all');
   const [customStart, setCustomStart] = useState('');
@@ -91,7 +91,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     transferFrom?: string;
     transferTo?: string;
     transferAmount?: number;
-    transferReason?: string;
+    transferReason?: string;\n    loanKind?: 'loan' | 'advance'; loanDirection?: 'received' | 'given'; loanPartyType?: 'customer' | 'vendor'; loanAmount?: number;
     paymentType?: 'customer' | 'vendor';
     paymentAmount?: number;
     paymentMethodDisplay?: string;
@@ -133,6 +133,17 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       paymentAmount: Number(p.amount || 0),
       paymentMethodDisplay: p.paymentMethod,
       paymentReference: p.reference || undefined,
+    })),
+    ...loanAdvances.map((la) => ({
+      id: la.id, invoiceNumber: `${la.kind.toUpperCase()}-${la.id.slice(0, 8)}`,
+      date: la.date, time: la.time, createdBy: la.createdBy,
+      customerId: la.partyType === 'customer' ? la.partyId : '', customerName: la.partyType === 'customer' ? la.partyName : '—', customerMobile: '',
+      serviceId: '', serviceName: `${la.kind.toUpperCase()} ${la.direction === 'received' ? 'RECEIVED' : 'GIVEN'}`,
+      sellingPrice: 0, customerPaid: 0, customerDue: 0, customerPaymentMethod: la.paymentMethod,
+      vendorId: la.partyType === 'vendor' ? la.partyId : undefined, vendorName: la.partyType === 'vendor' ? la.partyName : undefined,
+      vendorCost: 0, vendorPaid: 0, vendorDue: 0, vendorPaymentMethod: la.paymentMethod, grossProfit: 0, status: 'PAID' as const,
+      notes: la.note, recordType: 'loan_advance' as const, loanKind: la.kind, loanDirection: la.direction, loanPartyType: la.partyType,
+      loanAmount: Number(la.amount || 0), paymentMethodDisplay: la.paymentMethod, paymentReference: la.reference || undefined,
     })),
     ...transfers.map((tr) => ({
       id: tr.id,
@@ -186,10 +197,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     if (recordFilter === 'sale' && tx.recordType !== 'sale') return false;
     if (recordFilter === 'customer_payment' && !(tx.recordType === 'payment' && tx.paymentType === 'customer')) return false;
     if (recordFilter === 'vendor_payment' && !(tx.recordType === 'payment' && tx.paymentType === 'vendor')) return false;
-    if (recordFilter === 'transfer' && tx.recordType !== 'transfer') return false;
+    if (recordFilter === 'loan_advance' && tx.recordType !== 'loan_advance') return false;\n    if (recordFilter === 'transfer' && tx.recordType !== 'transfer') return false;
 
     // Payment records are displayed in All Transactions, but are not service/sale rows.
-    if (tx.recordType === 'transfer') {
+    if (tx.recordType === 'transfer' || tx.recordType === 'loan_advance') {
       if (serviceFilter !== 'all') return false;
       if (statusFilter !== 'all') return false;
     } else if (tx.recordType === 'payment') {
@@ -224,10 +235,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     return true;
   });
 
-  const totalSales = filteredTransactions.reduce((sum, t) => sum + t.sellingPrice, 0);
-  const totalPaid = filteredTransactions.reduce((sum, t) => sum + t.customerPaid, 0);
-  const totalDue = filteredTransactions.reduce((sum, t) => sum + t.customerDue, 0);
-  const totalProfit = filteredTransactions.reduce((sum, t) => sum + t.grossProfit, 0);
+  const totalSales = filteredTransactions.filter((t) => t.recordType === 'sale').reduce((sum, t) => sum + t.sellingPrice, 0);
+  const totalPaid = filteredTransactions.filter((t) => t.recordType === 'sale').reduce((sum, t) => sum + t.customerPaid, 0);
+  const totalDue = filteredTransactions.filter((t) => t.recordType === 'sale').reduce((sum, t) => sum + t.customerDue, 0);
+  const totalProfit = filteredTransactions.filter((t) => t.recordType === 'sale').reduce((sum, t) => sum + t.grossProfit, 0);
 
   const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
@@ -437,13 +448,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <select
               value={recordFilter}
-              onChange={(e) => setRecordFilter(e.target.value as 'all' | 'sale' | 'customer_payment' | 'vendor_payment' | 'transfer')}
+              onChange={(e) => setRecordFilter(e.target.value as 'all' | 'sale' | 'customer_payment' | 'vendor_payment' | 'loan_advance' | 'transfer')}
               className="px-2.5 py-1.5 text-xs font-bold border border-slate-300 rounded-lg bg-white focus:outline-none"
             >
               <option value="all">All Records</option>
               <option value="sale">🟢 SALES ONLY</option>
               <option value="customer_payment">Customer Due Paid</option>
-              <option value="vendor_payment">Vendor Due Paid</option>
+              <option value="vendor_payment">Vendor Due Paid</option>\n              <option value="loan_advance">Loan / Advance</option>
               <option value="transfer">Fund Transfers</option>
             </select>
 
@@ -658,6 +669,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                       }`}
                     >
                       <td className="py-3 px-4">
+                        {tx.recordType === 'loan_advance' ? (
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-violet-100 text-violet-800 border border-violet-200 text-[9px] font-extrabold">LOAN / ADVANCE</span>
+                            <div className="font-bold text-violet-900">{tx.loanKind?.toUpperCase()} · {tx.loanDirection === 'received' ? 'RECEIVED' : 'GIVEN'}</div>
+                            <div className="text-[11px] text-slate-500">{formatDate(tx.date)} {formatTime(tx.time)}</div>
+                          </div>
+                        ) : (<>
                                                 <div className="flex items-center gap-1.5 mb-1">
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 text-[9px] font-extrabold tracking-wide">SALE</span>
                           <span className="text-[10px] text-slate-400">Service Transaction</span>
@@ -666,7 +684,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         <div className="text-[11px] text-slate-500 font-mono">
                           {formatDate(tx.date)} {formatTime(tx.time)}
                         </div>
-                      </td>
+                      </td></>)}
 
                       <td className="py-3 px-4 font-sans">
                         <div className="font-semibold text-slate-900">{tx.customerName}</div>
@@ -674,9 +692,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                       </td>
 
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-800 font-sans">{tx.serviceName}</div>
-                        {tx.vendorName && <div className="text-[10px] text-amber-700 font-sans">↳ Vendor: {tx.vendorName}</div>}
-                        {tx.flightDetails && (
+                        <div className="font-semibold text-slate-800 font-sans">{tx.recordType === 'loan_advance' ? (tx.loanPartyType === 'customer' ? tx.customerName : tx.vendorName) : tx.serviceName}</div>
+                        {tx.recordType === 'loan_advance' && <div className="text-[11px] text-violet-700 font-mono">{tx.loanDirection === 'received' ? 'Money received → account increased' : 'Money given → account decreased'} · {formatCurrency(Number(tx.loanAmount || 0))} · {tx.paymentMethodDisplay}</div>}
+                        {tx.recordType !== 'loan_advance' && tx.vendorName && <div className="text-[10px] text-amber-700 font-sans">↳ Vendor: {tx.vendorName}</div>}
+                        {tx.recordType !== 'loan_advance' && tx.flightDetails && (
                           <div className="text-[11px] text-blue-600 flex items-center gap-1 font-mono">
                             <Plane className="w-3 h-3 inline" />
                             <span>
@@ -687,7 +706,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                       </td>
 
                       <td className="py-3 px-4">
-                        {tx.vendorName ? (
+                        {tx.recordType === 'loan_advance' ? <div><span className="text-violet-700 font-bold">Party Ledger</span><div className="text-[11px] text-slate-500">{tx.loanPartyType === 'customer' ? 'Customer' : 'Vendor'} · {tx.loanDirection === 'received' ? 'Party will receive from business' : 'Business will receive from party'}</div></div> : tx.vendorName ? (
                           <div>
                             <div className="font-medium text-slate-800 font-sans">{tx.vendorName}</div>
                             <div className="text-[11px] text-slate-500 font-mono">
