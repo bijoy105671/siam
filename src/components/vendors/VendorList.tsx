@@ -37,6 +37,8 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [accountInfo, setAccountInfo] = useState('');
+  const [facebook, setFacebook] = useState('');
+  const [photo, setPhoto] = useState('');
   const [openingPayable, setOpeningPayable] = useState<number | ''>(0);
 
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'name' | 'payable_high' | 'payable_low' | 'receivable_high' | 'receivable_low'>('newest');
@@ -74,6 +76,8 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
     setEmail('');
     setAddress('');
     setAccountInfo('');
+    setFacebook('');
+    setPhoto('');
     setOpeningPayable(0);
     setIsModalOpen(true);
   };
@@ -87,6 +91,8 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
     setEmail(v.email || '');
     setAddress(v.address || '');
     setAccountInfo(v.accountInfo || '');
+    setFacebook(v.facebook || '');
+    setPhoto(v.photo || '');
     setOpeningPayable(v.openingPayable || 0);
     setIsModalOpen(true);
   };
@@ -107,6 +113,8 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
         email: email.trim(),
         address: address.trim(),
         accountInfo: accountInfo.trim(),
+        facebook: facebook.trim(),
+        photo,
         openingPayable: Number(openingPayable) || 0,
       });
     } else {
@@ -205,15 +213,11 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
                   return (
                     <tr
                       key={vend.id}
-                      className={`hover:bg-slate-50/70 transition-colors ${
+                      className={`group relative hover:bg-slate-50/70 transition-colors ${
                         hasDue ? 'bg-amber-50/20' : ''
                       }`}
                     >
-                      <td className="py-3.5 px-4 font-sans">
-                        <div className="font-bold text-slate-900 text-sm">{vend.name}</div>
-                        <div className="text-xs text-slate-600 font-medium">{vend.company}</div>
-                        <div className="text-[11px] text-slate-500 font-mono">{vend.mobile}</div>
-                      </td>
+                      <td className="py-3.5 px-4 font-sans"><div className="flex items-center gap-2"><div className="w-9 h-9 rounded-full overflow-hidden bg-slate-100 border flex items-center justify-center">{vend.photo?<img src={vend.photo} alt="" className="w-full h-full object-cover"/>:<Briefcase className="w-4 h-4 text-slate-300"/>}</div><div><div className="font-bold text-slate-900 text-sm">{vend.name}</div><div className="text-xs text-slate-600">{vend.company}</div><div className="text-[11px] text-slate-500 font-mono">{vend.mobile}</div></div></div><div className="hidden group-hover:block absolute z-20 mt-2 w-72 rounded-xl bg-slate-950 text-white p-3 shadow-xl text-[11px] space-y-1">{vend.email&&<div>Email: {vend.email}</div>}{vend.whatsapp&&<div>WhatsApp: {vend.whatsapp}</div>}{vend.facebook&&<div>Facebook: {vend.facebook}</div>}{vend.address&&<div>Address: {vend.address}</div>}{vend.accountInfo&&<div>Account: {vend.accountInfo}</div>}</div></td>
 
                       <td className="py-3.5 px-4 font-sans">
                         <div className="text-slate-800 text-xs font-mono">
@@ -407,6 +411,11 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="block text-xs font-medium text-slate-700 mb-1">Facebook Account / Profile</label><input value={facebook} onChange={e=>setFacebook(e.target.value)} placeholder="Facebook URL / profile name" className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg"/></div>
+                <div><label className="block text-xs font-medium text-slate-700 mb-1">Vendor Photo</label><input type="file" accept="image/*" onChange={e=>{const file=e.target.files?.[0];if(file){const reader=new FileReader();reader.onload=()=>setPhoto(String(reader.result||''));reader.readAsDataURL(file)}}} className="w-full text-xs"/></div>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
                   Office Address
@@ -431,6 +440,8 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
                     setEmail('');
                     setAddress('');
                     setAccountInfo('');
+                    setFacebook('');
+                    setPhoto('');
                     setOpeningPayable(0);
                   }}
                   className="px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg cursor-pointer"
