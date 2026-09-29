@@ -39,7 +39,7 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
   const [accountInfo, setAccountInfo] = useState('');
   const [openingPayable, setOpeningPayable] = useState<number | ''>(0);
 
-  const [sortBy, setSortBy] = useState<'name' | 'payable_high' | 'payable_low'>('payable_high');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'name' | 'payable_high' | 'payable_low' | 'receivable_high' | 'receivable_low'>('newest');
 
   const filteredVendors = vendors.filter((v) => {
     if (!searchQuery.trim()) return true;
@@ -50,6 +50,19 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
       v.mobile.includes(q) ||
       (v.address && v.address.toLowerCase().includes(q))
     );
+  });
+
+  const sortedVendors = [...filteredVendors].sort((a, b) => {
+    const la = getVendorLedger(a.id);
+    const lb = getVendorLedger(b.id);
+    if (sortBy === 'payable_high') return lb.currentPayable - la.currentPayable;
+    if (sortBy === 'payable_low') return la.currentPayable - lb.currentPayable;
+    if (sortBy === 'receivable_high') return lb.vendorReceivable - la.vendorReceivable;
+    if (sortBy === 'receivable_low') return la.vendorReceivable - lb.vendorReceivable;
+    if (sortBy === 'name') return a.name.localeCompare(b.name);
+    const dateA = Math.max(...la.transactions.map((t) => new Date(t.date || t.createdAt || 0).getTime()), new Date(a.createdAt || 0).getTime(), 0);
+    const dateB = Math.max(...lb.transactions.map((t) => new Date(t.date || t.createdAt || 0).getTime()), new Date(b.createdAt || 0).getTime(), 0);
+    return sortBy === 'oldest' ? dateA - dateB : dateB - dateA;
   });
 
   const handleOpenAdd = () => {
@@ -157,8 +170,8 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
 
       <div className="flex items-center justify-between gap-2 mb-2">
         <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Current Payable: per vendor</span>
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as 'name' | 'payable_high' | 'payable_low')} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white font-semibold">
-          <option value="payable_high">Payable: High → Low</option><option value="payable_low">Payable: Low → High</option><option value="name">Name: A → Z</option>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white font-semibold">
+          <option value="newest">New → Old</option><option value="oldest">Old → New</option><option value="payable_high">Payable: High → Low</option><option value="payable_low">Payable: Low → High</option><option value="receivable_high">Due / Receivable: High → Low</option><option value="receivable_low">Due / Receivable: Low → High</option><option value="name">Name: A → Z</option>
         </select>
       </div>
 
@@ -173,7 +186,7 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
                 <th className="py-3 px-4 text-right">Total Purchases / Cost</th>
                 <th className="py-3 px-4 text-right">Total Disbursed</th>
                 <th className="py-3 px-4 text-right">Opening Payable</th>
-                <th className="py-3 px-4 text-right">Vendor দেনা / Payable</th><th className="py-3 px-4 text-right">Vendor পাওনা / Receivable</th>
+                <th className="py-3 px-4 text-right">Vendor দেনা / Payable</th><th className="py-3 px-4 text-right">Vendor পাওনা / Due / Receivable</th>
                 <th className="py-3 px-4 text-right">Ledger Actions</th>
               </tr>
             </thead>
@@ -185,7 +198,7 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
                   </td>
                 </tr>
               ) : (
-                filteredVendors.map((vend) => {
+                sortedVendors.map((vend) => {
                   const ledger = getVendorLedger(vend.id);
                   const hasDue = ledger.currentPayable > 0;
 
@@ -234,6 +247,16 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
                           </span>
                         ) : (
                           <span className="text-slate-400 font-semibold">৳0 (Cleared)</span>
+                        )}
+                      </td>
+
+                      <td className="py-3.5 px-4 text-right font-bold tabular-nums">
+                        {ledger.vendorReceivable > 0 ? (
+                          <span className="text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            {formatCurrency(ledger.vendorReceivable)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 font-semibold">৳0</span>
                         )}
                       </td>
 
