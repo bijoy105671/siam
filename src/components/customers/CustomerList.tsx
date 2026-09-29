@@ -185,14 +185,14 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
                 <th className="py-3 px-4 text-right">Total Sales</th>
                 <th className="py-3 px-4 text-right">Total Paid</th>
                 <th className="py-3 px-4 text-right">Opening Due</th>
-                <th className="py-3 px-4 text-right">Current Due</th>
+                <th className="py-3 px-4 text-right">Customer পাওনা</th><th className="py-3 px-4 text-right">Customer দেনা / Advance</th>
                 <th className="py-3 px-4 text-right">Ledger Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-mono">
               {filteredCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400 font-sans">
+                  <td colSpan={8} className="py-12 text-center text-slate-400 font-sans">
                     No customers found matching search criteria.
                   </td>
                 </tr>
@@ -245,13 +245,10 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
                       </td>
 
                       <td className="py-3.5 px-4 text-right font-bold tabular-nums">
-                        {hasDue ? (
-                          <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                            {formatCurrency(ledger.currentDue)}
-                          </span>
-                        ) : (
-                          <span className="text-emerald-600 font-semibold">PAID (৳0)</span>
-                        )}
+                        {hasDue ? <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">{formatCurrency(ledger.currentDue)}</span> : <span className="text-emerald-600 font-semibold">৳0</span>}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-bold tabular-nums">
+                        {ledger.availableAdvance > 0 ? <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">{formatCurrency(ledger.availableAdvance)}</span> : <span className="text-slate-400">৳0</span>}
                       </td>
 
                       <td className="py-3.5 px-4 text-right font-sans">
