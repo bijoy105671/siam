@@ -197,8 +197,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     // Record type filter keeps SALES visually distinct from due-settlement/payment records.
     if (recordFilter === 'sale' && tx.recordType !== 'sale') return false;
     if (recordFilter === 'customer_payment' && !(tx.recordType === 'payment' && tx.paymentType === 'customer')) return false;
-    if (recordFilter === 'vendor_payment' && !(tx.recordType === 'payment' && tx.paymentType === 'vendor')) return false;
-    if (recordFilter === 'loan_advance' && tx.recordType !== 'loan_advance') return false;
+    if (recordFilter === 'vendor_payment' && !(tx.recordType === 'payment' && tx.paymentType === 'vendor')) return false;    if (recordFilter === 'loan_advance' && tx.recordType !== 'loan_advance') return false;
     if (recordFilter === 'transfer' && tx.recordType !== 'transfer') return false;
     // Payment records are displayed in All Transactions, but are not service/sale rows.
     if (tx.recordType === 'transfer' || tx.recordType === 'loan_advance') {
@@ -397,8 +396,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
             <button
               onClick={() => setDateRange('all')}
               className={`px-2.5 py-1.5 rounded-lg transition-colors ${
-                dateRange === 'all' ? 'bg-blue-600 text-white font-semibold' : 'text-slate-600 hover:bg-slate-100'
-              }`}
+                dateRange === 'all' ? 'bg-blue-600 text-white font-semibold' : 'text-slate-600 hover:bg-slate-100'              }`}
             >              All Time
             </button>
             <button
@@ -597,8 +595,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         <td className="py-3 px-4 text-right text-slate-400">—</td>
                         <td className="py-3 px-4 text-right font-bold text-slate-400">—</td>
                         <td className="py-3 px-4 text-center"><span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-sky-100 text-sky-800 border-sky-200">TRANSFER · NON-SALE</span></td>
-                        <td className="py-3 px-4 text-right text-[10px] text-slate-500 font-sans">{tx.transferAmount ? formatCurrency(Number(tx.transferAmount)) : '—'}</td>
-                      </tr>
+                        <td className="py-3 px-4 text-right text-[10px] text-slate-500 font-sans">{tx.transferAmount ? formatCurrency(Number(tx.transferAmount)) : '—'}</td>                      </tr>
                     );                  }
 
                   if (tx.recordType === 'payment') {
