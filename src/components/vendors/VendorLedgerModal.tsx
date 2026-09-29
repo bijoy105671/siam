@@ -30,7 +30,7 @@ export const VendorLedgerModal: React.FC<VendorLedgerModalProps> = ({
   };
 
   const whatsappMsg = encodeURIComponent(
-    `VENDOR LEDGER STATEMENT - ${settings.name}\nVendor: ${vendor.name}\nCompany: ${vendor.company || ''}\nTotal Cost / Purchases: ${formatCurrency(ledger.totalCost)}\nTotal Payments Disbursed: ${formatCurrency(ledger.totalPaid)}\n*Net Outstanding Payable: ${formatCurrency(ledger.currentPayable)}*\n\nHelpline: ${settings.mobile}`
+    `VENDOR LEDGER STATEMENT - ${settings.name}\nVendor: ${vendor.name}\nCompany: ${vendor.company || ''}\nTotal Cost / Purchases: ${formatCurrency(ledger.totalCost)}\nTotal Payments Disbursed: ${formatCurrency(ledger.totalPaid)}\nVendor Receivable / Credit: ${formatCurrency((ledger as any).vendorReceivable || 0)}\n*Net Outstanding Payable: ${formatCurrency(ledger.currentPayable)}*\n\nHelpline: ${settings.mobile}`
   );
 
   return (
@@ -130,6 +130,11 @@ export const VendorLedgerModal: React.FC<VendorLedgerModalProps> = ({
               <div className="text-sm font-bold text-amber-800 mt-1">
                 Net Outstanding Payable: {formatCurrency(ledger.currentPayable)}
               </div>
+              {(ledger as any).vendorReceivable > 0 && (
+                <div className="text-sm font-bold text-emerald-700 mt-1">
+                  Vendor Receivable / Credit: {formatCurrency((ledger as any).vendorReceivable)}
+                </div>
+              )}
             </div>
           </div>
 
