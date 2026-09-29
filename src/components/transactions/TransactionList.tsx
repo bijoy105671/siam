@@ -87,11 +87,12 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   };
 
   type DisplayTransaction = Transaction & {
-    recordType?: 'sale' | 'payment' | 'transfer';
+    recordType?: 'sale' | 'payment' | 'loan_advance' | 'transfer';
     transferFrom?: string;
     transferTo?: string;
     transferAmount?: number;
-    transferReason?: string;\n    loanKind?: 'loan' | 'advance'; loanDirection?: 'received' | 'given'; loanPartyType?: 'customer' | 'vendor'; loanAmount?: number;
+    transferReason?: string;
+    loanKind?: 'loan' | 'advance'; loanDirection?: 'received' | 'given'; loanPartyType?: 'customer' | 'vendor'; loanAmount?: number;
     paymentType?: 'customer' | 'vendor';
     paymentAmount?: number;
     paymentMethodDisplay?: string;
@@ -197,8 +198,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     if (recordFilter === 'sale' && tx.recordType !== 'sale') return false;
     if (recordFilter === 'customer_payment' && !(tx.recordType === 'payment' && tx.paymentType === 'customer')) return false;
     if (recordFilter === 'vendor_payment' && !(tx.recordType === 'payment' && tx.paymentType === 'vendor')) return false;
-    if (recordFilter === 'loan_advance' && tx.recordType !== 'loan_advance') return false;\n    if (recordFilter === 'transfer' && tx.recordType !== 'transfer') return false;
-
+    if (recordFilter === 'loan_advance' && tx.recordType !== 'loan_advance') return false;
+    if (recordFilter === 'transfer' && tx.recordType !== 'transfer') return false;
     // Payment records are displayed in All Transactions, but are not service/sale rows.
     if (tx.recordType === 'transfer' || tx.recordType === 'loan_advance') {
       if (serviceFilter !== 'all') return false;
@@ -323,7 +324,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     ]);
 
     const csvContent =
-      'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('
+');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
@@ -397,8 +399,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
               className={`px-2.5 py-1.5 rounded-lg transition-colors ${
                 dateRange === 'all' ? 'bg-blue-600 text-white font-semibold' : 'text-slate-600 hover:bg-slate-100'
               }`}
-            >
-              All Time
+            >              All Time
             </button>
             <button
               onClick={() => setDateRange('today')}
@@ -454,7 +455,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
               <option value="all">All Records</option>
               <option value="sale">🟢 SALES ONLY</option>
               <option value="customer_payment">Customer Due Paid</option>
-              <option value="vendor_payment">Vendor Due Paid</option>\n              <option value="loan_advance">Loan / Advance</option>
+              <option value="vendor_payment">Vendor Due Paid</option>
+              <option value="loan_advance">Loan / Advance</option>
               <option value="transfer">Fund Transfers</option>
             </select>
 
@@ -597,8 +599,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         <td className="py-3 px-4 text-center"><span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-sky-100 text-sky-800 border-sky-200">TRANSFER · NON-SALE</span></td>
                         <td className="py-3 px-4 text-right text-[10px] text-slate-500 font-sans">{tx.transferAmount ? formatCurrency(Number(tx.transferAmount)) : '—'}</td>
                       </tr>
-                    );
-                  }
+                    );                  }
 
                   if (tx.recordType === 'payment') {
                     const isCustomerPayment = tx.paymentType === 'customer';
@@ -797,284 +798,3 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                               <Edit className="w-4 h-4" />
                             </button>
                           )}
-
-                          {currentUser?.role === 'admin' && (
-                            <button
-                              onClick={() => {
-                                if (
-                                  confirm(
-                                    `Are you sure you want to delete Invoice ${tx.invoiceNumber}? This will be recorded permanently in the Audit History.`
-                                  )
-                                ) {
-                                  try {
-                                    deleteTransaction(tx.id);
-                                  } catch (error) {
-                                    alert(error instanceof Error ? error.message : 'Transaction could not be deleted.');
-                                  }
-                                }
-                              }}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
-                              title="Delete Transaction (Audit Logged)"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {editingTransaction && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-5 py-4 bg-gradient-to-r from-slate-900 to-blue-950 text-white flex items-center justify-between">
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-blue-300 font-semibold">Administrator Edit</div>
-                <h3 className="text-base font-bold mt-0.5">Edit Transaction</h3>
-                <p className="text-[11px] text-slate-300 mt-0.5">{editingTransaction.invoiceNumber} · {editingTransaction.customerName}</p>
-              </div>
-              <button onClick={() => setEditingTransaction(null)} className="p-2 rounded-lg hover:bg-white/10" title="Close">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-3 max-h-[82vh] overflow-y-auto">
-              <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-3 space-y-2">
-                <div className="text-[10px] uppercase tracking-wider font-bold text-rose-900">Admin Price Correction</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Selling Price</span>
-                    <input type="number" min="0" value={editSellingPrice} onChange={(e) => {
-                      const next = e.target.value === '' ? '' : Number(e.target.value);
-                      setEditSellingPrice(next);
-                      if (next !== '') setEditCustomerDue(Math.max(0, Number(next) - Number(editCustomerPaid || 0)));
-                    }} className="w-full px-3 py-2 text-sm font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Customer Paid (Historical Correction)</span>
-                    <input type="number" min="0" value={editCustomerPaid} onChange={(e) => {
-                      const next = e.target.value === '' ? '' : Number(e.target.value);
-                      setEditCustomerPaid(next);
-                      if (next !== '') setEditCustomerDue(Math.max(0, Number(editSellingPrice || 0) - Number(next)));
-                    }} className="w-full px-3 py-2.5 text-sm font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  </label>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Additional Payment Account (when Paid increases)</span>
-                    <select value={editCustomerPaymentMethod} onChange={(e) => setEditCustomerPaymentMethod(e.target.value as PaymentMethod)} className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="Cash">Cash</option>
-                      <option value="bKash">bKash</option>
-                      <option value="Nagad">Nagad</option>
-                      <option value="Rocket">Rocket</option>
-                      <option value="Bank">Bank</option>
-                      <option value="Card">Card</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Customer Due</span>
-                    <input type="number" min="0" value={editCustomerDue} onChange={(e) => {
-                      const next = e.target.value === '' ? '' : Number(e.target.value);
-                      setEditCustomerDue(next);
-                      if (next !== '') setEditSellingPrice(Number(editCustomerPaid || 0) + Number(next));
-                    }} className="w-full px-3 py-2.5 text-sm font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  </label>
-                </div>
-                <div className="grid grid-cols-2 gap-3 text-[10px]">
-                  <div className="rounded-lg bg-white border border-slate-200 p-2"><span className="text-slate-500 block">Current Historical Paid</span><strong>{formatCurrency(editingTransaction.customerPaid)}</strong></div>
-                  <div className="rounded-lg bg-white border border-slate-200 p-2"><span className="text-slate-500 block">New Calculated Due</span><strong className="text-rose-600">{formatCurrency(Math.max(0, Number(editSellingPrice || 0) - Number(editCustomerPaid || 0)))}</strong></div>
-                </div>
-                </div>
-
-              <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 space-y-2">
-                <div className="text-[10px] uppercase tracking-wider font-bold text-blue-900">Customer ↔ Service ↔ Vendor Link</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Customer Service</span>
-                    <select value={editServiceId} onChange={(e) => setEditServiceId(e.target.value)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">No service linked</option>
-                      {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Vendor / Consolidator</span>
-                    <input type="text" list="admin-vendor-suggestions" value={editVendorName} onChange={(e) => { const value = e.target.value; setEditVendorName(value); const match = vendors.find((v) => v.name.trim().toLowerCase() === value.trim().toLowerCase()); setEditVendorId(match?.id || ''); }} placeholder="Type vendor / consolidator name" className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    <datalist id="admin-vendor-suggestions">{vendors.map((v) => <option key={v.id} value={v.name}>{v.company ? v.name + ' · ' + v.company : v.name}</option>)}</datalist>
-                    <span className="block mt-1 text-[9px] text-slate-500">Type an existing vendor or enter a new name. A new vendor profile will be created automatically when you save.</span>
-                  </label>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Vendor Cost</span>
-                    <input type="number" min="0" value={editVendorCost} onChange={(e) => {
-                      const next = e.target.value === '' ? '' : Number(e.target.value);
-                      setEditVendorCost(next);
-                      if (next !== '') setEditVendorDue(Math.max(0, Number(next) - Number(editVendorPaid || 0)));
-                    }} className="w-full px-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Vendor Paid (Historical / Partial)</span>
-                    <input type="number" min="0" value={editVendorPaid} onChange={(e) => {
-                      const next = e.target.value === '' ? '' : Number(e.target.value);
-                      setEditVendorPaid(next);
-                      if (next !== '') setEditVendorDue(Math.max(0, Number(editVendorCost || 0) - Number(next)));
-                    }} className="w-full px-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-amber-500" />
-                  </label>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Vendor Payment Method (when Paid increases)</span>
-                    <select value={editVendorPaymentMethod} onChange={(e) => setEditVendorPaymentMethod(e.target.value as PaymentMethod)} className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-amber-500">
-                      <option value="Cash">Cash</option>
-                      <option value="bKash">bKash</option>
-                      <option value="Nagad">Nagad</option>
-                      <option value="Rocket">Rocket</option>
-                      <option value="Bank">Bank</option>
-                      <option value="Card">Card</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="block text-[10px] font-semibold text-slate-700 mb-1">Vendor Due</span>
-                    <input type="number" min="0" value={editVendorDue} onChange={(e) => {
-                      const next = e.target.value === '' ? '' : Number(e.target.value);
-                      setEditVendorDue(next);
-                      if (next !== '') setEditVendorCost(Number(editVendorPaid || 0) + Number(next));
-                    }} className="w-full px-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-amber-500" />
-                  </label>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  {editingTransaction.customerDue > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingTransaction(null);
-                        onOpenPayment(editingTransaction, 'customer');
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg"
-                    >
-                      <DollarSign className="w-3.5 h-3.5" /> Pay Customer Due
-                    </button>
-                  )}
-                  {Number(editVendorDue || 0) > 0 && editVendorId && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingTransaction(null);
-                        onOpenPayment(editingTransaction, 'vendor');
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg"
-                    >
-                      <DollarSign className="w-3.5 h-3.5" /> Pay Vendor Due
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-3 text-[10px]">
-                  <div className="rounded-lg bg-white border border-slate-200 p-2"><span className="text-slate-500 block">Vendor Paid</span><strong className="text-slate-800">{formatCurrency(editingTransaction.vendorPaid)}</strong></div>
-                  <div className="rounded-lg bg-white border border-slate-200 p-2"><span className="text-slate-500 block">Vendor Due</span><strong className="text-amber-700">{formatCurrency(Math.max(0, Number(editVendorCost || 0) - Number(editingTransaction.vendorPaid || 0)))}</strong></div>
-                </div>
-              </div>
-
-              {editingTransaction.flightDetails && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Flight Ticket Status</label>
-                  <select value={editFlightStatus} onChange={(e) => setEditFlightStatus(e.target.value)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option>Confirmed</option>
-                    <option>Schedule Changed</option>
-                    <option>Reissued</option>
-                    <option>Refund</option>
-                    <option>Void</option>
-                    <option>Cancelled</option>
-                    <option>Completed</option>
-                    <option>Other</option>
-                  </select>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Reminder Date</label>
-                  <input type="date" value={editReminderDate} onChange={(e) => setEditReminderDate(e.target.value)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Reminder Time</label>
-                  <input type="time" value={editReminderTime} onChange={(e) => setEditReminderTime(e.target.value)} className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Admin Note</label>
-                <textarea value={editNote} onChange={(e) => setEditNote(e.target.value)} rows={3} placeholder="Reason / note for this edit..." className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-
-              <div className="rounded-xl bg-blue-50 border border-blue-200 px-3 py-2 text-[10px] text-blue-800 flex items-start gap-2">
-                <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>Admin + security OTP is required. The edit is recorded in Audit History.</span>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-1">
-                <button onClick={() => setEditingTransaction(null)} className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancel</button>
-                <button
-                  disabled={savingEdit}
-                  onClick={async () => {
-                    if (!editingTransaction) return;
-                    setSavingEdit(true);
-                    try {
-                      const typedVendorName = editVendorName.trim();
-                      let resolvedVendorId = editVendorId || '';
-                      if (typedVendorName) {
-                        const existingVendor = vendors.find((v) => v.name.trim().toLowerCase() === typedVendorName.toLowerCase());
-                        if (existingVendor) {
-                          resolvedVendorId = existingVendor.id;
-                        } else {
-                          const newVendor = await addVendorAsync({ name: typedVendorName, company: '', mobile: '', whatsapp: '', email: '', address: '', accountInfo: '', openingPayable: 0 });
-                          resolvedVendorId = newVendor.id;
-                        }
-                      } else {
-                        resolvedVendorId = '';
-                      }
-
-                      await updateTransaction(editingTransaction.id, {
-                        reminderDate: editReminderDate || undefined,
-                        reminderTime: editReminderTime || undefined,
-                        reminderStatus: editReminderDate ? 'pending' : undefined,
-                        reminderNote: editNote || undefined,
-                        serviceId: editServiceId || undefined,
-                        vendorId: resolvedVendorId || undefined,
-                        vendorCost: Number(editVendorCost || 0),
-                        vendorPaid: Number(editVendorPaid || 0),
-                        vendorDue: Number(editVendorDue || 0),
-                        vendorPaymentMethod: editVendorPaymentMethod,
-                        sellingPrice: Number(editSellingPrice || 0),
-                        customerPaid: Number(editCustomerPaid || 0),
-                        customerPaymentMethod: editCustomerPaymentMethod,
-                        customerDue: Number(editCustomerDue || 0),
-                        ...(editingTransaction.flightDetails ? { flightStatus: editFlightStatus } : {}),
-                      }, 'Admin transaction edit');
-                      setEditingTransaction(null);
-                    } catch (error) {
-                      alert(error instanceof Error ? error.message : 'Transaction could not be updated.');
-                    } finally {
-                      setSavingEdit(false);
-                    }
-                  }}
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-50"
-                >
-                  <Save className="w-4 h-4" /> {savingEdit ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-    </div>
-  );
-};
