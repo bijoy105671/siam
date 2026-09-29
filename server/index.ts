@@ -942,8 +942,9 @@ app.get('/api/vendors/:id/ledger', auth, async (req, res) => {
   const loanAdvanceApplied = loanRows.reduce((s:number,r:any)=>s+Number(r.applied_amount||0),0);
   const availableAdvanceGiven = Math.max(0, loanRows.filter((r:any)=>r.direction==='given').reduce((s:number,r:any)=>s+Math.max(0,Number(r.amount)-Number(r.applied_amount||0)),0));
   const invoicePayable = Number(vendor.opening_payable || 0) + totalCost - totalPaid;
-  const currentPayable = Math.max(0, invoicePayable + loanAdvanceReceived - availableAdvanceGiven);
-  res.json({ vendor, totalCost, totalPaid, invoicePayable, currentPayable, loanAdvanceReceived, loanAdvanceGiven, loanAdvanceApplied, availableAdvance: availableAdvanceGiven, transactions, payments, loanAdvances: loanRows });
+  const vendorReceivable = Math.max(0, availableAdvanceGiven - invoicePayable);
+  const currentPayable = Math.max(0, invoicePayable - availableAdvanceGiven + loanAdvanceReceived);
+  res.json({ vendor, totalCost, totalPaid, invoicePayable, currentPayable, vendorReceivable, loanAdvanceReceived, loanAdvanceGiven, loanAdvanceApplied, availableAdvance: availableAdvanceGiven, transactions, payments, loanAdvances: loanRows });
 });
 
 app.patch('/api/vendors/:id', auth, async (req,res) => {
