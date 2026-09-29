@@ -40,6 +40,8 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
   const [passportNumber, setPassportNumber] = useState('');
   const [passportExpiry, setPassportExpiry] = useState('');
   const [notes, setNotes] = useState('');
+  const [facebook, setFacebook] = useState('');
+  const [photo, setPhoto] = useState('');
   const [openingDue, setOpeningDue] = useState<number | ''>(0);
 
   const [sortBy, setSortBy] = useState<'name' | 'due_high' | 'due_low'>('due_high');
@@ -67,6 +69,8 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
     setPassportNumber('');
     setPassportExpiry('');
     setNotes('');
+    setFacebook('');
+    setPhoto('');
     setOpeningDue(0);
     setIsModalOpen(true);
   };
@@ -82,6 +86,8 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
     setPassportNumber(c.passportNumber || '');
     setPassportExpiry(c.passportExpiry || '');
     setNotes(c.notes || '');
+    setFacebook(c.facebook || '');
+    setPhoto(c.photo || '');
     setOpeningDue(c.openingDue || 0);
     setIsModalOpen(true);
   };
@@ -104,6 +110,8 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
         passportNumber: passportNumber.trim().toUpperCase(),
         passportExpiry: passportExpiry,
         notes: notes.trim(),
+        facebook: facebook.trim(),
+        photo,
         openingDue: Number(openingDue) || 0,
       });
     } else {
@@ -117,6 +125,8 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
         passportNumber: passportNumber.trim().toUpperCase(),
         passportExpiry: passportExpiry,
         notes: notes.trim(),
+        facebook: facebook.trim(),
+        photo,
         openingDue: Number(openingDue) || 0,
       });
     }
@@ -181,7 +191,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
             <thead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-100">
               <tr>
                 <th className="py-3 px-4">Customer Name & Contact</th>
-                <th className="py-3 px-4">Passport & NID</th>
+                <th className="py-3 px-4">Customer Name & Contact</th>
                 <th className="py-3 px-4 text-right">Total Sales</th>
                 <th className="py-3 px-4 text-right">Total Paid</th>
                 <th className="py-3 px-4 text-right">Opening Due</th>
@@ -204,7 +214,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
                   return (
                     <tr
                       key={cust.id}
-                      className={`hover:bg-slate-50/70 transition-colors ${
+                      className={`group relative hover:bg-slate-50/70 transition-colors ${
                         hasDue ? 'bg-rose-50/20' : ''
                       }`}
                     >
@@ -216,17 +226,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
                         )}
                       </td>
 
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-800">
-                          {cust.passportNumber || <span className="text-slate-400 font-normal">No Passport</span>}
-                        </div>
-                        {cust.passportExpiry && (
-                          <div className="text-[11px] text-slate-500">Exp: {cust.passportExpiry}</div>
-                        )}
-                        {cust.nid && (
-                          <div className="text-[10px] text-slate-400 font-mono">NID: {cust.nid}</div>
-                        )}
-                      </td>
+                      <td className="py-3.5 px-4 font-sans"><div className="flex items-center gap-2"><div className="w-9 h-9 rounded-full overflow-hidden bg-slate-100 border flex items-center justify-center">{cust.photo?<img src={cust.photo} alt="" className="w-full h-full object-cover"/>:<Users className="w-4 h-4 text-slate-300"/>}</div><div><div className="font-bold text-slate-900 text-sm">{cust.name}</div><div className="text-xs text-slate-500 font-mono">{cust.mobile}</div></div></div><div className="hidden group-hover:block absolute z-20 mt-2 w-72 rounded-xl bg-slate-950 text-white p-3 shadow-xl text-[11px] space-y-1">{cust.email&&<div>Email: {cust.email}</div>}{cust.whatsapp&&<div>WhatsApp: {cust.whatsapp}</div>}{cust.facebook&&<div>Facebook: {cust.facebook}</div>}{cust.address&&<div>Address: {cust.address}</div>}{cust.passportNumber&&<div>Passport: {cust.passportNumber}{cust.passportExpiry?` · Exp ${cust.passportExpiry}`:''}</div>}{cust.nid&&<div>NID: {cust.nid}</div>}{cust.notes&&<div>Notes: {cust.notes}</div>}</div></td>
 
                       <td className="py-3.5 px-4 text-right font-bold text-slate-900 tabular-nums">
                         {formatCurrency(ledger.totalSales)}
@@ -437,6 +437,11 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="block text-xs font-medium text-slate-700 mb-1">Facebook Account / Profile</label><input value={facebook} onChange={e=>setFacebook(e.target.value)} placeholder="Facebook URL / profile name" className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg"/></div>
+                <div><label className="block text-xs font-medium text-slate-700 mb-1">Customer Photo</label><input type="file" accept="image/*" onChange={e=>{const file=e.target.files?.[0];if(file){const reader=new FileReader();reader.onload=()=>setPhoto(String(reader.result||''));reader.readAsDataURL(file)}}} className="w-full text-xs"/></div>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
                   Notes
@@ -463,6 +468,8 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
                     setPassportNumber('');
                     setPassportExpiry('');
                     setNotes('');
+                    setFacebook('');
+                    setPhoto('');
                     setOpeningDue(0);
                   }}
                   className="px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg cursor-pointer"
