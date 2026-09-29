@@ -248,6 +248,7 @@ interface AppContextType {
     loanAdvanceApplied: number;
     availableAdvance: number;
     currentPayable: number;
+    vendorReceivable: number;
     transactions: Transaction[];
     payments: PartialPayment[];
   };
@@ -2431,6 +2432,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const availableAdvance = Math.max(0, loanAdvanceGiven - loanAdvanceApplied);
     const invoicePayable = Math.max(0, Number(vendor?.openingPayable || 0) + totalCost - totalPaid);
     // Money given to the vendor reduces what we owe; money/loan received from the vendor increases what we owe.
+    const vendorReceivable = Math.max(0, availableAdvance - invoicePayable - loanAdvanceReceived);
     const currentPayable = Math.max(0, invoicePayable + loanAdvanceReceived - availableAdvance);
 
     return {
@@ -2443,6 +2445,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loanAdvanceApplied,
       availableAdvance,
       currentPayable,
+      vendorReceivable,
       transactions: txs,
       payments,
     };
