@@ -125,7 +125,8 @@ export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
               <div className="text-slate-600">Opening Due: {formatCurrency(customer.openingDue || 0)}</div>
               <div className="text-slate-600">Total Billed: {formatCurrency(ledger.totalSales)}</div>
               <div className="text-emerald-700 font-semibold">Total Paid: {formatCurrency(ledger.totalPaid)}</div>
-              <div className="text-amber-700 font-semibold">Loan / Advance Credit: {formatCurrency(ledger.availableAdvance)}</div>
+              <div className="text-amber-700 font-semibold">Advance / Loan Received Credit: {formatCurrency(ledger.loanAdvanceReceived)}</div>
+              <div className="text-slate-700 font-semibold">Advance / Loan Given: {formatCurrency(ledger.loanAdvanceGiven)}</div>
               <div className="text-slate-700 font-semibold">Invoice Due: {formatCurrency(ledger.invoiceDue)}</div>
               <div className="text-sm font-bold text-rose-600 mt-1">
                 Net Balance Due: {formatCurrency(ledger.currentDue)}
