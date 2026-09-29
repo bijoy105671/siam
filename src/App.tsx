@@ -4,7 +4,6 @@ import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { OneEntryForm } from './components/entry/OneEntryForm';
-import { PnrCreation } from './components/entry/PnrCreation';
 import { TransactionList } from './components/transactions/TransactionList';
 import { FlightCalendar } from './components/flights/FlightCalendar';
 import { CustomerList } from './components/customers/CustomerList';
@@ -220,7 +219,6 @@ const MainLayout: React.FC = () => {
           {currentView === 'dashboard' && (
             <Dashboard
               onOpenNewEntry={() => setCurrentView('new_entry')}
-              onOpenPNR={() => setCurrentView('pnr')}
               onOpenTransfer={() => setIsTransferModalOpen(true)}
               onOpenCustomerDue={() => setCurrentView('customer_due')}
               onOpenVendorDue={() => setCurrentView('vendor_due')}
@@ -230,12 +228,6 @@ const MainLayout: React.FC = () => {
               onViewAllReminders={() => setCurrentView('reminders')}
               onSelectTransaction={(tx) => setActiveInvoiceTx(tx)}
               onOpenPayment={handleOpenPayment}
-            />
-          )}
-
-          {currentView === 'pnr' && (
-            <PnrCreation
-              onClose={() => setCurrentView('dashboard')}
             />
           )}
 
