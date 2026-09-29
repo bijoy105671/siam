@@ -42,6 +42,8 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
   const [notes, setNotes] = useState('');
   const [openingDue, setOpeningDue] = useState<number | ''>(0);
 
+  const [sortBy, setSortBy] = useState<'name' | 'due_high' | 'due_low'>('due_high');
+
   const filteredCustomers = customers.filter((c) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -163,6 +165,13 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
             Clear
           </button>
         )}
+      </div>
+
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Current Due: per customer</span>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as 'name' | 'due_high' | 'due_low')} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white font-semibold">
+          <option value="due_high">Due: High → Low</option><option value="due_low">Due: Low → High</option><option value="name">Name: A → Z</option>
+        </select>
       </div>
 
       {/* Customer Directory Table */}
