@@ -192,6 +192,13 @@ export const api = {
     apiRequest<{ account: string; amount: number }>('/api/opening-balances/' + encodeURIComponent(account), {
       method: 'PUT', body: JSON.stringify({ amount }),
     }),
+  ecommerceProducts: () => apiRequest<any[]>('/api/ecommerce/products'),
+  createEcommerceProduct: (input: Record<string, any>) => apiRequest<{ product: any }>('/api/ecommerce/products', { method: 'POST', body: JSON.stringify(input) }),
+  updateEcommerceProduct: (id: string, input: Record<string, any>) => apiRequest<{ product: any }>('/api/ecommerce/products/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(input) }),
+  deleteEcommerceProduct: (id: string) => apiRequest<{ ok: boolean }>('/api/ecommerce/products/' + encodeURIComponent(id), { method: 'DELETE' }),
+  ecommerceSettings: () => apiRequest<{ settings: Record<string, any> }>('/api/ecommerce/settings'),
+  updateEcommerceSettings: (settings: Record<string, any>) => apiRequest<{ settings: Record<string, any> }>('/api/ecommerce/settings', { method: 'PATCH', body: JSON.stringify(settings) }),
+  ecommerceNotifications: () => apiRequest<any[]>('/api/ecommerce/notifications'),
 };
 
 
