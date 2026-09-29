@@ -2385,13 +2385,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       : payments.reduce((sum: number, p: PartialPayment) => sum + Number(p.amount || 0), 0);
     const loanRows = (data.loanAdvances || []).filter((r: LoanAdvanceRecord) => r.partyType === 'customer' && r.partyId === customerId);
     const loanAdvanceReceived = loanRows.filter((r: LoanAdvanceRecord) => r.direction === 'received').reduce((sum: number, r: LoanAdvanceRecord) => sum + Number(r.amount || 0), 0);
+    const loanAdvanceGiven = loanRows.filter((r: LoanAdvanceRecord) => r.direction === 'given').reduce((sum: number, r: LoanAdvanceRecord) => sum + Number(r.amount || 0), 0);
     const loanAdvanceApplied = (data.loanAdvanceAdjustments || [])
       .filter((a: LoanAdvanceAdjustment) => a.partyType === 'customer' && a.partyId === customerId)
       .reduce((sum: number, a: LoanAdvanceAdjustment) => sum + Number(a.amount || 0), 0);
     const availableAdvance = Math.max(0, loanAdvanceReceived - loanAdvanceApplied);
     const invoiceDue = Math.max(0, Number(customer?.openingDue || 0) + totalSales - totalPaid);
-    // Unused customer advance/credit can settle future customer invoices.
-    const currentDue = Math.max(0, invoiceDue - availableAdvance);
+    // Money received from the customer reduces what they owe; money/loan given to them increases what they owe.
+    const currentDue = Math.max(0, invoiceDue + loanAdvanceGiven - availableAdvance);
 
     return {
       customer,
@@ -2399,6 +2400,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       totalPaid,
       invoiceDue,
       loanAdvanceReceived,
+      loanAdvanceGiven,
       loanAdvanceApplied,
       availableAdvance,
       currentDue,
@@ -2421,13 +2423,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       : payments.reduce((sum: number, p: PartialPayment) => sum + Number(p.amount || 0), 0);
     const loanRows = (data.loanAdvances || []).filter((r: LoanAdvanceRecord) => r.partyType === 'vendor' && r.partyId === vendorId);
     const loanAdvanceGiven = loanRows.filter((r: LoanAdvanceRecord) => r.direction === 'given').reduce((sum: number, r: LoanAdvanceRecord) => sum + Number(r.amount || 0), 0);
+    const loanAdvanceReceived = loanRows.filter((r: LoanAdvanceRecord) => r.direction === 'received').reduce((sum: number, r: LoanAdvanceRecord) => sum + Number(r.amount || 0), 0);
     const loanAdvanceApplied = (data.loanAdvanceAdjustments || [])
       .filter((a: LoanAdvanceAdjustment) => a.partyType === 'vendor' && a.partyId === vendorId)
       .reduce((sum: number, a: LoanAdvanceAdjustment) => sum + Number(a.amount || 0), 0);
     const availableAdvance = Math.max(0, loanAdvanceGiven - loanAdvanceApplied);
     const invoicePayable = Math.max(0, Number(vendor?.openingPayable || 0) + totalCost - totalPaid);
-    // Unused vendor advance/prepayment can settle future vendor invoices.
-    const currentPayable = Math.max(0, invoicePayable - availableAdvance);
+    // Money given to the vendor reduces what we owe; money/loan received from the vendor increases what we owe.
+    const currentPayable = Math.max(0, invoicePayable + loanAdvanceReceived - availableAdvance);
 
     return {
       vendor,
@@ -2435,6 +2438,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       totalPaid,
       invoicePayable,
       loanAdvanceGiven,
+      loanAdvanceReceived,
       loanAdvanceApplied,
       availableAdvance,
       currentPayable,
