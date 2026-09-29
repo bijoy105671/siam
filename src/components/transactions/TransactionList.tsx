@@ -675,16 +675,17 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                             <div className="font-bold text-violet-900">{tx.loanKind?.toUpperCase()} · {tx.loanDirection === 'received' ? 'RECEIVED' : 'GIVEN'}</div>
                             <div className="text-[11px] text-slate-500">{formatDate(tx.date)} {formatTime(tx.time)}</div>
                           </div>
-                        ) : (<>
-                                                <div className="flex items-center gap-1.5 mb-1">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 text-[9px] font-extrabold tracking-wide">SALE</span>
-                          <span className="text-[10px] text-slate-400">Service Transaction</span>
-                        </div>
-                        <div className="font-bold text-slate-900 font-mono">{tx.invoiceNumber}</div>
-                        <div className="text-[11px] text-slate-500 font-mono">
-                          {formatDate(tx.date)} {formatTime(tx.time)}
-                        </div>
-                      </td></>)}
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 text-[9px] font-extrabold tracking-wide">SALE</span>
+                              <span className="text-[10px] text-slate-400">Service Transaction</span>
+                            </div>
+                            <div className="font-bold text-slate-900 font-mono">{tx.invoiceNumber}</div>
+                            <div className="text-[11px] text-slate-500 font-mono">{formatDate(tx.date)} {formatTime(tx.time)}</div>
+                          </>
+                        )}
+                      </td>
 
                       <td className="py-3 px-4 font-sans">
                         <div className="font-semibold text-slate-900">{tx.customerName}</div>
