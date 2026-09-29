@@ -191,7 +191,6 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
             <thead className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-100">
               <tr>
                 <th className="py-3 px-4">Customer Name & Contact</th>
-                <th className="py-3 px-4">Customer Name & Contact</th>
                 <th className="py-3 px-4 text-right">Total Sales</th>
                 <th className="py-3 px-4 text-right">Total Paid</th>
                 <th className="py-3 px-4 text-right">Opening Due</th>
@@ -225,8 +224,6 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onSelectTransaction,
                           <div className="text-[11px] text-slate-400 truncate max-w-xs">{cust.address}</div>
                         )}
                       </td>
-
-                      <td className="py-3.5 px-4 font-sans"><div className="flex items-center gap-2"><div className="w-9 h-9 rounded-full overflow-hidden bg-slate-100 border flex items-center justify-center">{cust.photo?<img src={cust.photo} alt="" className="w-full h-full object-cover"/>:<Users className="w-4 h-4 text-slate-300"/>}</div><div><div className="font-bold text-slate-900 text-sm">{cust.name}</div><div className="text-xs text-slate-500 font-mono">{cust.mobile}</div></div></div><div className="hidden group-hover:block absolute z-20 mt-2 w-72 rounded-xl bg-slate-950 text-white p-3 shadow-xl text-[11px] space-y-1">{cust.email&&<div>Email: {cust.email}</div>}{cust.whatsapp&&<div>WhatsApp: {cust.whatsapp}</div>}{cust.facebook&&<div>Facebook: {cust.facebook}</div>}{cust.address&&<div>Address: {cust.address}</div>}{cust.passportNumber&&<div>Passport: {cust.passportNumber}{cust.passportExpiry?` · Exp ${cust.passportExpiry}`:''}</div>}{cust.nid&&<div>NID: {cust.nid}</div>}{cust.notes&&<div>Notes: {cust.notes}</div>}</div></td>
 
                       <td className="py-3.5 px-4 text-right font-bold text-slate-900 tabular-nums">
                         {formatCurrency(ledger.totalSales)}
