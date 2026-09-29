@@ -1654,6 +1654,10 @@ app.post('/api/loan-advances/:id/adjust', auth, async (req,res)=>{
     if(!tx || tx.deleted_at) throw new Error('Transaction not found');
     if(la.party_type==='customer' && String(tx.customer_id)!==String(la.party_id)) throw new Error('Party mismatch');
     if(la.party_type==='vendor' && String(tx.vendor_id)!==String(la.party_id)) throw new Error('Party mismatch');
+    // Only money previously given to a vendor or received from a customer can be applied to an invoice.
+    // A customer loan/advance given by us and a vendor loan/advance received by us remain separate receivables/payables.
+    if(la.party_type==='customer' && la.direction!=='received') throw new Error('A customer loan/advance given by us cannot be applied as a customer payment. Record repayment separately.');
+    if(la.party_type==='vendor' && la.direction!=='given') throw new Error('A vendor loan/advance received by us cannot be applied as a vendor payment. Record repayment separately.');
     const used=Number((await client.query('SELECT COALESCE(SUM(amount),0) total FROM loan_advance_adjustments WHERE loan_advance_id=$1 AND reversed_at IS NULL',[la.id])).rows[0].total||0);
     const available=Math.max(0,Number(la.amount)-used);
     const due=la.party_type==='customer'?Math.max(0,Number(tx.customer_due)):Math.max(0,Number(tx.vendor_due));
