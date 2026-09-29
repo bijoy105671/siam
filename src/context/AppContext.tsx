@@ -2263,30 +2263,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return Object.values(accountBalances).reduce((sum, val) => sum + val, 0);
   }, [accountBalances]);
 
-  // Customer Receivable: unpaid invoices/opening dues, reduced by unapplied customer advances.
+  // Customer receivable = opening/invoice due + money we gave the customer
+  // - unapplied money the customer previously gave us.
   const totalCustomerReceivable = useMemo(() => {
     const openingTotal = data.customers.reduce((sum: number, c: Customer) => sum + Number(c.openingDue || 0), 0);
     const txDueTotal = data.transactions.reduce((sum: number, t: Transaction) => sum + Number(t.customerDue || 0), 0);
-    const customerAdvances = (data.loanAdvances || [])
+    const customerAdvanceReceived = (data.loanAdvances || [])
       .filter((r: LoanAdvanceRecord) => r.partyType === 'customer' && r.direction === 'received')
+      .reduce((sum: number, r: LoanAdvanceRecord) => sum + Number(r.amount || 0), 0);
+    const customerAdvanceGiven = (data.loanAdvances || [])
+      .filter((r: LoanAdvanceRecord) => r.partyType === 'customer' && r.direction === 'given')
       .reduce((sum: number, r: LoanAdvanceRecord) => sum + Number(r.amount || 0), 0);
     const customerAdvanceApplied = (data.loanAdvanceAdjustments || [])
       .filter((a: LoanAdvanceAdjustment) => a.partyType === 'customer')
       .reduce((sum: number, a: LoanAdvanceAdjustment) => sum + Number(a.amount || 0), 0);
-    return Math.max(0, openingTotal + txDueTotal - Math.max(0, customerAdvances - customerAdvanceApplied));
+    return Math.max(0, openingTotal + txDueTotal + customerAdvanceGiven - Math.max(0, customerAdvanceReceived - customerAdvanceApplied));
   }, [data.customers, data.transactions, data.loanAdvances, data.loanAdvanceAdjustments]);
 
-  // Vendor Payable: unpaid vendor invoices/opening payable, reduced by unapplied vendor advances.
+  // Vendor payable = opening/invoice payable + money we received from the vendor
+  // - unapplied money we previously gave the vendor.
   const totalVendorPayable = useMemo(() => {
     const openingTotal = data.vendors.reduce((sum: number, v: Vendor) => sum + Number(v.openingPayable || 0), 0);
     const txDueTotal = data.transactions.reduce((sum: number, t: Transaction) => sum + Number(t.vendorDue || 0), 0);
-    const vendorAdvances = (data.loanAdvances || [])
+    const vendorAdvanceGiven = (data.loanAdvances || [])
       .filter((r: LoanAdvanceRecord) => r.partyType === 'vendor' && r.direction === 'given')
+      .reduce((sum: number, r: LoanAdvanceRecord) => sum + Number(r.amount || 0), 0);
+    const vendorAdvanceReceived = (data.loanAdvances || [])
+      .filter((r: LoanAdvanceRecord) => r.partyType === 'vendor' && r.direction === 'received')
       .reduce((sum: number, r: LoanAdvanceRecord) => sum + Number(r.amount || 0), 0);
     const vendorAdvanceApplied = (data.loanAdvanceAdjustments || [])
       .filter((a: LoanAdvanceAdjustment) => a.partyType === 'vendor')
       .reduce((sum: number, a: LoanAdvanceAdjustment) => sum + Number(a.amount || 0), 0);
-    return Math.max(0, openingTotal + txDueTotal - Math.max(0, vendorAdvances - vendorAdvanceApplied));
+    return Math.max(0, openingTotal + txDueTotal + vendorAdvanceReceived - Math.max(0, vendorAdvanceGiven - vendorAdvanceApplied));
   }, [data.vendors, data.transactions, data.loanAdvances, data.loanAdvanceAdjustments]);
 
   // Today's summary stats. PostgreSQL is authoritative in production mode.
