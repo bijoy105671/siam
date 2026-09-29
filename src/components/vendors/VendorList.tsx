@@ -173,14 +173,14 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
                 <th className="py-3 px-4 text-right">Total Purchases / Cost</th>
                 <th className="py-3 px-4 text-right">Total Disbursed</th>
                 <th className="py-3 px-4 text-right">Opening Payable</th>
-                <th className="py-3 px-4 text-right">Current Payable</th>
+                <th className="py-3 px-4 text-right">Vendor দেনা / Payable</th><th className="py-3 px-4 text-right">Vendor পাওনা / Receivable</th>
                 <th className="py-3 px-4 text-right">Ledger Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-mono">
               {filteredVendors.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400 font-sans">
+                  <td colSpan={8} className="py-12 text-center text-slate-400 font-sans">
                     No vendors found matching search criteria.
                   </td>
                 </tr>
