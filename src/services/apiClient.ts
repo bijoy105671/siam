@@ -157,6 +157,9 @@ export const api = {
     apiRequest<{ adjustment: unknown; transaction: unknown }>(`/api/loan-advances/${encodeURIComponent(id)}/adjust`, { method: 'POST', body: JSON.stringify(input) }),
   reverseLoanAdvanceAdjustment: (id: string) =>
     apiRequest<{ ok: boolean }>(`/api/loan-advance-adjustments/${encodeURIComponent(id)}/reverse`, { method: 'POST' }),
+  storefrontOrders: () => apiRequest<unknown[]>('/api/storefront/orders'),
+  updateStorefrontOrder: (id: string, status: string) =>
+    apiRequest<{ order: unknown }>('/api/storefront/orders/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify({ status }) }),
   openingBalances: () =>
     apiRequest<unknown[]>('/api/opening-balances'),
   customerLedger: (id: string) =>
