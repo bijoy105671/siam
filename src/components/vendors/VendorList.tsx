@@ -39,6 +39,8 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
   const [accountInfo, setAccountInfo] = useState('');
   const [openingPayable, setOpeningPayable] = useState<number | ''>(0);
 
+  const [sortBy, setSortBy] = useState<'name' | 'payable_high' | 'payable_low'>('payable_high');
+
   const filteredVendors = vendors.filter((v) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -151,6 +153,13 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
             Clear
           </button>
         )}
+      </div>
+
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Current Payable: per vendor</span>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as 'name' | 'payable_high' | 'payable_low')} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white font-semibold">
+          <option value="payable_high">Payable: High → Low</option><option value="payable_low">Payable: Low → High</option><option value="name">Name: A → Z</option>
+        </select>
       </div>
 
       {/* Vendors Directory Table */}
