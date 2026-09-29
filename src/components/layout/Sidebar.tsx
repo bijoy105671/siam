@@ -15,6 +15,7 @@ import {
   History,
   Database,
   ShieldCheck,
+  ShoppingBag,
   X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -105,6 +106,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Profit/Loss & Reports',
       icon: BarChart3,
       badge: null,
+    },
+    {
+      id: 'ecommerce',
+      label: 'E-commerce Control',
+      icon: ShoppingBag,
+      badge: 'STORE',
+      badgeColor: 'bg-emerald-100 text-emerald-800',
     },
     {
       id: 'admin',
