@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Shield, KeyRound, UserRound, X, Eye, EyeOff, Mail, LockKeyhole, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { api, USE_SERVER_API } from '../../services/apiClient';
+import { RegisterModal } from './RegisterModal';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -29,6 +30,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const [loginOtpError, setLoginOtpError] = useState('');
   const [loginOtpBusy, setLoginOtpBusy] = useState(false);
   const [loginOtpMessage, setLoginOtpMessage] = useState('');
+  const [registerOpen, setRegisterOpen] = useState(false);
   const [businessIdentity, setBusinessIdentity] = useState({
     name: 'SIAM AIR & DIGITAL SERVICE',
     tagline: 'Travel Agency · Visa · Passport · Digital',
@@ -257,6 +259,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             {isSubmitting ? 'Signing In…' : 'Sign In Securely'}
           </button>
 
+          {USE_SERVER_API && <button type="button" onClick={() => setRegisterOpen(true)} className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 py-3 text-sm font-extrabold text-emerald-700 hover:bg-emerald-100">Create Business Account / Register</button>}
+
           <div className="flex items-center justify-center gap-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
             <Shield className="h-3.5 w-3.5" />
             Secure business access
@@ -408,6 +412,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           </div>
         )}
       </div>
+      <RegisterModal isOpen={registerOpen} onClose={() => setRegisterOpen(false)} />
     </div>
   );
 };
