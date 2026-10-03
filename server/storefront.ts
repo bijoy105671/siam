@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from 'express';
 import type { Pool } from 'pg';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import bcrypt from 'bcryptjs';
 
 type Guard = (req: Request, res: Response, next: NextFunction) => void;
 const hashPassword = (password: string) => scryptSync(password, 'siam-ecom-password-v1', 32).toString('hex');
@@ -198,4 +199,90 @@ export const registerStorefrontRoutes = (app: Express, pool: Pool, auth: Guard, 
   app.get('/api/ecommerce/settings',adminOnly,async(_req,res)=>res.json({settings:await getSettings(pool)}));
   app.patch('/api/ecommerce/settings',adminOnly,async(req,res)=>{const next={...(await getSettings(pool)),...(req.body||{})};await pool.query('UPDATE ecommerce_settings SET value=$1,updated_at=now() WHERE id=1',[JSON.stringify(next)]);res.json({settings:next});});
   app.get('/api/ecommerce/notifications',adminOnly,async(_req,res)=>{const{rows}=await pool.query('SELECT * FROM ecommerce_notifications ORDER BY created_at DESC LIMIT 200');res.json(rows);});
+  // Paid SaaS registration foundation. New organizations are deliberately inactive
+  // until tenant isolation and subscription activation are completed.
+  app.get('/api/saas/plans', async (_req,res) => {
+    const { rows } = await pool.query('SELECT id,name,duration_days,price,currency FROM subscription_plans WHERE active=true ORDER BY duration_days');
+    res.json({ plans: rows });
+  });
+
+  app.post('/api/saas/register', async (req,res) => {
+    const businessName=String(req.body?.businessName||'').trim();
+    const ownerName=String(req.body?.ownerName||'').trim();
+    const phone=normalizePhone(req.body?.phone);
+    const email=normalizeEmail(req.body?.email);
+    const username=String(req.body?.username||email||phone).trim().toLowerCase();
+    const password=String(req.body?.password||'');
+    const address=String(req.body?.address||'').trim();
+    if(!businessName||!ownerName||!phone||!email||!username||password.length<8){
+      return res.status(400).json({error:'Business name, owner name, mobile, email, username and an 8+ character password are required.'});
+    }
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      const existing=await client.query('SELECT id FROM users WHERE lower(username)=lower($1) LIMIT 1',[username]);
+      if(existing.rows[0]){await client.query('ROLLBACK');return res.status(409).json({error:'Username is already registered.'});}
+      const org=(await client.query(
+        'INSERT INTO organizations(business_name,owner_name,phone,email,address,logo_url,tagline,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,business_name,owner_name,phone,email,address,status,created_at',
+        [businessName,ownerName,phone,email,address||null,null,'All service in one doors','pending']
+      )).rows[0];
+      const hash=await bcrypt.hash(password,12);
+      const user=(await client.query(
+        'INSERT INTO users(organization_id,username,password_hash,full_name,role,phone,email,photo,is_active) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,username,full_name,role,phone,email,photo,is_active,created_at',
+        [org.id,username,hash,ownerName,'admin',phone,email,req.body?.photo||null,false]
+      )).rows[0];
+      const planId=String(req.body?.planId||'');
+      const plan=planId
+        ? (await client.query('SELECT id FROM subscription_plans WHERE id=$1 AND active=true',[planId])).rows[0]
+        : (await client.query('SELECT id FROM subscription_plans WHERE name=$1 AND active=true LIMIT 1',['Monthly'])).rows[0];
+      await client.query(
+        'INSERT INTO subscriptions(organization_id,plan_id,status) VALUES($1,$2,$3)',
+        [org.id,plan?.id||null,'pending']
+      );
+      await client.query('COMMIT');
+      res.status(201).json({
+        ok:true,
+        status:'pending',
+        message:'Registration received. Your office account is pending subscription activation.',
+        organization:org,
+        user:{id:user.id,username:user.username,fullName:user.full_name,role:user.role,phone:user.phone,email:user.email,isActive:user.is_active}
+      });
+    }catch(e){
+      try{await client.query('ROLLBACK')}catch{}
+      const message=String(e instanceof Error?e.message:e);
+      res.status(message.toLowerCase().includes('unique')?409:400).json({error:message.toLowerCase().includes('unique')?'Username is already registered.':'Registration failed.'});
+    }finally{client.release();}
+  });
+
+  app.get('/api/saas/profile',auth,async(req,res)=>{
+    const {rows}=await pool.query(
+      'SELECT u.id,u.username,u.full_name,u.role,u.phone,u.email,u.photo,u.permissions,u.is_active,u.organization_id,o.business_name,o.owner_name,o.address,o.logo_url,o.tagline,o.status AS organization_status FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.id=$1',
+      [req.session.userId]
+    );
+    if(!rows[0])return res.status(404).json({error:'Profile not found'});
+    res.json({profile:rows[0]});
+  });
+
+  app.patch('/api/saas/profile',auth,async(req,res)=>{
+    const userId=req.session.userId!;
+    const fullName=req.body?.fullName!==undefined?String(req.body.fullName).trim():null;
+    const phone=req.body?.phone!==undefined?(normalizePhone(req.body.phone)||null):null;
+    const email=req.body?.email!==undefined?(normalizeEmail(req.body.email)||null):null;
+    const photo=req.body?.photo!==undefined?(String(req.body.photo||'')||null):null;
+    if(photo&&photo.length>1800000)return res.status(413).json({error:'Profile photo is too large. Please use an image under about 1.3 MB.'});
+    const user=(await pool.query(
+      'UPDATE users SET full_name=COALESCE($1,full_name),phone=CASE WHEN $2::boolean THEN $3 ELSE phone END,email=CASE WHEN $4::boolean THEN $5 ELSE email END,photo=CASE WHEN $6::boolean THEN $7 ELSE photo END WHERE id=$8 RETURNING id,username,full_name,role,phone,email,photo,organization_id',
+      [fullName,req.body?.phone!==undefined,phone,req.body?.email!==undefined,email,req.body?.photo!==undefined,photo,userId]
+    )).rows[0];
+    if(!user)return res.status(404).json({error:'Profile not found'});
+    if(req.body?.businessName!==undefined||req.body?.address!==undefined||req.body?.tagline!==undefined||req.body?.logoUrl!==undefined){
+      await pool.query(
+        'UPDATE organizations SET business_name=COALESCE($1,business_name),address=COALESCE($2,address),tagline=COALESCE($3,tagline),logo_url=COALESCE($4,logo_url),updated_at=now() WHERE id=$5',
+        [req.body?.businessName!==undefined?String(req.body.businessName).trim():null,req.body?.address!==undefined?String(req.body.address).trim():null,req.body?.tagline!==undefined?String(req.body.tagline).trim():null,req.body?.logoUrl!==undefined?String(req.body.logoUrl||''):null,user.organization_id]
+      );
+    }
+    const {rows}=await pool.query('SELECT u.id,u.username,u.full_name,u.role,u.phone,u.email,u.photo,u.organization_id,o.business_name,o.owner_name,o.address,o.logo_url,o.tagline,o.status AS organization_status FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.id=$1',[userId]);
+    res.json({profile:rows[0]});
+  });
+
 };
