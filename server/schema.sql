@@ -285,3 +285,130 @@ CREATE TABLE IF NOT EXISTS flight_directory (
 );
 CREATE INDEX IF NOT EXISTS idx_flight_directory_flight_no ON flight_directory(flight_no);
 CREATE INDEX IF NOT EXISTS idx_flight_directory_route ON flight_directory(from_airport, to_airport);
+
+
+-- SIAM SAAS MULTI-TENANT FOUNDATION v1
+-- Additive foundation: existing accounting tables remain compatible while tenant-aware
+-- routes are introduced. New public registrations start inactive until subscription/data isolation is activated.
+CREATE TABLE IF NOT EXISTS organizations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_name text NOT NULL,
+  owner_name text NOT NULL,
+  phone text,
+  email text,
+  address text,
+  logo_url text,
+  tagline text,
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended','pending')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE SET NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS photo text;
+
+CREATE TABLE IF NOT EXISTS subscription_plans (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL UNIQUE,
+  duration_days integer NOT NULL CHECK (duration_days > 0),
+  price numeric(14,2) NOT NULL DEFAULT 0,
+  currency text NOT NULL DEFAULT 'BDT',
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  plan_id uuid REFERENCES subscription_plans(id),
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active','expired','cancelled','trial')),
+  starts_at timestamptz,
+  ends_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_org ON subscriptions(organization_id,status,ends_at);
+
+CREATE TABLE IF NOT EXISTS subscription_payments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  subscription_id uuid REFERENCES subscriptions(id) ON DELETE SET NULL,
+  amount numeric(14,2) NOT NULL CHECK (amount >= 0),
+  currency text NOT NULL DEFAULT 'BDT',
+  method text,
+  gateway text,
+  gateway_reference text,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','failed','refunded')),
+  paid_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_payments_org ON subscription_payments(organization_id,created_at);
+
+INSERT INTO subscription_plans(name,duration_days,price,currency)
+VALUES ('Monthly',30,0,'BDT'),('Quarterly',90,0,'BDT'),('Yearly',365,0,'BDT')
+ON CONFLICT (name) DO NOTHING;
+
+-- Convert the existing SIAM AIR installation into the first protected organization.
+DO $$
+DECLARE org_id uuid; owner_id uuid;
+BEGIN
+  SELECT id INTO owner_id FROM users WHERE role='admin' ORDER BY created_at LIMIT 1;
+  SELECT id INTO org_id FROM organizations WHERE business_name='SIAM AIR & DIGITAL SERVICE' ORDER BY created_at LIMIT 1;
+  IF org_id IS NULL THEN
+    INSERT INTO organizations(business_name,owner_name,phone,email,address,tagline,status)
+    VALUES ('SIAM AIR & DIGITAL SERVICE',COALESCE((SELECT full_name FROM users WHERE id=owner_id),'SIAM AIR Admin'),'01883400808','bijoy105671@gmail.com','Ramkrisnapur Bazar / Shutradhar Super Market, Homna, Cumilla','All service in one doors','active')
+    RETURNING id INTO org_id;
+  END IF;
+  UPDATE users SET organization_id=org_id WHERE organization_id IS NULL;
+  IF owner_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM subscriptions WHERE organization_id=org_id) THEN
+    INSERT INTO subscriptions(organization_id,plan_id,status,starts_at,ends_at)
+    SELECT org_id,id,'active',now(),now()+interval '3650 days' FROM subscription_plans WHERE name='Yearly' LIMIT 1;
+  END IF;
+END $$;
+
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS facebook text;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS photo text;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS facebook text;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE fund_transfers ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE account_opening_balances ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE account_entries ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE loan_advances ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE loan_advance_adjustments ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE appointment_reminders ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE flight_directory ADD COLUMN IF NOT EXISTS organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE;
+
+DO $$ DECLARE org_id uuid; BEGIN
+  SELECT id INTO org_id FROM organizations WHERE business_name='SIAM AIR & DIGITAL SERVICE' ORDER BY created_at LIMIT 1;
+  UPDATE customers SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE vendors SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE services SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE transactions SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE payments SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE expenses SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE fund_transfers SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE audit_logs SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE account_opening_balances SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE app_settings SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE account_entries SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE loan_advances SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE loan_advance_adjustments SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE appointment_reminders SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE flight_directory SET organization_id=org_id WHERE organization_id IS NULL;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_users_organization ON users(organization_id);
+CREATE INDEX IF NOT EXISTS idx_customers_organization ON customers(organization_id);
+CREATE INDEX IF NOT EXISTS idx_vendors_organization ON vendors(organization_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_organization ON transactions(organization_id);
+CREATE INDEX IF NOT EXISTS idx_payments_organization ON payments(organization_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_organization ON expenses(organization_id);
+CREATE INDEX IF NOT EXISTS idx_fund_transfers_organization ON fund_transfers(organization_id);
+CREATE INDEX IF NOT EXISTS idx_settings_organization ON app_settings(organization_id);
