@@ -75,6 +75,10 @@ export const api = {
   saveFlightDirectory: (input: Record<string, any>) =>
     apiRequest<{ flight: unknown }>('/api/flight-directory', { method: 'POST', body: JSON.stringify(input) }),
   health: () => apiRequest<{ ok: boolean }>('/api/health'),
+  saasPlans: () => apiRequest<{ plans: any[] }>('/api/saas/plans'),
+  saasRegister: (input: Record<string, any>) => apiRequest<{ ok: boolean; status: string; message: string; organization: any; user: any }>('/api/saas/register', { method: 'POST', body: JSON.stringify(input) }),
+  saasProfile: () => apiRequest<{ profile: any }>('/api/saas/profile'),
+  updateSaasProfile: (input: Record<string, any>) => apiRequest<{ profile: any }>('/api/saas/profile', { method: 'PATCH', body: JSON.stringify(input) }),
   me: () => apiRequest<{ user: unknown }>('/api/auth/me'),
   login: (username: string, password: string) =>
     apiRequest<{ user?: unknown; requiresOtp?: boolean; challengeId?: string; message?: string }>('/api/auth/login', {
