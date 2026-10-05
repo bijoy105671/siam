@@ -19,6 +19,7 @@ export const installTenantAwarePool = (pool: Pool) => {
   (pool as any).query = async (...args: any[]) => {
     const organizationId = getTenantOrganizationId();
     if (!organizationId) return originalQuery(...args);
+
     const client = await originalConnect();
     try {
       await client.query('BEGIN');
@@ -34,24 +35,55 @@ export const installTenantAwarePool = (pool: Pool) => {
     }
   };
 
-  (pool as any).connect = async (...args: any[]) => {
-    const client: PoolClient = await originalConnect(...args);
-    const originalClientQuery = client.query.bind(client);
-    (client as any).query = async (...queryArgs: any[]): Promise<QueryResult> => {
-      const organizationId = getTenantOrganizationId();
-      if (!organizationId) return originalClientQuery(...queryArgs);
-      const sql = sqlText(queryArgs);
-      if (sql.startsWith('BEGIN')) {
-        const result = await originalClientQuery(...queryArgs);
-        await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
-        return result;
-      }
-      if (sql.startsWith('COMMIT') || sql.startsWith('ROLLBACK') || sql.startsWith('SET ') || sql.startsWith('SELECT SET_CONFIG')) {
-        return originalClientQuery(...queryArgs);
-      }
-      await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
-      return originalClientQuery(...queryArgs);
-    };
-    return client;
+  // Keep callback and promise semantics of pg.Pool#connect intact.
+  // The previous wrapper could return undefined on Render/pg and crash startup.
+  (pool as any).connect = (callback?: (err: Error | undefined, client: PoolClient, release: (err?: Error) => void) => void) => {
+    if (typeof callback === 'function') {
+      return originalConnect((err: Error | undefined, client: PoolClient, release: (err?: Error) => void) => {
+        if (err || !client) return callback(err, client, release);
+        const organizationId = getTenantOrganizationId();
+        if (!organizationId) return callback(undefined, client, release);
+
+        const originalClientQuery = client.query.bind(client);
+        (client as any).query = async (...queryArgs: any[]): Promise<QueryResult> => {
+          const sql = sqlText(queryArgs);
+          if (sql.startsWith('BEGIN')) {
+            const result = await originalClientQuery(...queryArgs);
+            await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
+            return result;
+          }
+          if (sql.startsWith('COMMIT') || sql.startsWith('ROLLBACK') || sql.startsWith('SET ') || sql.startsWith('SELECT SET_CONFIG')) {
+            return originalClientQuery(...queryArgs);
+          }
+          await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
+          return originalClientQuery(...queryArgs);
+        };
+        return callback(undefined, client, release);
+      });
+    }
+
+    return new Promise<PoolClient>((resolve, reject) => {
+      originalConnect((err: Error | undefined, client: PoolClient) => {
+        if (err || !client) return reject(err || new Error('Failed to acquire database client'));
+        const organizationId = getTenantOrganizationId();
+        if (!organizationId) return resolve(client);
+
+        const originalClientQuery = client.query.bind(client);
+        (client as any).query = async (...queryArgs: any[]): Promise<QueryResult> => {
+          const sql = sqlText(queryArgs);
+          if (sql.startsWith('BEGIN')) {
+            const result = await originalClientQuery(...queryArgs);
+            await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
+            return result;
+          }
+          if (sql.startsWith('COMMIT') || sql.startsWith('ROLLBACK') || sql.startsWith('SET ') || sql.startsWith('SELECT SET_CONFIG')) {
+            return originalClientQuery(...queryArgs);
+          }
+          await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
+          return originalClientQuery(...queryArgs);
+        };
+        resolve(client);
+      });
+    });
   };
 };
