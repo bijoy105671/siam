@@ -1,0 +1,74 @@
+name: Tenant scoped unique constraints
+on:
+  push:
+    branches: [production-upgrade-v1]
+permissions:
+  contents: write
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: production-upgrade-v1
+      - name: Patch tenant unique constraints and legacy upserts
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p=Path('server/schema.sql')
+          s=p.read_text()
+          marker='-- SIAM SAAS TENANT UNIQUE CONSTRAINTS v1'
+          if marker not in s:
+            s += r'''
+
+          -- SIAM SAAS TENANT UNIQUE CONSTRAINTS v1
+          DO $$
+          BEGIN
+            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='customers'::regclass AND conname='customers_mobile_key') THEN
+              ALTER TABLE customers DROP CONSTRAINT customers_mobile_key;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='services'::regclass AND conname='services_name_key') THEN
+              ALTER TABLE services DROP CONSTRAINT services_name_key;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='transactions'::regclass AND conname='transactions_invoice_number_key') THEN
+              ALTER TABLE transactions DROP CONSTRAINT transactions_invoice_number_key;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='account_opening_balances'::regclass AND conname='account_opening_balances_pkey') THEN
+              ALTER TABLE account_opening_balances DROP CONSTRAINT account_opening_balances_pkey;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='app_settings'::regclass AND conname='app_settings_pkey') THEN
+              ALTER TABLE app_settings DROP CONSTRAINT app_settings_pkey;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='flight_directory'::regclass AND conname='flight_directory_flight_no_from_airport_to_airport_key') THEN
+              ALTER TABLE flight_directory DROP CONSTRAINT flight_directory_flight_no_from_airport_to_airport_key;
+            END IF;
+          END $$;
+
+          CREATE UNIQUE INDEX IF NOT EXISTS uq_customers_org_mobile ON customers(organization_id,mobile);
+          CREATE UNIQUE INDEX IF NOT EXISTS uq_services_org_name ON services(organization_id,name);
+          CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_org_invoice ON transactions(organization_id,invoice_number);
+          CREATE UNIQUE INDEX IF NOT EXISTS uq_opening_balances_org_account ON account_opening_balances(organization_id,account_name);
+          CREATE UNIQUE INDEX IF NOT EXISTS uq_settings_org_key ON app_settings(organization_id,key);
+          CREATE UNIQUE INDEX IF NOT EXISTS uq_flights_org_route ON flight_directory(organization_id,flight_no,from_airport,to_airport);
+          '''
+            p.write_text(s)
+
+          p=Path('server/index.ts')
+          s=p.read_text()
+          replacements={
+            'ON CONFLICT (mobile) DO UPDATE SET':'ON CONFLICT (organization_id,mobile) DO UPDATE SET',
+            'ON CONFLICT (key) DO UPDATE SET':'ON CONFLICT (organization_id,key) DO UPDATE SET',
+            'ON CONFLICT (account_name) DO UPDATE SET':'ON CONFLICT (organization_id,account_name) DO UPDATE SET',
+          }
+          for a,b in replacements.items(): s=s.replace(a,b)
+          p.write_text(s)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/schema.sql server/index.ts
+          git commit -m "Scope unique constraints per organization [tenant-unique]"
+          git push origin production-upgrade-v1
+          rm -f .github/workflows/tenant-unique.yml
+          git add -u .github/workflows/tenant-unique.yml
+          git commit -m "Remove one-time tenant unique migration workflow [tenant-unique]"
+          git push origin production-upgrade-v1
