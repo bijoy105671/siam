@@ -439,3 +439,34 @@ BEGIN
     EXECUTE format('CREATE POLICY tenant_isolation ON %I FOR ALL USING (organization_id = NULLIF(current_setting(''app.organization_id'', true), '''')::uuid) WITH CHECK (organization_id = NULLIF(current_setting(''app.organization_id'', true), '''')::uuid)', t);
   END LOOP;
 END $$;
+
+
+-- SIAM SAAS TENANT UNIQUE CONSTRAINTS v1
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='customers'::regclass AND conname='customers_mobile_key') THEN
+    ALTER TABLE customers DROP CONSTRAINT customers_mobile_key;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='services'::regclass AND conname='services_name_key') THEN
+    ALTER TABLE services DROP CONSTRAINT services_name_key;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='transactions'::regclass AND conname='transactions_invoice_number_key') THEN
+    ALTER TABLE transactions DROP CONSTRAINT transactions_invoice_number_key;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='account_opening_balances'::regclass AND conname='account_opening_balances_pkey') THEN
+    ALTER TABLE account_opening_balances DROP CONSTRAINT account_opening_balances_pkey;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='app_settings'::regclass AND conname='app_settings_pkey') THEN
+    ALTER TABLE app_settings DROP CONSTRAINT app_settings_pkey;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='flight_directory'::regclass AND conname='flight_directory_flight_no_from_airport_to_airport_key') THEN
+    ALTER TABLE flight_directory DROP CONSTRAINT flight_directory_flight_no_from_airport_to_airport_key;
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_customers_org_mobile ON customers(organization_id,mobile);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_services_org_name ON services(organization_id,name);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_org_invoice ON transactions(organization_id,invoice_number);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_opening_balances_org_account ON account_opening_balances(organization_id,account_name);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_settings_org_key ON app_settings(organization_id,key);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_flights_org_route ON flight_directory(organization_id,flight_no,from_airport,to_airport);

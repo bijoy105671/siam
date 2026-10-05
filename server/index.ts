@@ -524,7 +524,7 @@ app.patch('/api/settings', adminOnly, async (req, res) => {
     return res.status(413).json({ error: 'Logo is too large. Please use an image under about 1.3 MB.' });
   }
   await pool.query(
-    'INSERT INTO app_settings (key,value) VALUES ($1,$2::jsonb) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()',
+    'INSERT INTO app_settings (key,value) VALUES ($1,$2::jsonb) ON CONFLICT (organization_id,key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()',
     ['business_settings', JSON.stringify(merged)]
   );
   const client = await pool.connect();
@@ -756,7 +756,7 @@ app.put('/api/expense-categories', adminOnly, async (req, res) => {
       enabled: c.enabled !== false,
     }));
   await pool.query(
-    'INSERT INTO app_settings (key,value) VALUES ($1,$2::jsonb) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()',
+    'INSERT INTO app_settings (key,value) VALUES ($1,$2::jsonb) ON CONFLICT (organization_id,key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()',
     ['expense_categories', JSON.stringify(normalized)]
   );
   res.json({ categories: normalized });
@@ -841,7 +841,7 @@ app.post('/api/customers', auth, async (req,res) => {
   try {
     const name=String(req.body?.name||'').trim(), mobile=String(req.body?.mobile||'').trim();
     if(!name||!mobile) return res.status(400).json({error:'Customer name and mobile are required'});
-    const {rows}=await pool.query(`INSERT INTO customers (name,mobile,whatsapp,email,address,nid,passport_number,passport_expiry,notes,opening_due) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (mobile) DO UPDATE SET name=EXCLUDED.name, whatsapp=COALESCE(EXCLUDED.whatsapp,customers.whatsapp), email=COALESCE(EXCLUDED.email,customers.email), address=COALESCE(EXCLUDED.address,customers.address), nid=COALESCE(EXCLUDED.nid,customers.nid), passport_number=COALESCE(EXCLUDED.passport_number,customers.passport_number), passport_expiry=COALESCE(EXCLUDED.passport_expiry,customers.passport_expiry), notes=COALESCE(EXCLUDED.notes,customers.notes), opening_due=EXCLUDED.opening_due, updated_at=now() RETURNING *`,[name,mobile,req.body?.whatsapp||null,req.body?.email||null,req.body?.address||null,req.body?.nid||null,req.body?.passportNumber||null,req.body?.passportExpiry||null,req.body?.notes||null,Number(req.body?.openingDue||0)]);
+    const {rows}=await pool.query(`INSERT INTO customers (name,mobile,whatsapp,email,address,nid,passport_number,passport_expiry,notes,opening_due) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (organization_id,mobile) DO UPDATE SET name=EXCLUDED.name, whatsapp=COALESCE(EXCLUDED.whatsapp,customers.whatsapp), email=COALESCE(EXCLUDED.email,customers.email), address=COALESCE(EXCLUDED.address,customers.address), nid=COALESCE(EXCLUDED.nid,customers.nid), passport_number=COALESCE(EXCLUDED.passport_number,customers.passport_number), passport_expiry=COALESCE(EXCLUDED.passport_expiry,customers.passport_expiry), notes=COALESCE(EXCLUDED.notes,customers.notes), opening_due=EXCLUDED.opening_due, updated_at=now() RETURNING *`,[name,mobile,req.body?.whatsapp||null,req.body?.email||null,req.body?.address||null,req.body?.nid||null,req.body?.passportNumber||null,req.body?.passportExpiry||null,req.body?.notes||null,Number(req.body?.openingDue||0)]);
     await audit(pool as any, req.session.userId!, 'CUSTOMER_CREATED', 'Customer', rows[0].id, null, rows[0]);
     res.status(201).json({customer:rows[0]});
   } catch(e){res.status(400).json({error:e instanceof Error?e.message:'Customer creation failed'});}
@@ -1531,7 +1531,7 @@ app.put('/api/opening-balances/:account', adminOnly, async (req, res) => {
   try {
     await client.query('BEGIN');
     const old = (await client.query('SELECT amount FROM account_opening_balances WHERE account_name=$1 FOR UPDATE', [account])).rows[0];
-    await client.query(`INSERT INTO account_opening_balances (account_name,amount,updated_at) VALUES ($1,$2,now()) ON CONFLICT (account_name) DO UPDATE SET amount=EXCLUDED.amount, updated_at=now()`, [account, amount]);
+    await client.query(`INSERT INTO account_opening_balances (account_name,amount,updated_at) VALUES ($1,$2,now()) ON CONFLICT (organization_id,account_name) DO UPDATE SET amount=EXCLUDED.amount, updated_at=now()`, [account, amount]);
     await audit(client, req.session.userId!, 'OPENING_BALANCE_UPDATED', 'AccountOpeningBalance', account, { amount: Number(old?.amount || 0) }, { amount });
     await client.query('COMMIT'); res.json({ account, amount });
   } catch (e) { await client.query('ROLLBACK'); res.status(400).json({ error: e instanceof Error ? e.message : 'Opening balance update failed' }); }
@@ -1760,7 +1760,7 @@ app.post('/api/entries', auth, async (req, res) => {
     if (vendorPaid > 0 && !ACCOUNT_METHODS.has(vendorPaymentMethod)) return res.status(400).json({ error: 'Invalid vendor payment method' });
     await client.query('BEGIN');
 
-    const customerResult = await client.query(`INSERT INTO customers (name,mobile,whatsapp,email,address,nid,passport_number,passport_expiry,notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (mobile) DO UPDATE SET name=EXCLUDED.name, whatsapp=COALESCE(EXCLUDED.whatsapp,customers.whatsapp), email=COALESCE(EXCLUDED.email,customers.email), address=COALESCE(EXCLUDED.address,customers.address), updated_at=now() RETURNING id`, [customerName, mobile, body.customer?.whatsapp || null, body.customer?.email || null, body.customer?.address || null, body.customer?.nid || null, body.customer?.passportNumber || null, body.customer?.passportExpiry || null, body.customer?.notes || null]);
+    const customerResult = await client.query(`INSERT INTO customers (name,mobile,whatsapp,email,address,nid,passport_number,passport_expiry,notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (organization_id,mobile) DO UPDATE SET name=EXCLUDED.name, whatsapp=COALESCE(EXCLUDED.whatsapp,customers.whatsapp), email=COALESCE(EXCLUDED.email,customers.email), address=COALESCE(EXCLUDED.address,customers.address), updated_at=now() RETURNING id`, [customerName, mobile, body.customer?.whatsapp || null, body.customer?.email || null, body.customer?.address || null, body.customer?.nid || null, body.customer?.passportNumber || null, body.customer?.passportExpiry || null, body.customer?.notes || null]);
     const customerId = customerResult.rows[0].id;
 
     let vendorId: string | null = null;
