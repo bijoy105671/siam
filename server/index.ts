@@ -10,12 +10,14 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { PDFParse } from 'pdf-parse';
 import { registerStorefrontRoutes } from './storefront';
+import { installTenantAwarePool, runWithTenant } from './tenant';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) throw new Error('SESSION_SECRET must be set and at least 32 characters');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, options: '-c timezone=Asia/Dhaka', ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined });
+installTenantAwarePool(pool);
 
 const PASSWORD_RESET_EMAIL = 'bijoy105671@gmail.com';
 const hashOtp = (otp: string) => createHash('sha256').update(otp).digest('hex');
@@ -172,6 +174,18 @@ const adminOnly = async (req: express.Request, res: express.Response, next: expr
     res.status(500).json({ error: e instanceof Error ? e.message : 'Authorization check failed' });
   }
 };
+
+app.use(async (req, res, next) => {
+  if (!req.session.userId) return next();
+  try {
+    const { rows } = await pool.query('SELECT organization_id FROM users WHERE id=$1 AND is_active=true', [req.session.userId]);
+    const organizationId = rows[0]?.organization_id;
+    if (!organizationId) return next();
+    return runWithTenant(String(organizationId), () => next());
+  } catch (error) {
+    return res.status(503).json({ error: error instanceof Error ? error.message : 'Tenant context unavailable' });
+  }
+});
 
 registerStorefrontRoutes(app, pool, auth, adminOnly);
 

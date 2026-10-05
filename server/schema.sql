@@ -412,3 +412,30 @@ CREATE INDEX IF NOT EXISTS idx_payments_organization ON payments(organization_id
 CREATE INDEX IF NOT EXISTS idx_expenses_organization ON expenses(organization_id);
 CREATE INDEX IF NOT EXISTS idx_fund_transfers_organization ON fund_transfers(organization_id);
 CREATE INDEX IF NOT EXISTS idx_settings_organization ON app_settings(organization_id);
+
+
+-- SIAM SAAS TENANT RLS v1
+ALTER TABLE customers ALTER COLUMN organization_id SET DEFAULT NULLIF(current_setting('app.organization_id', true),'')::uuid;
+ALTER TABLE vendors ALTER COLUMN organization_id SET DEFAULT NULLIF(current_setting('app.organization_id', true),'')::uuid;
+ALTER TABLE transactions ALTER COLUMN organization_id SET DEFAULT NULLIF(current_setting('app.organization_id', true),'')::uuid;
+ALTER TABLE payments ALTER COLUMN organization_id SET DEFAULT NULLIF(current_setting('app.organization_id', true),'')::uuid;
+ALTER TABLE expenses ALTER COLUMN organization_id SET DEFAULT NULLIF(current_setting('app.organization_id', true),'')::uuid;
+ALTER TABLE fund_transfers ALTER COLUMN organization_id SET DEFAULT NULLIF(current_setting('app.organization_id', true),'')::uuid;
+ALTER TABLE audit_logs ALTER COLUMN organization_id SET DEFAULT NULLIF(current_setting('app.organization_id', true),'')::uuid;
+ALTER TABLE account_opening_balances ALTER COLUMN organization_id SET DEFAULT NULLIF(current_setting('app.organization_id', true),'')::uuid;
+ALTER TABLE account_entries ALTER COLUMN organization_id SET DEFAULT NULLIF(current_setting('app.organization_id', true),'')::uuid;
+ALTER TABLE loan_advances ALTER COLUMN organization_id SET DEFAULT NULLIF(current_setting('app.organization_id', true),'')::uuid;
+ALTER TABLE loan_advance_adjustments ALTER COLUMN organization_id SET DEFAULT NULLIF(current_setting('app.organization_id', true),'')::uuid;
+ALTER TABLE appointment_reminders ALTER COLUMN organization_id SET DEFAULT NULLIF(current_setting('app.organization_id', true),'')::uuid;
+ALTER TABLE flight_directory ALTER COLUMN organization_id SET DEFAULT NULLIF(current_setting('app.organization_id', true),'')::uuid;
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['customers','vendors','transactions','payments','expenses','fund_transfers','audit_logs','account_opening_balances','account_entries','loan_advances','loan_advance_adjustments','appointment_reminders','flight_directory']
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', t);
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
+    EXECUTE format('CREATE POLICY tenant_isolation ON %I FOR ALL USING (organization_id = NULLIF(current_setting(''app.organization_id'', true), )::uuid) WITH CHECK (organization_id = NULLIF(current_setting(app.organization_id, true), )::uuid)', t);
+  END LOOP;
+END $$;
