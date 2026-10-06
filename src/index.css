@@ -66,13 +66,19 @@ body { margin: 0; }
 
 @media (max-width: 640px) {
   header {
+    height: 56px !important;
     min-width: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
     padding-left: 10px !important;
-    padding-right: 10px !important;
+    padding-right: 8px !important;
+    gap: 4px !important;
   }
   header > div { min-width: 0; }
+  header > div:first-child { overflow: hidden; }
+  header > div:first-child > button:last-child { min-width: 0; max-width: 100%; }
+  header > div:last-child > button { flex-shrink: 0; }
+  header img { flex-shrink: 0; }
   main { padding: 12px !important; }
   header button { max-width: 100%; }
   main > *, main section, main article, main form, main [role="dialog"] {
