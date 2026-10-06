@@ -822,7 +822,7 @@ app.get('/api/dashboard', auth, async (_req, res) => {
                 FROM transactions
                 WHERE deleted_at IS NULL AND status <> $1 AND date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date`, ['CANCELLED']),
     pool.query("SELECT COALESCE(SUM(p.amount),0) total_received FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND t.status <> 'CANCELLED' AND p.payment_type='customer' AND p.reversed_at IS NULL AND (paid_at AT TIME ZONE 'Asia/Dhaka')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date"),
-    pool.query("SELECT COALESCE(SUM(p.amount),0) total_vendor_payment FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND t.status <> 'CANCELLED' AND p.payment_type='vendor' AND p.reversed_at IS NULL AND paid_at::date = CURRENT_DATE"),
+    pool.query("SELECT COALESCE(SUM(p.amount),0) total_vendor_payment FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND t.status <> 'CANCELLED' AND p.payment_type='vendor' AND p.reversed_at IS NULL AND (paid_at AT TIME ZONE 'Asia/Dhaka')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date"),
     pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL AND (occurred_at AT TIME ZONE 'Asia/Dhaka')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date')
   ]);
   const signedGrossProfit = Number(sales.rows[0].signed_gross_profit || 0);
