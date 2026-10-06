@@ -23,14 +23,26 @@ const PASSWORD_RESET_EMAIL = 'bijoy105671@gmail.com';
 const hashOtp = (otp: string) => createHash('sha256').update(otp).digest('hex');
 
 const seedFlightDirectory = async () => {
-  for (const flight of DAC_FLIGHT_DIRECTORY) {
-    await pool.query(`INSERT INTO flight_directory
-      (flight_no, airline, airline_code, from_airport, from_name, to_airport, to_name, departure_time, arrival_time, terminal)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-      ON CONFLICT (organization_id, flight_no, from_airport, to_airport) DO NOTHING`,
-      [flight.flightNo, flight.airline, flight.airlineCode, flight.from, flight.fromName, flight.to, flight.toName,
-       flight.departureTime || '', flight.arrivalTime || '', flight.terminal || '']);
+  const { rows: organizations } = await pool.query(
+    `SELECT id FROM organizations WHERE business_name='SIAM AIR & DIGITAL SERVICE' ORDER BY created_at LIMIT 1`
+  );
+  const organizationId = organizations[0]?.id as string | undefined;
+  if (!organizationId) {
+    console.warn('SIAM AIR flight directory seed skipped: primary organization not found');
+    return;
   }
+
+  await runWithTenant(organizationId, async () => {
+    for (const flight of DAC_FLIGHT_DIRECTORY) {
+      await pool.query(`INSERT INTO flight_directory
+        (flight_no, airline, airline_code, from_airport, from_name, to_airport, to_name, departure_time, arrival_time, terminal)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        ON CONFLICT (organization_id, flight_no, from_airport, to_airport) DO NOTHING`,
+        [flight.flightNo, flight.airline, flight.airlineCode, flight.from, flight.fromName, flight.to, flight.toName,
+         flight.departureTime || '', flight.arrivalTime || '', flight.terminal || '']);
+    }
+  });
+
   console.log('SIAM AIR flight directory seed checked: ' + DAC_FLIGHT_DIRECTORY.length + ' records');
 };
 
