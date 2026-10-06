@@ -36,7 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header className="sticky top-0 z-30 h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between no-print">
       {/* Left: Mobile Toggle & Brand Title */}
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
         <button
           onClick={onToggleSidebar}
           aria-label="Toggle Navigation"
@@ -59,7 +59,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }}
           />
           <div>
-            <div className="font-bold text-base sm:text-lg tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors whitespace-nowrap">
+            <div className="max-w-[150px] sm:max-w-none truncate font-bold text-base sm:text-lg tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors whitespace-nowrap">
               {settings.name}
             </div>
             <div className="hidden sm:block text-[11px] text-slate-500 font-medium tracking-wide uppercase">
@@ -86,7 +86,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
       {/* Right: Actions & User Info */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2 md:gap-3">
         {/* Mobile Search Button */}
         <button
           onClick={onOpenSearch}
