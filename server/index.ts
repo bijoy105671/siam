@@ -1422,7 +1422,7 @@ app.get('/api/payment-records', auth, async (_req, res) => {
       p.note,
       p.reference,
       p.paid_at,
-      p.paid_at::date::text AS paid_date,
+      (p.paid_at AT TIME ZONE 'Asia/Dhaka')::date::text AS paid_date,
       to_char(p.paid_at AT TIME ZONE 'Asia/Dhaka', 'HH24:MI') AS paid_time,
       t.invoice_number,
       COALESCE(u.full_name, u.username, 'Staff') AS recorded_by_name,
