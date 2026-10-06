@@ -59,11 +59,13 @@ export const ReportsView: React.FC = () => {
     return true;
   });
 
-  // One signed gross-profit calculation keeps the master P&L and service
-  // breakdown mathematically consistent: Gross Profit = Sales - Vendor Cost.
+  // Direct service cost includes either vendor/airline cost or an in-house
+  // account-funded service cost. This matches the transaction and dashboard P&L.
   const totalSales = filteredTxs.reduce((sum, t) => sum + t.sellingPrice, 0);
   const totalVendorCost = filteredTxs.reduce((sum, t) => sum + t.vendorCost, 0);
-  const signedGrossProfit = filteredTxs.reduce((sum, t) => sum + (t.sellingPrice - t.vendorCost), 0);
+  const totalAccountCost = filteredTxs.reduce((sum, t) => sum + Number(t.accountCost || 0), 0);
+  const totalDirectCost = totalVendorCost + totalAccountCost;
+  const signedGrossProfit = filteredTxs.reduce((sum, t) => sum + (t.sellingPrice - t.vendorCost - Number(t.accountCost || 0)), 0);
   const totalGrossProfit = Math.max(0, signedGrossProfit);
   const totalGrossLoss = Math.max(0, -signedGrossProfit);
   const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
@@ -74,8 +76,8 @@ export const ReportsView: React.FC = () => {
     const sTxs = filteredTxs.filter((t) => t.serviceId === s.id);
     const count = sTxs.length;
     const sales = sTxs.reduce((sum, t) => sum + t.sellingPrice, 0);
-    const cost = sTxs.reduce((sum, t) => sum + t.vendorCost, 0);
-    const profit = sTxs.reduce((sum, t) => sum + (t.sellingPrice - t.vendorCost), 0);
+    const cost = sTxs.reduce((sum, t) => sum + t.vendorCost + Number(t.accountCost || 0), 0);
+    const profit = sTxs.reduce((sum, t) => sum + (t.sellingPrice - t.vendorCost - Number(t.accountCost || 0)), 0);
     return {
       service: s.name,
       category: s.category,
@@ -175,8 +177,8 @@ export const ReportsView: React.FC = () => {
               <div className="text-lg font-bold text-slate-900 mt-0.5">{formatCurrency(totalSales)}</div>
             </div>
             <div>
-              <div className="text-[10px] text-slate-500 uppercase font-semibold">Vendor / Service Cost</div>
-              <div className="text-lg font-bold text-slate-700 mt-0.5">{formatCurrency(totalVendorCost)}</div>
+              <div className="text-[10px] text-slate-500 uppercase font-semibold">Direct Service Cost</div>
+              <div className="text-lg font-bold text-slate-700 mt-0.5">{formatCurrency(totalDirectCost)}</div>
             </div>
             <div>
               <div className="text-[10px] text-slate-500 uppercase font-semibold">Gross Profit Margin</div>
@@ -197,11 +199,11 @@ export const ReportsView: React.FC = () => {
               <span className="font-bold text-slate-900">{formatCurrency(totalSales)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-slate-100 text-slate-600">
-              <span>Less: Direct Vendor & Airline Ticket Costs</span>
-              <span>- {formatCurrency(totalVendorCost)}</span>
+              <span>Less: Direct Vendor / Airline / Service Costs</span>
+              <span>- {formatCurrency(totalDirectCost)}</span>
             </div>
             <div className="flex justify-between py-2 border-b-2 border-slate-200 font-bold bg-emerald-50/50 px-2 rounded">
-              <span className="text-emerald-900">Gross Profit (Sales - Vendor Cost)</span>
+              <span className="text-emerald-900">Gross Profit (Sales - Direct Service Cost)</span>
               <span className="text-emerald-700">{formatCurrency(totalGrossProfit - totalGrossLoss)}</span>
             </div>
             {totalGrossLoss > 0 && (
@@ -245,7 +247,7 @@ export const ReportsView: React.FC = () => {
                   <th className="py-2.5 px-3">Category</th>
                   <th className="py-2.5 px-3 text-center">Entries</th>
                   <th className="py-2.5 px-3 text-right">Total Sales</th>
-                  <th className="py-2.5 px-3 text-right">Vendor Cost</th>
+                  <th className="py-2.5 px-3 text-right">Direct Cost</th>
                   <th className="py-2.5 px-3 text-right">Net Profit</th>
                   <th className="py-2.5 px-3 text-right">Margin %</th>
                 </tr>
