@@ -1432,6 +1432,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     time: string;
     note?: string;
     reference?: string;
+    paidAt?: string;
   }) => {
     const targetTx = data.transactions.find((t: Transaction) => t.id === params.transactionId);
     if (!targetTx) throw new Error('Transaction not found.');
@@ -1520,7 +1521,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         paymentMethod: params.paymentMethod,
         note: params.note,
         reference: params.reference || targetTx.invoiceNumber,
-        paidAt: `${params.date}T${normalizedPaymentTime}:00`,
+        paidAt: params.paidAt || `${params.date}T${normalizedPaymentTime}:00+06:00`,
       });
       commitLocalPayment();
       try {
