@@ -820,10 +820,10 @@ app.get('/api/dashboard', auth, async (_req, res) => {
     pool.query(`SELECT COALESCE(SUM(selling_price),0) total_sales,
                        COALESCE(SUM(selling_price - vendor_cost - account_cost),0) signed_gross_profit
                 FROM transactions
-                WHERE deleted_at IS NULL AND status <> $1 AND date = CURRENT_DATE`, ['CANCELLED']),
-    pool.query("SELECT COALESCE(SUM(p.amount),0) total_received FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND t.status <> 'CANCELLED' AND p.payment_type='customer' AND p.reversed_at IS NULL AND paid_at::date = CURRENT_DATE"),
+                WHERE deleted_at IS NULL AND status <> $1 AND date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date`, ['CANCELLED']),
+    pool.query("SELECT COALESCE(SUM(p.amount),0) total_received FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND t.status <> 'CANCELLED' AND p.payment_type='customer' AND p.reversed_at IS NULL AND (paid_at AT TIME ZONE 'Asia/Dhaka')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date"),
     pool.query("SELECT COALESCE(SUM(p.amount),0) total_vendor_payment FROM payments p JOIN transactions t ON t.id=p.transaction_id WHERE t.deleted_at IS NULL AND t.status <> 'CANCELLED' AND p.payment_type='vendor' AND p.reversed_at IS NULL AND paid_at::date = CURRENT_DATE"),
-    pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL AND occurred_at::date = CURRENT_DATE')
+    pool.query('SELECT COALESCE(SUM(amount),0) total_expense FROM expenses WHERE reversed_at IS NULL AND (occurred_at AT TIME ZONE 'Asia/Dhaka')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date')
   ]);
   const signedGrossProfit = Number(sales.rows[0].signed_gross_profit || 0);
   const grossProfit = Math.max(0, signedGrossProfit);
@@ -1560,8 +1560,8 @@ const mapLoanAdvance = (row: any) => ({
   direction: row.direction,
   amount: Number(row.amount || 0),
   paymentMethod: String(row.payment_method || 'cash'),
-  date: new Date(row.occurred_at).toISOString().slice(0,10),
-  time: new Date(row.occurred_at).toTimeString().slice(0,5),
+  date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(row.occurred_at)),
+  time: new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(row.occurred_at)),
   note: row.note || undefined,
   reference: row.reference || undefined,
   createdBy: row.created_by_name || row.created_by || 'Staff',
@@ -1574,8 +1574,8 @@ const mapLoanAdjustment = (row: any) => ({
   partyType: row.party_type,
   partyId: String(row.party_id),
   amount: Number(row.amount || 0),
-  date: new Date(row.occurred_at).toISOString().slice(0,10),
-  time: new Date(row.occurred_at).toTimeString().slice(0,5),
+  date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(row.occurred_at)),
+  time: new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(row.occurred_at)),
   note: row.note || undefined,
   createdBy: row.created_by_name || row.created_by || 'Staff',
 });
@@ -1794,7 +1794,7 @@ app.post('/api/entries', auth, async (req, res) => {
     const vendorDue = vendorCost - vendorPaid;
     const status = due === 0 ? 'PAID' : customerPaid > 0 ? 'PARTIAL' : 'DUE';
     const grossProfit = sellingPrice - vendorCost - accountCost;
-    const tx = (await client.query(`INSERT INTO transactions (invoice_number,date,time,created_by,customer_id,service_id,description,flight_details,selling_price,customer_paid,customer_due,vendor_id,vendor_cost,vendor_paid,vendor_due,account_cost,account_cost_payment_method,gross_profit,reminder_date,reminder_time,reminder_status,reminder_note,status,notes) VALUES ($1,COALESCE($2::date,CURRENT_DATE),COALESCE($3::time,CURRENT_TIME),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`, [invoice, body.date || null, body.time || null, req.session.userId, customerId, serviceId, body.description || null, body.flightDetails ? JSON.stringify(body.flightDetails) : null, sellingPrice, customerPaid, due, vendorId, vendorCost, vendorPaid, vendorDue, accountCost, accountCost > 0 ? accountCostPaymentMethod : null, grossProfit, body.reminderDate || null, body.reminderTime || null, body.reminderStatus || null, body.reminderNote || null, status, body.notes || null])).rows[0];
+    const tx = (await client.query(`INSERT INTO transactions (invoice_number,date,time,created_by,customer_id,service_id,description,flight_details,selling_price,customer_paid,customer_due,vendor_id,vendor_cost,vendor_paid,vendor_due,account_cost,account_cost_payment_method,gross_profit,reminder_date,reminder_time,reminder_status,reminder_note,status,notes) VALUES ($1,COALESCE($2::date,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date),COALESCE($3::time,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::time),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`, [invoice, body.date || null, body.time || null, req.session.userId, customerId, serviceId, body.description || null, body.flightDetails ? JSON.stringify(body.flightDetails) : null, sellingPrice, customerPaid, due, vendorId, vendorCost, vendorPaid, vendorDue, accountCost, accountCost > 0 ? accountCostPaymentMethod : null, grossProfit, body.reminderDate || null, body.reminderTime || null, body.reminderStatus || null, body.reminderNote || null, status, body.notes || null])).rows[0];
 
     if (accountCost > 0) {
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [accountCostPaymentMethod]);
