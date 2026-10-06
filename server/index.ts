@@ -27,7 +27,7 @@ const seedFlightDirectory = async () => {
     await pool.query(`INSERT INTO flight_directory
       (flight_no, airline, airline_code, from_airport, from_name, to_airport, to_name, departure_time, arrival_time, terminal)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-      ON CONFLICT (flight_no, from_airport, to_airport) DO NOTHING`,
+      ON CONFLICT (organization_id, flight_no, from_airport, to_airport) DO NOTHING`,
       [flight.flightNo, flight.airline, flight.airlineCode, flight.from, flight.fromName, flight.to, flight.toName,
        flight.departureTime || '', flight.arrivalTime || '', flight.terminal || '']);
   }
