@@ -379,6 +379,7 @@ const MainLayout: React.FC = () => {
           onClose={() => setInspectCustomerId(null)}
           onSelectTransaction={(tx) => setActiveInvoiceTx(tx)}
           onOpenPayment={(tx) => handleOpenPayment(tx, 'customer')}
+          onOpenDueManager={() => { setInspectCustomerId(null); setCurrentView('customer_due'); }}
         />
       )}
 
@@ -389,6 +390,7 @@ const MainLayout: React.FC = () => {
           onClose={() => setInspectVendorId(null)}
           onSelectTransaction={(tx) => setActiveInvoiceTx(tx)}
           onOpenPayment={(tx) => handleOpenPayment(tx, 'vendor')}
+          onOpenDueManager={() => { setInspectVendorId(null); setCurrentView('vendor_due'); }}
         />
       )}
 
