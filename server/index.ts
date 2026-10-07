@@ -1259,7 +1259,7 @@ app.patch('/api/transactions/:id', historicalChangeAdminOnly, async (req, res) =
            customer_paid=CASE WHEN $25::boolean THEN $26::numeric ELSE customer_paid END,
            customer_due=CASE WHEN ($22::boolean OR $25::boolean) THEN $24::numeric ELSE customer_due END,
            status=CASE WHEN ($22::boolean OR $25::boolean) THEN CASE WHEN $24::numeric=0 THEN 'PAID' WHEN $26::numeric>0 THEN 'PARTIAL' ELSE 'DUE' END ELSE status END,
-           gross_profit=CASE WHEN $16::boolean OR $22::boolean THEN (CASE WHEN $22::boolean THEN $23::numeric ELSE selling_price END) - (CASE WHEN $16::boolean THEN $17::numeric ELSE vendor_cost END) ELSE gross_profit END,
+           gross_profit=CASE WHEN $16::boolean OR $22::boolean THEN (CASE WHEN $22::boolean THEN $23::numeric ELSE selling_price END) - (CASE WHEN $16::boolean THEN $17::numeric ELSE vendor_cost END) - account_cost ELSE gross_profit END,
            updated_at=now()
        WHERE id=$11
        RETURNING *`,
@@ -1424,7 +1424,7 @@ app.get('/api/payment-records', auth, async (_req, res) => {
       p.paid_at,
       (p.paid_at AT TIME ZONE 'Asia/Dhaka')::date::text AS paid_date,
       to_char(p.paid_at AT TIME ZONE 'Asia/Dhaka', 'HH24:MI') AS paid_time,
-      t.invoice_number,
+      COALESCE(t.invoice_number, CASE WHEN p.transaction_id IS NULL THEN 'OPENING-BALANCE' ELSE NULL END) AS invoice_number,
       COALESCE(u.full_name, u.username, 'Staff') AS recorded_by_name,
       CASE
         WHEN p.payment_type='customer' THEN c.name
@@ -1432,11 +1432,11 @@ app.get('/api/payment-records', auth, async (_req, res) => {
         ELSE ''
       END AS entity_name
     FROM payments p
-    JOIN transactions t ON t.id=p.transaction_id
+    LEFT JOIN transactions t ON t.id=p.transaction_id
     LEFT JOIN users u ON u.id=p.recorded_by
     LEFT JOIN customers c ON c.id=p.entity_id AND p.payment_type='customer'
     LEFT JOIN vendors v ON v.id=p.entity_id AND p.payment_type='vendor'
-    WHERE p.reversed_at IS NULL AND t.deleted_at IS NULL
+    WHERE p.reversed_at IS NULL AND (t.id IS NULL OR t.deleted_at IS NULL)
     ORDER BY p.paid_at DESC, p.id DESC
     LIMIT 1000
   `);
