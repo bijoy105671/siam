@@ -1540,11 +1540,26 @@ app.post('/api/payments/:id/reverse', adminOnly, async (req, res) => {
     const payment = (await client.query('SELECT * FROM payments WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
     if (!payment) throw new Error('Payment not found');
     if (payment.reversed_at) throw new Error('Payment is already reversed');
-    const tx = (await client.query('SELECT * FROM transactions WHERE id=$1 FOR UPDATE', [payment.transaction_id])).rows[0];
-    if (!tx || tx.deleted_at) throw new Error('Linked transaction is missing or deleted');
     const entries = (await client.query('SELECT * FROM account_entries WHERE payment_id=$1 AND reversed_at IS NULL FOR UPDATE', [payment.id])).rows;
     if (entries.length !== 1) throw new Error('Payment accounting entry is missing or ambiguous');
     await client.query('UPDATE account_entries SET reversed_at=now() WHERE payment_id=$1 AND reversed_at IS NULL', [payment.id]);
+
+    if (!payment.transaction_id) {
+      const type = String(payment.payment_type);
+      if (!['customer','vendor'].includes(type)) throw new Error('Invalid opening balance payment type');
+      const table = type === 'customer' ? 'customers' : 'vendors';
+      const column = type === 'customer' ? 'opening_due' : 'opening_payable';
+      const row = (await client.query(`SELECT * FROM ${table} WHERE id=$1 FOR UPDATE`, [payment.entity_id])).rows[0];
+      if (!row) throw new Error('Opening balance party not found');
+      await client.query(`UPDATE ${table} SET ${column}=${column}+$1, updated_at=now() WHERE id=$2`, [Number(payment.amount), payment.entity_id]);
+      await client.query('UPDATE payments SET reversed_at=now(), reversed_by=$1 WHERE id=$2', [req.session.userId, payment.id]);
+      await audit(client, req.session.userId!, 'OPENING_BALANCE_PAYMENT_REVERSED', type === 'customer' ? 'Customer' : 'Vendor', payment.entity_id, payment, { reversedAt: new Date().toISOString() });
+      await client.query('COMMIT');
+      return res.json({ ok: true });
+    }
+
+    const tx = (await client.query('SELECT * FROM transactions WHERE id=$1 FOR UPDATE', [payment.transaction_id])).rows[0];
+    if (!tx || tx.deleted_at) throw new Error('Linked transaction is missing or deleted');
     if (payment.payment_type === 'customer') {
       const newPaid = Math.max(0, Number(tx.customer_paid) - Number(payment.amount));
       const newDue = Number(tx.selling_price) - newPaid;
