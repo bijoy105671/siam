@@ -78,9 +78,13 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
       return;
     }
     const now = new Date();
+    const dhaka = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(now).reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {} as Record<string, string>);
     const payload = {
       partyType, partyId, partyName: selectedParty.name, kind, direction, amount: value,
-      paymentMethod, date: now.toISOString().split('T')[0], time: now.toTimeString().slice(0, 5),
+      paymentMethod, date: `${dhaka.year}-${dhaka.month}-${dhaka.day}`, time: `${dhaka.hour}:${dhaka.minute}`,
       note: note.trim() || undefined, reference: reference.trim() || undefined,
     };
     try {
@@ -111,8 +115,13 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
       const key = r.partyType + ':' + r.partyId;
       map[key] = (map[key] || 0) + sign * r.amount;
     });
+    (loanAdvanceAdjustments || []).forEach((a) => {
+      const key = a.partyType + ':' + a.partyId;
+      if (map[key] === undefined) map[key] = 0;
+      map[key] += a.partyType === 'customer' ? -a.amount : a.amount;
+    });
     return map;
-  }, [loanAdvances]);
+  }, [loanAdvances, loanAdvanceAdjustments]);
 
   const adjustedAmount = (id: string) => (loanAdvanceAdjustments || [])
     .filter(a => a.loanAdvanceId === id)
@@ -192,12 +201,28 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
   }, [loanAdvances]);
 
   const partyAccountRows = useMemo(() => {
-    const map: Record<string, { partyType: LoanAdvancePartyType; partyId: string; name: string; mobile: string; received: number; given: number }> = {};
+    const map: Record<string, { partyType: LoanAdvancePartyType; partyId: string; name: string; mobile: string; received: number; given: number; adjusted: number }> = {};
     loanAdvances.forEach(r => {
       const key = r.partyType + ':' + r.partyId;
-      if (!map[key]) map[key] = { partyType:r.partyType, partyId:r.partyId, name:r.partyName, mobile:'', received:0, given:0 };
+      const party = r.partyType === 'customer'
+        ? customers.find(p => p.id === r.partyId)
+        : vendors.find(p => p.id === r.partyId);
+      if (!map[key]) map[key] = {
+        partyType: r.partyType, partyId: r.partyId, name: r.partyName,
+        mobile: party?.mobile || '', received: 0, given: 0, adjusted: 0
+      };
       if (r.direction === 'received') map[key].received += r.amount;
       else map[key].given += r.amount;
+    });
+    (loanAdvanceAdjustments || []).forEach(a => {
+      const key = a.partyType + ':' + a.partyId;
+      if (!map[key]) {
+        const party = a.partyType === 'customer'
+          ? customers.find(p => p.id === a.partyId)
+          : vendors.find(p => p.id === a.partyId);
+        map[key] = { partyType:a.partyType, partyId:a.partyId, name:party?.name || a.partyId, mobile:party?.mobile || '', received:0, given:0, adjusted:0 };
+      }
+      map[key].adjusted += a.amount;
     });
     const q = partySearch.trim().toLowerCase();
     return Object.values(map).filter(r => !q || r.name.toLowerCase().includes(q) || r.mobile.includes(q));
@@ -218,9 +243,11 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
         <div className="relative"><Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400"/><input value={partySearch} onChange={e=>setPartySearch(e.target.value)} placeholder="Search customer or vendor..." className="w-full pl-9 pr-3 py-2 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/></div>
         <div className="divide-y border rounded-xl overflow-hidden">
           {partyAccountRows.map(r => {
-            const net = r.received - r.given;
-            return <div key={r.partyType+':'+r.partyId} className="p-3 flex items-center justify-between gap-3">
-              <div><div className="font-semibold text-xs">{r.name}</div><div className="text-[10px] text-slate-400">{r.partyType} · Received {formatCurrency(r.received)} · Given {formatCurrency(r.given)}</div></div>
+            const net = r.partyType === 'customer'
+              ? r.received - r.given - r.adjusted
+              : r.received - r.given + r.adjusted;
+            return <div key={r.partyType+':'+r.partyId} className="p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="min-w-0"><div className="font-semibold text-xs truncate">{r.name}</div><div className="text-[10px] text-slate-400">{r.partyType} · {r.mobile || 'No mobile'} · Received {formatCurrency(r.received)} · Given {formatCurrency(r.given)} · Adjusted {formatCurrency(r.adjusted)}</div></div>
               <div className="flex items-center gap-2"><span className="text-xs font-bold text-blue-700">{formatCurrency(Math.abs(net))} {net >= 0 ? 'credit' : 'due'}</span><button type="button" onClick={() => {
                 const dueTx = transactions.find(t => r.partyType === 'customer' ? t.customerId === r.partyId && t.customerDue > 0 : t.vendorId === r.partyId && t.vendorDue > 0);
                 if (dueTx && onOpenPayment) onOpenPayment(dueTx, r.partyType);
