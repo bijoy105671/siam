@@ -1498,6 +1498,41 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
   } finally { client.release(); }
 });
 
+app.post('/api/ledger/:type/:id/payment', auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const type = String(req.params.type || '').toLowerCase();
+    if (!['customer','vendor'].includes(type)) throw new Error('Invalid ledger payment type');
+    const value = Number(req.body?.amount);
+    const method = String(req.body?.paymentMethod || '').toLowerCase();
+    if (!Number.isFinite(value) || value <= 0) throw new Error('Payment amount must be positive');
+    if (!ACCOUNT_METHODS.has(method)) throw new Error('Invalid payment method');
+    await client.query('BEGIN');
+    const table = type === 'customer' ? 'customers' : 'vendors';
+    const row = (await client.query(`SELECT * FROM ${table} WHERE id=$1 FOR UPDATE`, [req.params.id])).rows[0];
+    if (!row) throw new Error(type === 'customer' ? 'Customer not found' : 'Vendor not found');
+    const column = type === 'customer' ? 'opening_due' : 'opening_payable';
+    const outstanding = Number(row[column] || 0);
+    if (value > outstanding) throw new Error(`Payment exceeds opening balance (outstanding: ${outstanding})`);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [method]);
+    if (type === 'vendor') {
+      const balance = await accountBalance(client, method);
+      if (value > balance) throw new Error('Insufficient balance for vendor payment');
+    }
+    const paidAt = req.body?.paidAt ? new Date(String(req.body.paidAt)) : new Date();
+    if (Number.isNaN(paidAt.getTime())) throw new Error('Invalid payment date/time');
+    const payment = (await client.query(`INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference,paid_at) VALUES (NULL,$1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [type, req.params.id, value, method, req.session.userId, req.body?.note || null, req.body?.reference || `Opening ${type} balance`, paidAt])).rows[0];
+    await client.query(`UPDATE ${table} SET ${column}=${column}-$1, updated_at=now() WHERE id=$2`, [value, req.params.id]);
+    await addAccountEntry(client, method, type === 'customer' ? value : -value, `${type}_opening_payment`, req.params.id, req.session.userId!, req.body?.note || null, payment.id);
+    await audit(client, req.session.userId!, 'OPENING_BALANCE_PAYMENT_RECORDED', type === 'customer' ? 'Customer' : 'Vendor', req.params.id, { [column]: outstanding }, { [column]: outstanding - value, paymentId: payment.id, amount: value });
+    await client.query('COMMIT');
+    res.status(201).json({ ok: true, payment: { id: payment.id, paymentType: payment.payment_type, entityId: payment.entity_id, amount: Number(payment.amount), paymentMethod: payment.payment_method, paidAt: payment.paid_at, note: payment.note, reference: payment.reference } });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(()=>{});
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Opening balance payment failed' });
+  } finally { client.release(); }
+});
+
 app.post('/api/payments/:id/reverse', adminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -1992,4 +2027,3 @@ const start = async () => {
   app.listen(port, () => console.log('SIAM AIR API listening on port ' + port));
 };
 start();
-
