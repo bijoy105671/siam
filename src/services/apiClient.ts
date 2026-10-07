@@ -170,6 +170,11 @@ export const api = {
     apiRequest<Record<string, any>>(`/api/customers/${encodeURIComponent(id)}/ledger`),
   vendorLedger: (id: string) =>
     apiRequest<Record<string, any>>(`/api/vendors/${encodeURIComponent(id)}/ledger`),
+  recordOpeningBalancePayment: (input: { type: 'customer' | 'vendor'; id: string; amount: number; paymentMethod: string; note?: string; reference?: string; paidAt?: string }) =>
+    apiRequest<{ ok: boolean; payment: unknown }>(`/api/ledger/${encodeURIComponent(input.type)}/${encodeURIComponent(input.id)}/payment`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   recordPayment: (input: { transactionId: string; paymentType: 'customer' | 'vendor'; amount: number; paymentMethod: string; note?: string; reference?: string; paidAt?: string }) =>
     apiRequest<{ ok: boolean }>('/api/transactions/' + encodeURIComponent(input.transactionId) + '/payments', {
       method: 'POST',
