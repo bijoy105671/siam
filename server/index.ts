@@ -508,27 +508,38 @@ const sendSaasEmail = async (to: string, subject: string, title: string, bodyHtm
 };
 
 app.post('/api/saas/demo', async (req,res) => {
+  const client=await pool.connect();
   try{
-    let org=(await pool.query("SELECT id FROM organizations WHERE business_name='SIAM AIR DEMO' LIMIT 1")).rows[0];
-    if(!org) org=(await pool.query("INSERT INTO organizations(business_name,owner_name,phone,email,address,tagline,status) VALUES('SIAM AIR DEMO','Demo User','','demo@siamairanddigital.com','Demo workspace — read-only','Explore SIAM AIR before subscribing','active') RETURNING id")).rows[0];
-    let demoUser=(await pool.query("SELECT id,username,organization_id,full_name,role,permissions FROM users WHERE username='siam_demo' LIMIT 1")).rows[0];
+    await client.query('BEGIN');
+    let org=(await client.query("SELECT id FROM organizations WHERE business_name='SIAM AIR DEMO' LIMIT 1")).rows[0];
+    if(!org) org=(await client.query("INSERT INTO organizations(business_name,owner_name,phone,email,address,tagline,status) VALUES('SIAM AIR DEMO','Demo User','','demo@siamairanddigital.com','Demo workspace — read-only','Explore SIAM AIR before subscribing','active') RETURNING id")).rows[0];
+    let demoUser=(await client.query("SELECT id,username,organization_id,full_name,role,permissions FROM users WHERE username='siam_demo' LIMIT 1")).rows[0];
     if(!demoUser){
       const hash=await bcrypt.hash(randomUUID(),12);
-      demoUser=(await pool.query("INSERT INTO users(username,password_hash,full_name,role,email,organization_id,is_active,email_verified,registration_status) VALUES('siam_demo',$1,'SIAM AIR Demo','staff','demo@siamairanddigital.com',$2,true,true,'approved') RETURNING id,username,organization_id,full_name,role,permissions",[hash,org.id])).rows[0];
+      demoUser=(await client.query("INSERT INTO users(username,password_hash,full_name,role,email,organization_id,is_active,email_verified,registration_status) VALUES('siam_demo',$1,'SIAM AIR Demo','staff','demo@siamairanddigital.com',$2,true,true,'approved') RETURNING id,username,organization_id,full_name,role,permissions",[hash,org.id])).rows[0];
+    } else if(demoUser.organization_id!==org.id){
+      await client.query("UPDATE users SET organization_id=$1,is_active=true,email_verified=true,registration_status='approved' WHERE id=$2",[org.id,demoUser.id]);
+      demoUser.organization_id=org.id;
     }
-    const sub=(await pool.query("SELECT id FROM subscriptions WHERE organization_id=$1 LIMIT 1",[org.id])).rows[0];
-    if(!sub){const plan=(await pool.query("SELECT id FROM subscription_plans WHERE name='Lifetime' LIMIT 1")).rows[0];await pool.query("INSERT INTO subscriptions(organization_id,plan_id,status,starts_at,ends_at) VALUES($1,$2,'active',now(),NULL)",[org.id,plan?.id||null]);}
-    const customer=(await pool.query("INSERT INTO customers(name,mobile,organization_id,opening_due) VALUES('Demo Customer','01700000000',$1,2500) ON CONFLICT (mobile) DO UPDATE SET name=EXCLUDED.name RETURNING id",[org.id])).rows[0];
-    const service=(await pool.query("INSERT INTO services(name,category,enabled,sort_order,organization_id) VALUES('Demo Air Ticket','Air Ticket',true,1,$1) ON CONFLICT (name) DO UPDATE SET enabled=true RETURNING id",[org.id])).rows[0];
-    const count=Number((await pool.query("SELECT COUNT(*)::int AS c FROM transactions WHERE organization_id=$1",[org.id])).rows[0].c||0);
-    if(count===0) await pool.query("INSERT INTO transactions(invoice_number,date,time,created_by,customer_id,service_id,description,selling_price,customer_paid,customer_due,vendor_cost,vendor_paid,vendor_due,gross_profit,status,organization_id) VALUES('DEMO-000001',(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::time,$1,$2,$3,'Demo air ticket transaction',15000,10000,5000,12000,12000,0,3000,'PARTIAL',$4)",[demoUser.id,customer.id,service.id,org.id]);
+    let sub=(await pool.query("SELECT id FROM subscriptions WHERE organization_id=$1 LIMIT 1",[org.id])).rows[0];
+    if(!sub){
+      const plan=(await pool.query("SELECT id FROM subscription_plans WHERE name='Lifetime' LIMIT 1")).rows[0];
+      if(!plan) throw new Error('Lifetime demo package is not configured');
+      sub=(await client.query("INSERT INTO subscriptions(organization_id,plan_id,status,starts_at,ends_at) VALUES($1,$2,'active',now(),NULL) RETURNING id",[org.id,plan.id])).rows[0];
+    }
+    let customer=(await client.query("SELECT id FROM customers WHERE organization_id=$1 AND mobile='01700000000' LIMIT 1",[org.id])).rows[0];
+    if(!customer) customer=(await client.query("INSERT INTO customers(name,mobile,organization_id,opening_due) VALUES('Demo Customer','01700000000',$1,2500) RETURNING id",[org.id])).rows[0];
+    let service=(await client.query("SELECT id FROM services WHERE organization_id=$1 AND name='Demo Air Ticket' LIMIT 1",[org.id])).rows[0];
+    if(!service) service=(await client.query("INSERT INTO services(name,category,enabled,sort_order,organization_id) VALUES('Demo Air Ticket','Air Ticket',true,1,$1) RETURNING id",[org.id])).rows[0];
+    const count=Number((await client.query("SELECT COUNT(*)::int AS c FROM transactions WHERE organization_id=$1",[org.id])).rows[0].c||0);
+    if(count===0) await client.query("INSERT INTO transactions(invoice_number,date,time,created_by,customer_id,service_id,description,selling_price,customer_paid,customer_due,vendor_cost,vendor_paid,vendor_due,gross_profit,status,organization_id) VALUES('DEMO-000001',(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::time,$1,$2,$3,'Demo air ticket transaction',15000,10000,5000,12000,12000,0,3000,'PARTIAL',$4)",[demoUser.id,customer.id,service.id,org.id]);
     req.session.userId=demoUser.id;
     (req.session as any).demoMode=true;
     await new Promise<void>((resolve,reject)=>req.session.save(err=>err?reject(err):resolve()));
+    await client.query('COMMIT');
     res.json({ok:true,demo:true,user:{id:demoUser.id,username:demoUser.username,fullName:demoUser.full_name,role:demoUser.role,permissions:demoUser.permissions},message:'Demo mode started. Data changes are disabled.'});
-  }catch(e){res.status(500).json({error:e instanceof Error?e.message:'Unable to start demo mode'});}
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(500).json({error:e instanceof Error?e.message:'Unable to start demo mode'});}finally{client.release();}
 });
-
 app.get('/api/saas/plans', async (_req,res) => {
   const { rows } = await pool.query("SELECT id,name,duration_days,price,currency,description,is_lifetime,active FROM subscription_plans WHERE active=true AND name IN ('1 Month Free','6 Months','1 Year','2 Years','5 Years','10 Years','Lifetime') ORDER BY CASE name WHEN '1 Month Free' THEN 1 WHEN '6 Months' THEN 2 WHEN '1 Year' THEN 3 WHEN '2 Years' THEN 4 WHEN '5 Years' THEN 5 WHEN '10 Years' THEN 6 WHEN 'Lifetime' THEN 7 ELSE 8 END");
   res.json({ plans: rows.map((p:any)=>({ ...p, price:Number(p.price||0) })) });
