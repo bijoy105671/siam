@@ -681,12 +681,17 @@ app.patch('/api/admin/saas/users/:id', adminOnly, async (req,res) => {
     const updated=(await client.query("SELECT u.id,u.username,u.full_name,u.phone,u.email,u.photo,u.is_active,u.email_verified,u.registration_status,o.id AS organization_id,o.business_name,o.owner_name,o.address,o.logo_url,o.photo_url,o.business_type,o.website,o.facebook,o.status AS organization_status FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.id=$1",[u.id])).rows[0];
     await audit(client,req.session.userId!,'SAAS_USER_EDITED','User',u.id,u,updated);
     await client.query('COMMIT');
+    let emailSent=false;
+    let emailError='';
     if(activating && email){
-      await sendSaasEmail(email,'Congratulations — Your SIAM AIR Account Is Active',
-        'Congratulations! Your SIAM AIR & DIGITAL SERVICE account has been activated.',
-        '<p>Dear '+String(updated.full_name||updated.owner_name||'User').replace(/[<>]/g,'')+',</p><p><b>Congratulations!</b> Your SIAM AIR & DIGITAL SERVICE account has been activated by the Main Admin.</p><p>You can now log in using your registered email/username and password.</p><p><b>Business:</b> '+String(updated.business_name||'').replace(/[<>]/g,'')+'</p>');
+      try{
+        await sendSaasEmail(email,'Congratulations — Your SIAM AIR Account Is Active',
+          'Congratulations! Your SIAM AIR & DIGITAL SERVICE account has been activated.',
+          '<p>Dear '+String(updated.full_name||updated.owner_name||'User').replace(/[<>]/g,'')+',</p><p><b>Congratulations!</b> Your SIAM AIR & DIGITAL SERVICE account has been activated by the Main Admin.</p><p>You can now log in using your registered email/username and password.</p><p><b>Business:</b> '+String(updated.business_name||'').replace(/[<>]/g,'')+'</p>');
+        emailSent=true;
+      }catch(err){emailError=err instanceof Error?err.message:'Activation email could not be sent';}
     }
-    res.json({ok:true,user:updated,emailSent:activating});
+    res.json({ok:true,user:updated,emailSent,emailError});
   }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(400).json({error:e instanceof Error?e.message:'Unable to edit registered user'});}finally{client.release();}
 });
 
