@@ -121,7 +121,7 @@ const sendLoginOtp = async (otp: string, recipient: string) => {
       from,
       to: [recipient],
       subject: 'SIAM AIR & DIGITAL SERVICE — Login Verification OTP',
-      html: '<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:14px"><h2 style="margin:0 0 8px">Login Verification</h2><p>Your one-time login verification code is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#ecfdf5;border-radius:10px">' + otp + '</div><p style="color:#64748b">This OTP expires in 10 minutes. A new OTP is required for every sign-in.</p><p style="margin-bottom:0"><b>SIAM AIR & DIGITAL SERVICE</b></p></div>'
+      html: '<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:14px"><h2 style="margin:0 0 8px">Login Verification</h2><p>Your one-time login verification code is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#ecfdf5;border-radius:10px">' + otp + '</div><p style="color:#64748b">This OTP expires in 30 seconds. You can resend it up to 3 times; after that verification is blocked for 1 hour. for every sign-in.</p><p style="margin-bottom:0"><b>SIAM AIR & DIGITAL SERVICE</b></p></div>'
     })
   });
   if (!response.ok) {
@@ -165,7 +165,7 @@ const historicalChangeAdminOnly = async (req: express.Request, res: express.Resp
       const otp = String(randomInt(100000, 1000000));
       await pool.query('CREATE TABLE IF NOT EXISTS security_otps (id UUID PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, otp_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now())');
       await pool.query('UPDATE security_otps SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [req.session.userId]);
-      await pool.query("INSERT INTO security_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval '10 minutes')", [randomUUID(), req.session.userId, hashOtp(otp)]);
+      await pool.query("INSERT INTO security_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval '30 seconds')", [randomUUID(), req.session.userId, hashOtp(otp)]);
       await sendSecurityOtp(otp, String((await pool.query('SELECT email FROM users WHERE id=$1',[req.session.userId])).rows[0]?.email || PASSWORD_RESET_EMAIL));
       return res.status(428).json({ error: 'SECURITY_OTP_REQUIRED', message: 'A historical transaction edit/correction security OTP was sent to the recovery email. Enter it to continue.' });
     }
@@ -740,9 +740,21 @@ app.patch('/api/settings', adminOnly, async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body ?? {};
   if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
-  const { rows } = await pool.query('SELECT id, username, password_hash, full_name, role, permissions, is_active, email, organization_id FROM users WHERE lower(username)=lower($1)', [username]);
+  const { rows } = await pool.query('SELECT id, username, password_hash, full_name, role, permissions, is_active, email, organization_id, failed_login_attempts, login_locked_until, otp_resend_count, otp_resend_locked_until FROM users WHERE lower(username)=lower($1) OR lower(email)=lower($1) ORDER BY CASE WHEN lower(username)=lower($1) THEN 0 ELSE 1 END LIMIT 1', [username]);
   const user = rows[0];
-  if (!user || !user.is_active || !(await bcrypt.compare(password, user.password_hash))) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  if (user.login_locked_until && new Date(user.login_locked_until).getTime() > Date.now()) return res.status(423).json({ error: 'Account locked. Main Admin must activate this account before login is allowed.' });
+  if (!user.is_active) return res.status(403).json({ error: 'Account inactive. Main Admin must activate this account before login is allowed.' });
+  if (!(await bcrypt.compare(password, user.password_hash))) {
+    const failed = Number(user.failed_login_attempts || 0) + 1;
+    if (failed >= 3) {
+      await pool.query("UPDATE users SET failed_login_attempts=$1, is_active=false, login_locked_until=NULL WHERE id=$2",[failed,user.id]);
+      return res.status(423).json({ error: 'Account locked after 3 incorrect password attempts. Main Admin must activate the account.' });
+    }
+    await pool.query('UPDATE users SET failed_login_attempts=$1 WHERE id=$2',[failed,user.id]);
+    return res.status(401).json({ error: 'Invalid credentials. Attempts remaining: ' + (3-failed) });
+  }
+  await pool.query('UPDATE users SET failed_login_attempts=0 WHERE id=$1',[user.id]);
   if (!user.email) return res.status(403).json({ error: 'Registered email is missing. Contact administrator.' });
   if (user.role !== 'admin' && user.organization_id) {
     const subscription = (await pool.query("SELECT status, ends_at FROM subscriptions WHERE organization_id=$1 ORDER BY created_at DESC LIMIT 1",[user.organization_id])).rows[0];
@@ -764,7 +776,7 @@ app.post('/api/auth/login', async (req, res) => {
   await pool.query('UPDATE login_otps SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [user.id]);
   const challengeId = randomUUID();
   await pool.query(
-    "INSERT INTO login_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval '10 minutes')",
+    "INSERT INTO login_otps (id,user_id,otp_hash,expires_at,last_sent_at) VALUES ($1,$2,$3,now()+interval '30 seconds',now())",
     [challengeId, user.id, hashOtp(otp)]
   );
   await sendLoginOtp(otp, user.email);
@@ -774,6 +786,23 @@ app.post('/api/auth/login', async (req, res) => {
     challengeId,
     message: 'A 6-digit login OTP was sent to the registered email. Enter it to continue.'
   });
+});
+
+app.post('/api/auth/resend-login-otp', async (req, res) => {
+  const challengeId=String(req.body?.challengeId||'').trim();
+  if(!challengeId) return res.status(400).json({error:'Challenge ID is required'});
+  const {rows}=await pool.query('SELECT id,user_id,resend_count,last_sent_at FROM login_otps WHERE id=$1 AND used_at IS NULL LIMIT 1',[challengeId]);
+  const item=rows[0]; if(!item) return res.status(400).json({error:'Invalid or expired OTP challenge'});
+  const now=Date.now(); const last=item.last_sent_at ? new Date(item.last_sent_at).getTime() : 0;
+  if(now-last<30000) return res.status(429).json({error:'Please wait 30 seconds before requesting another OTP.'});
+  if(Number(item.resend_count)>=3) { await pool.query("UPDATE users SET otp_resend_locked_until=now()+interval '1 hour' WHERE id=$1",[item.user_id]); return res.status(429).json({error:'Maximum 3 OTP resends reached. Verification is blocked for 1 hour.'}); }
+  const u=(await pool.query('SELECT email,is_active,otp_resend_locked_until FROM users WHERE id=$1',[item.user_id])).rows[0];
+  if(!u?.is_active) return res.status(403).json({error:'Account inactive. Main Admin must activate it.'});
+  if(u.otp_resend_locked_until && new Date(u.otp_resend_locked_until).getTime()>now) return res.status(429).json({error:'OTP verification is blocked for 1 hour. Please contact Main Admin.'});
+  const otp=String(randomInt(100000,1000000)); const next=Number(item.resend_count)+1;
+  await pool.query("UPDATE login_otps SET otp_hash=$1,expires_at=now()+interval '30 seconds',resend_count=$2,last_sent_at=now(),attempts=0 WHERE id=$3",[hashOtp(otp),next,challengeId]);
+  await sendLoginOtp(otp,u.email);
+  res.json({ok:true,resendCount:next,message:'A new OTP was sent. It is valid for 30 seconds.'});
 });
 
 app.post('/api/auth/verify-login-otp', async (req, res) => {
