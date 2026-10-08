@@ -60,6 +60,7 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerPassport, setCustomerPassport] = useState('');
   const [customerPassportExpiry, setCustomerPassportExpiry] = useState('');
+  const [customerPhoto, setCustomerPhoto] = useState('');
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
 
   // Service state
@@ -143,6 +144,7 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [vendorMobile, setVendorMobile] = useState('');
   const [vendorCompany, setVendorCompany] = useState('');
+  const [vendorPhoto, setVendorPhoto] = useState('');
   const [vendorCost, setVendorCost] = useState<number | ''>('');
   const [vendorPaid, setVendorPaid] = useState<number | ''>('');
   const [vendorPaymentMethod, setVendorPaymentMethod] = useState<PaymentMethod>('Bank');
@@ -223,6 +225,7 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
     setCustomerAddress(cust.address || '');
     setCustomerPassport(cust.passportNumber || '');
     setCustomerPassportExpiry(cust.passportExpiry || '');
+    setCustomerPhoto(cust.photo || '');
     setPassengerName(cust.name);
     setCustomerDropdownOpen(false);
   };
@@ -232,6 +235,7 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
     setVendorQuery(vend.name);
     setVendorMobile(vend.mobile);
     setVendorCompany(vend.company || '');
+    setVendorPhoto(vend.photo || '');
     setVendorDropdownOpen(false);
   };
 
@@ -261,13 +265,13 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
         accountCost: numAccountCost,
         accountCostPaymentMethod,
         customerName: customerQuery, customerMobile, customerEmail, customerAddress,
-        customerPassportNumber: customerPassport, customerPassportExpiry: customerPassportExpiry,
+        customerPassportNumber: customerPassport, customerPassportExpiry: customerPassportExpiry, customerPhoto,
         serviceId, serviceName: selectedService?.name || 'General Service',
         description: description || (isFlightService ? airline + ' ' + route : selectedService?.name),
         isFlight: Boolean(isFlightService), flightDetails, sellingPrice: numSellingPrice,
         customerPaid: numCustomerPaid, customerPaymentMethod, hasVendor,
         vendorMode: selectedVendor ? 'existing' : 'new', vendorId: selectedVendor?.id,
-        vendorName: vendorQuery.trim(), vendorMobile, vendorCompany, vendorCost: numVendorCost,
+        vendorName: vendorQuery.trim(), vendorMobile, vendorCompany, vendorPhoto, vendorCost: numVendorCost,
         vendorPaid: numVendorPaid, vendorPaymentMethod,
         reminderDate: setReminder ? reminderDate : undefined, reminderTime: setReminder ? reminderTime : undefined,
         reminderNote: reminderNote || ('Collect remaining balance ' + formatCurrency(calculatedCustomerDue)),
@@ -694,7 +698,7 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><label className="block text-xs font-medium text-slate-700 mb-1">Vendor Photo <span className="text-slate-400">(Optional)</span></label><input type="file" accept="image/*" onChange={e=>{const file=e.target.files?.[0];if(file){const reader=new FileReader();reader.onload=()=>setVendorPhoto(String(reader.result||''));reader.readAsDataURL(file)}}} className="w-full text-xs"/></div><div><label className="block text-xs font-medium text-slate-700 mb-1">Customer Photo <span className="text-slate-400">(Optional)</span></label><input type="file" accept="image/*" onChange={e=>{const file=e.target.files?.[0];if(file){const reader=new FileReader();reader.onload=()=>setCustomerPhoto(String(reader.result||''));reader.readAsDataURL(file)}}} className="w-full text-xs"/></div>
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
                 Select Service <span className="text-rose-500">*</span>
