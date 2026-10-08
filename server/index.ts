@@ -596,8 +596,9 @@ app.post('/api/saas/register', async (req,res) => {
       const otp=String(randomInt(100000,1000000));
       await client.query("INSERT INTO registration_otps(user_id,otp_hash,expires_at) VALUES($1,$2,now()+interval '10 minutes')",[user.id,hashOtp(otp)]);
       await audit(client,null,'SAAS_REGISTRATION_SUBMITTED','Organization',org.id,null,{userId:user.id,planId:plan.id,paymentId:pay?.id||null,freeTrial:isFreeTrial,ipAddress:clientIp});
-      await client.query('COMMIT');
+      // Do not commit a registration/payment request unless the verification OTP is successfully handed to the registered email.
       await sendSaasEmail(email,'SIAM AIR — Email Verification OTP','Verify your business registration','<p>Your 6-digit registration OTP is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#ecfdf5;border-radius:10px">'+otp+'</div><p>This OTP expires in 10 minutes. After email verification, a Main Admin must activate your account. Free-trial activation is normally completed within 12–24 hours.</p>');
+      await client.query('COMMIT');
       return res.status(201).json({ok:true,status:'pending',message:isFreeTrial?'Free trial registration submitted. Verify your email. No payment verification is required; Main Admin will activate the free trial within 12–24 hours.':'Registration submitted. Verify the OTP sent to your registered email. Your paid package will remain pending until payment is approved.',userId:user.id,freeTrial:isFreeTrial});
     }catch(e){await client.query('ROLLBACK').catch(()=>{});throw e;}finally{client.release();}
   }catch(e){return res.status(400).json({error:e instanceof Error?e.message:'Registration failed'});}
@@ -720,13 +721,13 @@ app.delete('/api/admin/saas/users/:id', adminOnly, async (req,res) => {
 app.get('/api/admin/saas', adminOnly, async (_req,res) => {
   const [users,payments,plans,settings,freeTrials]=await Promise.all([
     pool.query("SELECT u.id,u.username,u.full_name,u.phone,u.email,u.photo,u.is_active,u.email_verified,u.registration_status,u.created_at,o.id AS organization_id,o.business_name,o.owner_name,o.address,o.logo_url,o.business_type,o.website,o.facebook,o.status AS organization_status FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.organization_id IS NOT NULL ORDER BY u.created_at DESC"),
-    pool.query("SELECT sp.*,o.business_name,o.owner_name,o.phone,o.email,p.name AS plan_name,p.duration_days,p.price,p.is_lifetime FROM subscription_payments sp JOIN organizations o ON o.id=sp.organization_id LEFT JOIN subscriptions s ON s.id=sp.subscription_id LEFT JOIN subscription_plans p ON p.id=s.plan_id ORDER BY sp.created_at DESC"),
+    pool.query("SELECT sp.*,o.business_name,o.owner_name,o.phone,o.email,p.name AS plan_name,p.duration_days,p.price,p.is_lifetime,u.email_verified FROM subscription_payments sp JOIN users u ON u.organization_id=sp.organization_id JOIN organizations o ON o.id=sp.organization_id LEFT JOIN subscriptions s ON s.id=sp.subscription_id LEFT JOIN subscription_plans p ON p.id=s.plan_id ORDER BY sp.created_at DESC"),
     pool.query("SELECT id,name,duration_days,price,currency,description,is_lifetime,active FROM subscription_plans ORDER BY CASE name WHEN '1 Month Free' THEN 1 WHEN '6 Months' THEN 2 WHEN '1 Year' THEN 3 WHEN '2 Years' THEN 4 WHEN '5 Years' THEN 5 WHEN '10 Years' THEN 6 WHEN 'Lifetime' THEN 7 ELSE 8 END"),
     pool.query("SELECT value FROM app_settings WHERE key='saas_payment_settings'"),
-    pool.query("SELECT s.id AS subscription_id,s.activation_due_at,s.created_at,u.id AS user_id,u.email,u.email_verified,u.is_active,o.business_name,o.owner_name,p.name AS plan_name,EXTRACT(EPOCH FROM (now()-s.created_at))/3600 AS age_hours FROM subscriptions s JOIN organizations o ON o.id=s.organization_id JOIN users u ON u.organization_id=o.id LEFT JOIN subscription_plans p ON p.id=s.plan_id WHERE s.status='pending' AND COALESCE(p.price,0)=0 ORDER BY s.created_at ASC")
+    pool.query("SELECT s.id AS subscription_id,s.activation_due_at,s.created_at,u.id AS user_id,u.email,u.email_verified,u.is_active,o.business_name,o.owner_name,p.name AS plan_name,EXTRACT(EPOCH FROM (now()-s.created_at))/3600 AS age_hours FROM subscriptions s JOIN organizations o ON o.id=s.organization_id JOIN users u ON u.organization_id=o.id LEFT JOIN subscription_plans p ON p.id=s.plan_id WHERE s.status='pending' AND COALESCE(p.price,0)=0 AND u.email_verified=true ORDER BY s.created_at ASC")
   ]);
   const freeTrialNotifications=freeTrials.rows.map((r:any)=>({...r,ageHours:Number(r.age_hours||0),reminderDue:Number(r.age_hours||0)>=12,deadlinePassed:Number(r.age_hours||0)>24}));
-  const pendingPaymentCount=payments.rows.filter((p:any)=>p.status==='pending').length;
+  const pendingPaymentCount=payments.rows.filter((p:any)=>p.status==='pending' && p.email_verified===true).length;
   res.json({users:users.rows,payments:payments.rows.map((p:any)=>({...p,amount:Number(p.amount||0),price:Number(p.price||0)})),plans:plans.rows.map((p:any)=>({...p,price:Number(p.price||0)})),paymentSettings:settings.rows[0]?.value||{},freeTrials:freeTrialNotifications,pendingPaymentCount,notificationCount:pendingPaymentCount+freeTrialNotifications.filter((r:any)=>r.reminderDue||r.deadlinePassed).length});
 });
 
