@@ -9,6 +9,10 @@ CREATE TABLE IF NOT EXISTS users (
   phone text,
   permissions jsonb NOT NULL DEFAULT '{}'::jsonb,
   is_active boolean NOT NULL DEFAULT true,
+  failed_login_attempts integer NOT NULL DEFAULT 0,
+  login_locked_until timestamptz,
+  otp_resend_count integer NOT NULL DEFAULT 0,
+  otp_resend_locked_until timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -530,3 +534,13 @@ WHERE business_name='SIAM AIR & DIGITAL SERVICE'
     SELECT 1 FROM app_settings s
     WHERE s.organization_id=organizations.id AND s.key='saas_payment_settings'
   );
+
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts integer NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS login_locked_until timestamptz;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_resend_count integer NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_resend_locked_until timestamptz;
+ALTER TABLE login_otps ADD COLUMN IF NOT EXISTS resend_count integer NOT NULL DEFAULT 0;
+ALTER TABLE login_otps ADD COLUMN IF NOT EXISTS last_sent_at timestamptz;
+ALTER TABLE registration_otps ADD COLUMN IF NOT EXISTS resend_count integer NOT NULL DEFAULT 0;
+ALTER TABLE registration_otps ADD COLUMN IF NOT EXISTS last_sent_at timestamptz;
