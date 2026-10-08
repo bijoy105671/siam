@@ -81,6 +81,7 @@ export const api = {
   startSaasDemo: () => apiRequest<{ok:boolean;demo:boolean;message:string}>('/api/saas/demo', { method:'POST' }),
   activateSaasFreeTrial: (id: string) => apiRequest<{ok:boolean}>(`/api/admin/saas/free-trials/${encodeURIComponent(id)}/activate`, { method:'POST' }),
   adminSaas: () => apiRequest<any>('/api/admin/saas'),
+  editSaasUser: (id: string, input: Record<string,any>) => apiRequest<{ok:boolean;user:any}>(`/api/admin/saas/users/${encodeURIComponent(id)}`, { method:'PATCH', body: JSON.stringify(input) }),
   approveSaasPayment: (id: string) => apiRequest<{ok:boolean}>(`/api/admin/saas/payments/${encodeURIComponent(id)}/approve`, { method:'POST' }),
   rejectSaasPayment: (id: string, reason: string) => apiRequest<{ok:boolean}>(`/api/admin/saas/payments/${encodeURIComponent(id)}/reject`, { method:'POST', body: JSON.stringify({reason}) }),
   updateSaasPlan: (id: string, input: Record<string,any>) => apiRequest<{plan:any}>(`/api/admin/saas/plans/${encodeURIComponent(id)}`, { method:'PATCH', body: JSON.stringify(input) }),
