@@ -646,6 +646,42 @@ app.patch('/api/saas/profile', auth, async (req,res) => {
   res.json({profile:{ok:true}});
 });
 
+app.patch('/api/admin/saas/users/:id', adminOnly, async (req,res) => {
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const u=(await client.query("SELECT u.*,o.id AS organization_id FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.id=$1 FOR UPDATE",[req.params.id])).rows[0];
+    if(!u) throw new Error('Registered user not found');
+    const b=req.body||{};
+    const fullName=String(b.fullName??u.full_name).trim();
+    const email=String(b.email??u.email).trim().toLowerCase();
+    const phone=String(b.phone??u.phone||'').trim();
+    const username=String(b.username??u.username).trim();
+    const businessName=String(b.businessName??'').trim();
+    const ownerName=String(b.ownerName??fullName).trim();
+    const address=String(b.address??'').trim();
+    const businessType=String(b.businessType??'').trim();
+    const website=String(b.website??'').trim();
+    const facebook=String(b.facebook??'').trim();
+    const photo=String(b.photo??u.photo||'').trim();
+    if(!fullName||!email||!username) throw new Error('Name, email and username are required');
+    const conflict=(await client.query("SELECT id FROM users WHERE id<>$1 AND (lower(username)=lower($2) OR lower(email)=lower($3)) LIMIT 1",[u.id,username,email])).rows[0];
+    if(conflict) throw new Error('Email or username is already used by another account');
+    await client.query("UPDATE users SET full_name=$1,email=$2,phone=$3,username=$4,photo=$5,updated_at=now() WHERE id=$6",[fullName,email,phone,username,photo||null,u.id]);
+    if(u.organization_id){
+      await client.query("UPDATE organizations SET business_name=COALESCE(NULLIF($1,''),business_name),owner_name=COALESCE(NULLIF($2,''),owner_name),phone=$3,email=$4,address=$5,business_type=$6,website=$7,facebook=$8,logo_url=COALESCE(NULLIF($9,''),logo_url),photo_url=COALESCE(NULLIF($9,''),photo_url),updated_at=now() WHERE id=$10",[businessName,ownerName,phone,email,address,businessType,website||null,facebook||null,photo||null,u.organization_id]);
+    }
+    if(b.resetFailedLogin===true) await client.query("UPDATE users SET failed_login_attempts=0,login_locked_until=NULL,is_active=$1,otp_resend_count=0,otp_resend_locked_until=NULL WHERE id=$2",[b.isActive!==false,u.id]);
+    else if(b.isActive!==undefined) await client.query("UPDATE users SET is_active=$1 WHERE id=$2",[b.isActive===true,u.id]);
+    if(b.emailVerified===true) await client.query("UPDATE users SET email_verified=true WHERE id=$1",[u.id]);
+    if(b.registrationStatus) await client.query("UPDATE users SET registration_status=$1 WHERE id=$2",[String(b.registrationStatus),u.id]);
+    const updated=(await client.query("SELECT u.id,u.username,u.full_name,u.phone,u.email,u.photo,u.is_active,u.email_verified,u.registration_status,o.id AS organization_id,o.business_name,o.owner_name,o.address,o.logo_url,o.photo_url,o.business_type,o.website,o.facebook,o.status AS organization_status FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.id=$1",[u.id])).rows[0];
+    await audit(client,req.session.userId!,'SAAS_USER_EDITED','User',u.id,u,updated);
+    await client.query('COMMIT');
+    res.json({ok:true,user:updated});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(400).json({error:e instanceof Error?e.message:'Unable to edit registered user'});}finally{client.release();}
+});
+
 app.get('/api/admin/saas', adminOnly, async (_req,res) => {
   const [users,payments,plans,settings,freeTrials]=await Promise.all([
     pool.query("SELECT u.id,u.username,u.full_name,u.phone,u.email,u.photo,u.is_active,u.email_verified,u.registration_status,u.created_at,o.id AS organization_id,o.business_name,o.owner_name,o.address,o.logo_url,o.business_type,o.website,o.facebook,o.status AS organization_status FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.organization_id IS NOT NULL ORDER BY u.created_at DESC"),
