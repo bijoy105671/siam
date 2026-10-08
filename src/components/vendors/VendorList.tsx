@@ -121,6 +121,8 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
       addVendor({
         name: name.trim(),
         company: company.trim(),
+        photo,
+
         mobile: mobile.trim(),
         whatsapp: whatsapp.trim() || mobile.trim(),
         email: email.trim(),
