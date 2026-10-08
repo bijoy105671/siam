@@ -675,6 +675,7 @@ app.patch('/api/admin/saas/users/:id', adminOnly, async (req,res) => {
     if(b.resetFailedLogin===true) await client.query("UPDATE users SET failed_login_attempts=0,login_locked_until=NULL,is_active=$1,otp_resend_count=0,otp_resend_locked_until=NULL WHERE id=$2",[b.isActive!==false,u.id]);
     else if(b.isActive!==undefined) await client.query("UPDATE users SET is_active=$1 WHERE id=$2",[b.isActive===true,u.id]);
     if(b.isActive===true && u.organization_id) await client.query("UPDATE organizations SET status='active',updated_at=now() WHERE id=$1",[u.organization_id]);
+    if(b.isActive===false && u.organization_id) await client.query("UPDATE organizations SET status='inactive',updated_at=now() WHERE id=$1",[u.organization_id]);
     if(b.emailVerified===true) await client.query("UPDATE users SET email_verified=true WHERE id=$1",[u.id]);
     if(b.registrationStatus) await client.query("UPDATE users SET registration_status=$1 WHERE id=$2",[String(b.registrationStatus),u.id]);
     const updated=(await client.query("SELECT u.id,u.username,u.full_name,u.phone,u.email,u.photo,u.is_active,u.email_verified,u.registration_status,o.id AS organization_id,o.business_name,o.owner_name,o.address,o.logo_url,o.photo_url,o.business_type,o.website,o.facebook,o.status AS organization_status FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.id=$1",[u.id])).rows[0];
@@ -698,7 +699,8 @@ app.get('/api/admin/saas', adminOnly, async (_req,res) => {
     pool.query("SELECT s.id AS subscription_id,s.activation_due_at,s.created_at,u.id AS user_id,u.email,u.email_verified,u.is_active,o.business_name,o.owner_name,p.name AS plan_name,EXTRACT(EPOCH FROM (now()-s.created_at))/3600 AS age_hours FROM subscriptions s JOIN organizations o ON o.id=s.organization_id JOIN users u ON u.organization_id=o.id LEFT JOIN subscription_plans p ON p.id=s.plan_id WHERE s.status='pending' AND COALESCE(p.price,0)=0 ORDER BY s.created_at ASC")
   ]);
   const freeTrialNotifications=freeTrials.rows.map((r:any)=>({...r,ageHours:Number(r.age_hours||0),reminderDue:Number(r.age_hours||0)>=12,deadlinePassed:Number(r.age_hours||0)>24}));
-  res.json({users:users.rows,payments:payments.rows.map((p:any)=>({...p,amount:Number(p.amount||0),price:Number(p.price||0)})),plans:plans.rows.map((p:any)=>({...p,price:Number(p.price||0)})),paymentSettings:settings.rows[0]?.value||{},freeTrials:freeTrialNotifications,notificationCount:freeTrialNotifications.filter((r:any)=>r.reminderDue||r.deadlinePassed).length});
+  const pendingPaymentCount=payments.rows.filter((p:any)=>p.status==='pending').length;
+  res.json({users:users.rows,payments:payments.rows.map((p:any)=>({...p,amount:Number(p.amount||0),price:Number(p.price||0)})),plans:plans.rows.map((p:any)=>({...p,price:Number(p.price||0)})),paymentSettings:settings.rows[0]?.value||{},freeTrials:freeTrialNotifications,pendingPaymentCount,notificationCount:pendingPaymentCount+freeTrialNotifications.filter((r:any)=>r.reminderDue||r.deadlinePassed).length});
 });
 
 
