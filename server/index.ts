@@ -514,6 +514,9 @@ app.post('/api/saas/demo', async (req,res) => {
     let org=(await client.query("SELECT id FROM organizations WHERE business_name='SIAM AIR DEMO' LIMIT 1")).rows[0];
     if(!org) org=(await client.query("INSERT INTO organizations(business_name,owner_name,phone,email,address,tagline,status) VALUES('SIAM AIR DEMO','Demo User','','demo@siamairanddigital.com','Demo workspace — read-only','Explore SIAM AIR before subscribing','active') RETURNING id")).rows[0];
     let demoUser=(await client.query("SELECT id,username,organization_id,full_name,role,permissions FROM users WHERE username='siam_demo' LIMIT 1")).rows[0];
+    // The demo endpoint is unauthenticated, so establish the demo tenant context
+    // explicitly before RLS-protected business rows (customers/services/transactions) are written.
+    await client.query("SELECT set_config('app.organization_id', $1, true)", [org.id]);
     if(!demoUser){
       const hash=await bcrypt.hash(randomUUID(),12);
       demoUser=(await client.query("INSERT INTO users(username,password_hash,full_name,role,email,organization_id,is_active,email_verified,registration_status) VALUES('siam_demo',$1,'SIAM AIR Demo','staff','demo@siamairanddigital.com',$2,true,true,'approved') RETURNING id,username,organization_id,full_name,role,permissions",[hash,org.id])).rows[0];
