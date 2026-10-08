@@ -70,7 +70,7 @@ const initializeDatabase = async () => {
   }
 };
 
-const sendPasswordResetOtp = async (otp: string) => {
+const sendPasswordResetOtp = async (otp: string, recipient: string) => {
   const apiKey = process.env.RESEND_API_KEY;
   const from = 'onboarding@resend.dev';
   if (!apiKey) throw new Error('Password reset email is not configured. Add RESEND_API_KEY in Render.');
@@ -79,7 +79,7 @@ const sendPasswordResetOtp = async (otp: string) => {
     headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       from,
-      to: [PASSWORD_RESET_EMAIL],
+      to: [recipient],
       subject: 'SIAM AIR & DIGITAL SERVICE — Admin Password Reset OTP',
       html: '<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:14px"><h2 style="margin:0 0 8px">Admin Password Reset</h2><p>Your one-time verification code is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#f1f5f9;border-radius:10px">' + otp + '</div><p style="color:#64748b">This OTP expires in 10 minutes. If you did not request this, ignore this email.</p><p style="margin-bottom:0"><b>SIAM AIR & DIGITAL SERVICE</b></p></div>'
     })
@@ -90,7 +90,7 @@ const sendPasswordResetOtp = async (otp: string) => {
   }
 };
 
-const sendSecurityOtp = async (otp: string) => {
+const sendSecurityOtp = async (otp: string, recipient: string) => {
   const apiKey = process.env.RESEND_API_KEY;
   const from = 'onboarding@resend.dev';
   if (!apiKey) throw new Error('Historical change security email is not configured. Add RESEND_API_KEY in Render.');
@@ -99,7 +99,7 @@ const sendSecurityOtp = async (otp: string) => {
     headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       from,
-      to: [PASSWORD_RESET_EMAIL],
+      to: [recipient],
       subject: 'SIAM AIR & DIGITAL SERVICE — Historical Transaction Edit/Correction OTP',
       html: '<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:14px"><h2 style="margin:0 0 8px">Historical Transaction Edit / Correction</h2><p>This OTP is being requested because an administrator is attempting to edit or correct historical transaction/accounting information in SIAM AIR & DIGITAL SERVICE.</p><p>Your one-time verification code is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#fff7ed;border-radius:10px">' + otp + '</div><p><b>This is NOT a password reset.</b> No password has been changed or reset by this email.</p><p style="color:#64748b">This OTP expires in 10 minutes. Enter it in the Historical Transaction Edit/Correction verification window to continue.</p><p style="color:#64748b">If you did not attempt a historical transaction change, ignore this email and review your account security.</p><p style="margin-bottom:0"><b>SIAM AIR & DIGITAL SERVICE</b></p></div>'
     })
@@ -110,7 +110,7 @@ const sendSecurityOtp = async (otp: string) => {
   }
 };
 
-const sendLoginOtp = async (otp: string) => {
+const sendLoginOtp = async (otp: string, recipient: string) => {
   const apiKey = process.env.RESEND_API_KEY;
   const from = 'onboarding@resend.dev';
   if (!apiKey) throw new Error('Login email OTP is not configured. Add RESEND_API_KEY in Render.');
@@ -119,7 +119,7 @@ const sendLoginOtp = async (otp: string) => {
     headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       from,
-      to: [PASSWORD_RESET_EMAIL],
+      to: [recipient],
       subject: 'SIAM AIR & DIGITAL SERVICE — Login Verification OTP',
       html: '<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:14px"><h2 style="margin:0 0 8px">Login Verification</h2><p>Your one-time login verification code is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#ecfdf5;border-radius:10px">' + otp + '</div><p style="color:#64748b">This OTP expires in 10 minutes. A new OTP is required for every sign-in.</p><p style="margin-bottom:0"><b>SIAM AIR & DIGITAL SERVICE</b></p></div>'
     })
@@ -166,7 +166,7 @@ const historicalChangeAdminOnly = async (req: express.Request, res: express.Resp
       await pool.query('CREATE TABLE IF NOT EXISTS security_otps (id UUID PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, otp_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now())');
       await pool.query('UPDATE security_otps SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [req.session.userId]);
       await pool.query("INSERT INTO security_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval '10 minutes')", [randomUUID(), req.session.userId, hashOtp(otp)]);
-      await sendSecurityOtp(otp);
+      await sendSecurityOtp(otp, String((await pool.query('SELECT email FROM users WHERE id=$1',[req.session.userId])).rows[0]?.email || PASSWORD_RESET_EMAIL));
       return res.status(428).json({ error: 'SECURITY_OTP_REQUIRED', message: 'A historical transaction edit/correction security OTP was sent to the recovery email. Enter it to continue.' });
     }
     next();
@@ -484,6 +484,195 @@ app.post('/api/flight-directory', auth, async (req, res) => {
 
 
 
+
+const sendSaasEmail = async (to: string, subject: string, title: string, bodyHtml: string) => {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error('Email service is not configured. Add RESEND_API_KEY in Render.');
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'onboarding@resend.dev',
+      to: [to],
+      subject,
+      html: '<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px;border:1px solid #e5e7eb;border-radius:18px"><h2 style="margin:0 0 12px;color:#047857">' + title + '</h2>' + bodyHtml + '<p style="margin-top:24px"><b>SIAM AIR & DIGITAL SERVICE</b></p></div>'
+    })
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error('Email provider rejected the request: ' + detail.slice(0,240));
+  }
+};
+
+app.get('/api/saas/plans', async (_req,res) => {
+  const { rows } = await pool.query("SELECT id,name,duration_days,price,currency,description,is_lifetime,active FROM subscription_plans WHERE active=true AND name IN ('1 Year','2 Years','10 Years','Lifetime') ORDER BY CASE name WHEN '1 Year' THEN 1 WHEN '2 Years' THEN 2 WHEN '10 Years' THEN 3 WHEN 'Lifetime' THEN 4 ELSE 5 END");
+  res.json({ plans: rows.map((p:any)=>({ ...p, price:Number(p.price||0) })) });
+});
+
+app.get('/api/saas/payment-settings', async (_req,res) => {
+  const { rows } = await pool.query("SELECT value FROM app_settings WHERE key='saas_payment_settings'");
+  const value = rows[0]?.value && typeof rows[0].value==='object' ? rows[0].value : {};
+  res.json({ settings: value });
+});
+
+app.post('/api/saas/register', async (req,res) => {
+  const b=req.body||{};
+  const businessName=String(b.businessName||'').trim();
+  const ownerName=String(b.ownerName||'').trim();
+  const phone=String(b.phone||'').trim();
+  const email=String(b.email||'').trim().toLowerCase();
+  const password=String(b.password||'');
+  const username=String(b.username||email).trim();
+  const address=String(b.address||'').trim();
+  const businessType=String(b.businessType||'').trim();
+  const website=String(b.website||'').trim();
+  const facebook=String(b.facebook||'').trim();
+  const logoUrl=String(b.logoUrl||'').trim();
+  const planId=String(b.planId||'').trim();
+  const paymentMethod=String(b.paymentMethod||'').trim().toLowerCase();
+  const senderAccount=String(b.senderAccount||'').trim();
+  const transactionId=String(b.transactionId||'').trim();
+  const paymentSlip=String(b.paymentSlip||'').trim();
+  const amount=Number(b.amount);
+  const termsAccepted=b.termsAccepted===true;
+  if(!businessName||!ownerName||!phone||!email||!password||!address||!planId||!paymentMethod||!senderAccount||!transactionId||!paymentSlip||!Number.isFinite(amount)||amount<=0||!termsAccepted) {
+    return res.status(400).json({error:'All required registration, package, payment, slip, Transaction ID and Terms & Conditions fields must be completed.'});
+  }
+  if(!['bkash','bank'].includes(paymentMethod)) return res.status(400).json({error:'Payment method must be bKash or Bank.'});
+  if(password.length<8) return res.status(400).json({error:'Password must be at least 8 characters.'});
+  if(paymentSlip.length>11000000) return res.status(413).json({error:'Payment slip is too large. Please use a smaller image/PDF.'});
+  const plan=(await pool.query("SELECT * FROM subscription_plans WHERE id=$1 AND active=true AND name IN ('1 Year','2 Years','10 Years','Lifetime')",[planId])).rows[0];
+  if(!plan) return res.status(400).json({error:'Selected subscription package is unavailable.'});
+  if(Number(plan.price)>0 && Math.abs(amount-Number(plan.price))>0.01) return res.status(400).json({error:'Payment amount does not match the selected package price.'});
+  try {
+    const existing=(await pool.query('SELECT id FROM users WHERE lower(username)=lower($1) OR lower(email)=lower($2) LIMIT 1',[username,email])).rows[0];
+    if(existing) return res.status(409).json({error:'An account with this email or username already exists.'});
+    const client=await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const org=(await client.query('INSERT INTO organizations (business_name,owner_name,phone,email,address,logo_url,photo_url,website,facebook,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,\'pending\') RETURNING *',[businessName,ownerName,phone,email,address,logoUrl||null,logoUrl||null,website||null,facebook||null])).rows[0];
+      const hash=await bcrypt.hash(password,12);
+      const user=(await client.query("INSERT INTO users (username,password_hash,full_name,role,phone,email,photo,organization_id,is_active,email_verified,terms_accepted_at,registration_status) VALUES ($1,$2,$3,'staff',$4,$5,$6,$7,false,false,now(),'pending') RETURNING id,username,full_name,role,phone,email,organization_id,is_active,email_verified,registration_status",[username,hash,ownerName,phone,email,logoUrl||null,org.id])).rows[0];
+      const sub=(await client.query("INSERT INTO subscriptions (organization_id,plan_id,status) VALUES ($1,$2,'pending') RETURNING *",[org.id,plan.id])).rows[0];
+      const pay=(await client.query("INSERT INTO subscription_payments (organization_id,subscription_id,amount,currency,method,gateway_reference,status,sender_account,payment_slip,transaction_id,submitted_at) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,now()) RETURNING *",[org.id,sub.id,amount,plan.currency,paymentMethod,paymentMethod==='bkash'?'bKash': 'Bank',senderAccount,paymentSlip,transactionId])).rows[0];
+      await client.query('UPDATE subscriptions SET payment_id=$1 WHERE id=$2',[pay.id,sub.id]);
+      const otp=String(randomInt(100000,1000000));
+      await client.query('INSERT INTO registration_otps(user_id,otp_hash,expires_at) VALUES($1,$2,now()+interval \'10 minutes\')',[user.id,hashOtp(otp)]);
+      await audit(client,null,'SAAS_REGISTRATION_SUBMITTED','Organization',org.id,null,{userId:user.id,planId:plan.id,paymentId:pay.id});
+      await client.query('COMMIT');
+      await sendSaasEmail(email,'SIAM AIR — Email Verification OTP','Verify your business registration','<p>Your 6-digit registration OTP is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#ecfdf5;border-radius:10px">'+otp+'</div><p>This OTP expires in 10 minutes. Enter it to verify your registered email.</p>');
+      return res.status(201).json({ok:true,status:'pending',message:'Registration submitted. Verify the OTP sent to your registered email. Your account will remain pending until the payment is approved.',userId:user.id});
+    } catch(e){await client.query('ROLLBACK').catch(()=>{});throw e;} finally{client.release();}
+  } catch(e){return res.status(400).json({error:e instanceof Error?e.message:'Registration failed'});}
+});
+
+app.post('/api/saas/verify-registration', async (req,res) => {
+  const userId=String(req.body?.userId||'').trim();
+  const otp=String(req.body?.otp||'').trim();
+  if(!userId||!/^d{6}$/.test(otp)) return res.status(400).json({error:'Registration user ID and 6-digit OTP are required'});
+  const row=(await pool.query("SELECT id,user_id,otp_hash,expires_at,attempts FROM registration_otps WHERE user_id=$1 AND used_at IS NULL ORDER BY created_at DESC LIMIT 1",[userId])).rows[0];
+  if(!row||new Date(row.expires_at).getTime()<=Date.now()||Number(row.attempts)>=5) return res.status(400).json({error:'Invalid or expired registration OTP'});
+  if(hashOtp(otp)!==row.otp_hash){await pool.query('UPDATE registration_otps SET attempts=attempts+1 WHERE id=$1',[row.id]);return res.status(400).json({error:'Invalid or expired registration OTP'});}
+  await pool.query('UPDATE registration_otps SET used_at=now() WHERE id=$1',[row.id]);
+  await pool.query("UPDATE users SET email_verified=true WHERE id=$1",[userId]);
+  const user=(await pool.query("SELECT organization_id,email,full_name FROM users WHERE id=$1",[userId])).rows[0];
+  await pool.query("UPDATE organizations SET status='pending',updated_at=now() WHERE id=$1",[user.organization_id]);
+  await sendSaasEmail(user.email,'SIAM AIR — Email Verified','Registration email verified','<p>Hello '+String(user.full_name).replace(/[<>]/g,'')+',</p><p>Your registered email has been verified successfully. Your payment is now waiting for administrator verification.</p>');
+  res.json({ok:true,status:'pending',message:'Email verified. Payment is pending administrator approval.'});
+});
+
+app.get('/api/saas/profile', auth, async (req,res) => {
+  const user=(await pool.query("SELECT u.id,u.username,u.full_name,u.phone,u.email,u.photo,u.organization_id,u.email_verified,u.registration_status,o.business_name,o.owner_name,o.phone AS business_phone,o.email AS business_email,o.address,o.logo_url,o.photo_url,o.business_type,o.website,o.facebook,o.status AS organization_status FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.id=$1",[req.session.userId])).rows[0];
+  if(!user) return res.status(404).json({error:'Profile not found'});
+  const subscription=user.organization_id ? (await pool.query("SELECT s.*,p.name plan_name,p.price,p.is_lifetime FROM subscriptions s LEFT JOIN subscription_plans p ON p.id=s.plan_id WHERE s.organization_id=$1 ORDER BY s.created_at DESC LIMIT 1",[user.organization_id])).rows[0] : null;
+  res.json({profile:{user,subscription:subscription?{...subscription,price:Number(subscription.price||0)}:null}});
+});
+
+app.patch('/api/saas/profile', auth, async (req,res) => {
+  const b=req.body||{};
+  const user=(await pool.query('SELECT organization_id FROM users WHERE id=$1',[req.session.userId])).rows[0];
+  if(!user?.organization_id) return res.status(400).json({error:'No business organization is linked to this account'});
+  const fields={businessName:b.businessName,ownerName:b.ownerName,phone:b.phone,address:b.address,businessType:b.businessType,website:b.website,facebook:b.facebook,logoUrl:b.logoUrl,photoUrl:b.photoUrl};
+  if(typeof fields.businessName==='string'&&fields.businessName.trim()) await pool.query('UPDATE organizations SET business_name=$1 WHERE id=$2',[fields.businessName.trim(),user.organization_id]);
+  if(typeof fields.ownerName==='string'&&fields.ownerName.trim()) await pool.query('UPDATE organizations SET owner_name=$1 WHERE id=$2',[fields.ownerName.trim(),user.organization_id]);
+  if(typeof fields.phone==='string') await pool.query('UPDATE organizations SET phone=$1 WHERE id=$2',[fields.phone.trim(),user.organization_id]);
+  if(typeof fields.address==='string') await pool.query('UPDATE organizations SET address=$1 WHERE id=$2',[fields.address.trim(),user.organization_id]);
+  if(typeof fields.businessType==='string') await pool.query('UPDATE organizations SET business_type=$1 WHERE id=$2',[fields.businessType.trim(),user.organization_id]);
+  if(typeof fields.website==='string') await pool.query('UPDATE organizations SET website=$1 WHERE id=$2',[fields.website.trim(),user.organization_id]);
+  if(typeof fields.facebook==='string') await pool.query('UPDATE organizations SET facebook=$1 WHERE id=$2',[fields.facebook.trim(),user.organization_id]);
+  if(typeof fields.logoUrl==='string'&&fields.logoUrl.length<1800000) await pool.query('UPDATE organizations SET logo_url=$1,photo_url=$2 WHERE id=$3',[fields.logoUrl,fields.logoUrl,user.organization_id]);
+  res.json({profile:{ok:true}});
+});
+
+app.get('/api/admin/saas', adminOnly, async (_req,res) => {
+  const [users, payments, plans, settings] = await Promise.all([
+    pool.query("SELECT u.id,u.username,u.full_name,u.phone,u.email,u.photo,u.is_active,u.email_verified,u.registration_status,u.created_at,o.id AS organization_id,o.business_name,o.owner_name,o.address,o.logo_url,o.business_type,o.website,o.facebook,o.status AS organization_status FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.organization_id IS NOT NULL ORDER BY u.created_at DESC"),
+    pool.query("SELECT sp.*,o.business_name,o.owner_name,o.phone,o.email,p.name AS plan_name,p.duration_days,p.price,p.is_lifetime FROM subscription_payments sp JOIN organizations o ON o.id=sp.organization_id LEFT JOIN subscription_plans p ON p.id=(SELECT plan_id FROM subscriptions WHERE id=sp.subscription_id) ORDER BY sp.created_at DESC"),
+    pool.query("SELECT id,name,duration_days,price,currency,description,is_lifetime,active FROM subscription_plans WHERE name IN ('1 Year','2 Years','10 Years','Lifetime') ORDER BY CASE name WHEN '1 Year' THEN 1 WHEN '2 Years' THEN 2 WHEN '10 Years' THEN 3 WHEN 'Lifetime' THEN 4 ELSE 5 END"),
+    pool.query("SELECT value FROM app_settings WHERE key='saas_payment_settings'")
+  ]);
+  res.json({users:users.rows,payments:payments.rows.map((p:any)=>({...p,amount:Number(p.amount||0),price:Number(p.price||0)})),plans:plans.rows.map((p:any)=>({...p,price:Number(p.price||0)})),paymentSettings:settings.rows[0]?.value||{}});
+});
+
+app.patch('/api/admin/saas/plans/:id', adminOnly, async (req,res) => {
+  const price=Number(req.body?.price);
+  const active=req.body?.active!==false;
+  if(!Number.isFinite(price)||price<0) return res.status(400).json({error:'Invalid package price'});
+  const {rows}=await pool.query('UPDATE subscription_plans SET price=$1,active=$2 WHERE id=$3 RETURNING id,name,duration_days,price,currency,description,is_lifetime,active',[price,active,req.params.id]);
+  if(!rows[0]) return res.status(404).json({error:'Package not found'});
+  res.json({plan:{...rows[0],price:Number(rows[0].price||0)}});
+});
+
+app.patch('/api/admin/saas/payment-settings', adminOnly, async (req,res) => {
+  const value={bkashNumber:String(req.body?.bkashNumber||'').trim(),bankName:String(req.body?.bankName||'').trim(),bankAccountName:String(req.body?.bankAccountName||'').trim(),bankAccountNumber:String(req.body?.bankAccountNumber||'').trim(),bankBranch:String(req.body?.bankBranch||'').trim(),instructions:String(req.body?.instructions||'').trim()};
+  await pool.query("INSERT INTO app_settings(key,value) VALUES('saas_payment_settings',$1::jsonb) ON CONFLICT (organization_id,key) DO UPDATE SET value=EXCLUDED.value,updated_at=now()",[JSON.stringify(value)]);
+  res.json({settings:value});
+});
+
+app.post('/api/admin/saas/payments/:id/approve', adminOnly, async (req,res) => {
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const pay=(await client.query("SELECT sp.*,o.business_name,o.owner_name,o.email,p.name AS plan_name,p.duration_days,p.is_lifetime FROM subscription_payments sp JOIN organizations o ON o.id=sp.organization_id LEFT JOIN subscriptions s ON s.id=sp.subscription_id LEFT JOIN subscription_plans p ON p.id=s.plan_id WHERE sp.id=$1 FOR UPDATE",[req.params.id])).rows[0];
+    if(!pay) throw new Error('Payment not found');
+    if(pay.status==='paid') throw new Error('Payment already approved');
+    const sub=(await client.query("SELECT * FROM subscriptions WHERE id=$1 FOR UPDATE",[pay.subscription_id])).rows[0];
+    if(!sub) throw new Error('Subscription not found');
+    const now=new Date();
+    const ends=pay.is_lifetime?null:new Date(now.getTime()+Number(pay.duration_days)*86400000);
+    await client.query("UPDATE subscription_payments SET status='paid',paid_at=now(),verified_at=now(),verified_by=$1,rejection_reason=NULL WHERE id=$2",[req.session.userId,pay.id]);
+    await client.query("UPDATE subscriptions SET status='active',starts_at=COALESCE(starts_at,now()),ends_at=$1,updated_at=now() WHERE id=$2",[ends,sub.id]);
+    await client.query("UPDATE organizations SET status='active',updated_at=now() WHERE id=$1",[pay.organization_id]);
+    await client.query("UPDATE users SET is_active=true,registration_status='approved' WHERE organization_id=$1",[pay.organization_id]);
+    await audit(client,req.session.userId!,'SAAS_PAYMENT_APPROVED','SubscriptionPayment',pay.id,null,{organizationId:pay.organization_id,subscriptionId:sub.id});
+    await client.query('COMMIT');
+    await sendSaasEmail(pay.email,'Congratulations — SIAM AIR Subscription Approved','Congratulations! Your account is approved','<p>Dear '+String(pay.owner_name).replace(/[<>]/g,'')+',</p><p>Your SIAM AIR & DIGITAL SERVICE business account has been approved.</p><p><b>Package:</b> '+pay.plan_name+'<br><b>Payment:</b> BDT '+Number(pay.amount).toFixed(2)+'<br><b>Status:</b> Active</p><p>You can now log in using your registered email/username and password. A login OTP will always be sent to your registered email.</p>');
+    res.json({ok:true});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(400).json({error:e instanceof Error?e.message:'Approval failed'});}finally{client.release();}
+});
+
+app.post('/api/admin/saas/payments/:id/reject', adminOnly, async (req,res) => {
+  const reason=String(req.body?.reason||'').trim();
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const pay=(await client.query("SELECT * FROM subscription_payments WHERE id=$1 FOR UPDATE",[req.params.id])).rows[0];
+    if(!pay) throw new Error('Payment not found');
+    await client.query("UPDATE subscription_payments SET status='failed',rejection_reason=$1,verified_at=now(),verified_by=$2 WHERE id=$3",[reason||'Payment proof rejected',req.session.userId,pay.id]);
+    await audit(client,req.session.userId!,'SAAS_PAYMENT_REJECTED','SubscriptionPayment',pay.id,null,{reason:reason||'Payment proof rejected'});
+    await client.query('COMMIT');
+    res.json({ok:true});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(400).json({error:e instanceof Error?e.message:'Rejection failed'});}finally{client.release();}
+});
+
+app.post('/api/admin/saas/subscriptions/:id/extend', adminOnly, async (req,res) => {
+  const days=Number(req.body?.days);
+  if(!Number.isFinite(days)||days<=0) return res.status(400).json({error:'Days must be positive'});
+  const {rows}=await pool.query("UPDATE subscriptions SET status='active',ends_at=CASE WHEN ends_at IS NULL THEN NULL ELSE ends_at + ($1::text || ' days')::interval END,updated_at=now() WHERE id=$2 RETURNING *",[days,req.params.id]);
+  if(!rows[0]) return res.status(404).json({error:'Subscription not found'});
+  res.json({subscription:rows[0]});
+});
+
 app.get('/api/health', async (_req, res) => {
   try {
     await pool.query('SELECT 1');
@@ -551,9 +740,16 @@ app.patch('/api/settings', adminOnly, async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body ?? {};
   if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
-  const { rows } = await pool.query('SELECT id, username, password_hash, full_name, role, permissions, is_active FROM users WHERE lower(username)=lower($1)', [username]);
+  const { rows } = await pool.query('SELECT id, username, password_hash, full_name, role, permissions, is_active, email, organization_id FROM users WHERE lower(username)=lower($1)', [username]);
   const user = rows[0];
   if (!user || !user.is_active || !(await bcrypt.compare(password, user.password_hash))) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!user.email) return res.status(403).json({ error: 'Registered email is missing. Contact administrator.' });
+  if (user.role !== 'admin' && user.organization_id) {
+    const subscription = (await pool.query("SELECT status, ends_at FROM subscriptions WHERE organization_id=$1 ORDER BY created_at DESC LIMIT 1",[user.organization_id])).rows[0];
+    if (!subscription || subscription.status !== 'active' || (subscription.ends_at && new Date(subscription.ends_at).getTime() < Date.now())) {
+      return res.status(403).json({ error: 'Your subscription is not active yet. Please wait for payment approval or contact the administrator.' });
+    }
+  }
 
   const otp = String(randomInt(100000, 1000000));
   await pool.query(`CREATE TABLE IF NOT EXISTS login_otps (
@@ -571,7 +767,7 @@ app.post('/api/auth/login', async (req, res) => {
     "INSERT INTO login_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval '10 minutes')",
     [challengeId, user.id, hashOtp(otp)]
   );
-  await sendLoginOtp(otp);
+  await sendLoginOtp(otp, user.email);
 
   res.status(202).json({
     requiresOtp: true,
@@ -643,7 +839,7 @@ app.post('/api/auth/request-password-reset', async (req, res) => {
       'INSERT INTO password_reset_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval \'10 minutes\')',
       [randomUUID(), rows[0].id, otpHash]
     );
-    await sendPasswordResetOtp(otp);
+    await sendPasswordResetOtp(otp, String(rows[0]?.email || PASSWORD_RESET_EMAIL));
     res.json({ ok: true, message: 'OTP sent to the registered recovery email.' });
   } catch (e) {
     res.status(503).json({ error: e instanceof Error ? e.message : 'Unable to send reset OTP' });
