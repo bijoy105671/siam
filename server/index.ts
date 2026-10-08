@@ -193,7 +193,10 @@ const adminOnly = async (req: express.Request, res: express.Response, next: expr
 app.use(async (req, res, next) => {
   if (!req.session.userId) return next();
   try {
-    const { rows } = await pool.query('SELECT organization_id FROM users WHERE id=$1 AND is_active=true', [req.session.userId]);
+    const { rows } = await pool.query('SELECT organization_id, role FROM users WHERE id=$1 AND is_active=true', [req.session.userId]);
+    // Main Admin SaaS management is cross-tenant by design. Do not apply the
+    // logged-in admin's business tenant to registration/payment/user controls.
+    if (rows[0]?.role === 'admin' && req.path.startsWith('/api/admin/saas')) return next();
     const organizationId = rows[0]?.organization_id;
     if (!organizationId) return next();
     return runWithTenant(String(organizationId), () => next());
