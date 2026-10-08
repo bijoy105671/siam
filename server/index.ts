@@ -59,6 +59,8 @@ const initializeDatabase = async () => {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       await pool.query(schema);
+      await pool.query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS photo TEXT");
+      await pool.query("ALTER TABLE vendors ADD COLUMN IF NOT EXISTS photo TEXT");
       console.log('SIAM AIR database schema initialized');
       return;
     } catch (error) {
@@ -1323,7 +1325,7 @@ app.post('/api/vendors', auth, async (req,res) => {
   try {
     const name=String(req.body?.name||'').trim();
     if(!name) return res.status(400).json({error:'Vendor name is required'});
-    const {rows}=await pool.query(`INSERT INTO vendors (name,company,mobile,whatsapp,email,address,account_info,opening_payable) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,[name,req.body?.company||null,req.body?.mobile||null,req.body?.whatsapp||null,req.body?.email||null,req.body?.address||null,req.body?.accountInfo||null,Number(req.body?.openingPayable||0)]);
+    const {rows}=await pool.query(`INSERT INTO vendors (name,company,mobile,whatsapp,email,address,account_info,opening_payable,photo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,[name,req.body?.company||null,req.body?.mobile||null,req.body?.whatsapp||null,req.body?.email||null,req.body?.address||null,req.body?.accountInfo||null,Number(req.body?.openingPayable||0),req.body?.photo||null]);
     await audit(pool as any, req.session.userId!, 'VENDOR_CREATED', 'Vendor', rows[0].id, null, rows[0]);
     res.status(201).json({vendor:rows[0]});
   } catch(e){res.status(400).json({error:e instanceof Error?e.message:'Vendor creation failed'});}
@@ -1338,8 +1340,8 @@ app.get('/api/vendors', auth, async (req, res) => {
 app.patch('/api/customers/:id', auth, async (req,res) => {
   try {
     const { rows } = await pool.query(
-      'UPDATE customers SET name=COALESCE($1,name), mobile=COALESCE($2,mobile), email=COALESCE($3,email), address=COALESCE($4,address), whatsapp=COALESCE($5,whatsapp), nid=COALESCE($6,nid), passport_number=COALESCE($7,passport_number), passport_expiry=COALESCE($8,passport_expiry), notes=COALESCE($9,notes), opening_due=COALESCE($10,opening_due), updated_at=now() WHERE id=$11 RETURNING *',
-      [req.body?.name,req.body?.mobile,req.body?.email,req.body?.address,req.body?.whatsapp,req.body?.nid,req.body?.passportNumber,req.body?.passportExpiry,req.body?.notes,req.body?.openingDue,req.params.id]
+      'UPDATE customers SET name=COALESCE($1,name), mobile=COALESCE($2,mobile), email=COALESCE($3,email), address=COALESCE($4,address), whatsapp=COALESCE($5,whatsapp), nid=COALESCE($6,nid), passport_number=COALESCE($7,passport_number), passport_expiry=COALESCE($8,passport_expiry), notes=COALESCE($9,notes), opening_due=COALESCE($10,opening_due), photo=COALESCE($11,photo), updated_at=now() WHERE id=$12 RETURNING *',
+      [req.body?.name,req.body?.mobile,req.body?.email,req.body?.address,req.body?.whatsapp,req.body?.nid,req.body?.passportNumber,req.body?.passportExpiry,req.body?.notes,req.body?.openingDue,req.body?.photo,req.params.id]
     );
     if(!rows[0]) return res.status(404).json({error:'Customer not found'});
     res.json({customer:rows[0]});
@@ -1369,8 +1371,8 @@ app.get('/api/vendors/:id/ledger', auth, async (req, res) => {
 app.patch('/api/vendors/:id', auth, async (req,res) => {
   try {
     const { rows } = await pool.query(
-      'UPDATE vendors SET name=COALESCE($1,name), company=COALESCE($2,company), mobile=COALESCE($3,mobile), whatsapp=COALESCE($4,whatsapp), email=COALESCE($5,email), address=COALESCE($6,address), account_info=COALESCE($7,account_info), opening_payable=COALESCE($8,opening_payable), updated_at=now() WHERE id=$9 RETURNING *',
-      [req.body?.name,req.body?.company,req.body?.mobile,req.body?.whatsapp,req.body?.email,req.body?.address,req.body?.accountInfo,req.body?.openingPayable,req.params.id]
+      'UPDATE vendors SET name=COALESCE($1,name), company=COALESCE($2,company), mobile=COALESCE($3,mobile), whatsapp=COALESCE($4,whatsapp), email=COALESCE($5,email), address=COALESCE($6,address), account_info=COALESCE($7,account_info), opening_payable=COALESCE($8,opening_payable), photo=COALESCE($9,photo), updated_at=now() WHERE id=$10 RETURNING *',
+      [req.body?.name,req.body?.company,req.body?.mobile,req.body?.whatsapp,req.body?.email,req.body?.address,req.body?.accountInfo,req.body?.openingPayable,req.body?.photo,req.params.id]
     );
     if(!rows[0]) return res.status(404).json({error:'Vendor not found'});
     res.json({vendor:rows[0]});
@@ -2202,14 +2204,14 @@ app.post('/api/entries', auth, async (req, res) => {
     if (vendorPaid > 0 && !ACCOUNT_METHODS.has(vendorPaymentMethod)) return res.status(400).json({ error: 'Invalid vendor payment method' });
     await client.query('BEGIN');
 
-    const customerResult = await client.query(`INSERT INTO customers (name,mobile,whatsapp,email,address,nid,passport_number,passport_expiry,notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (organization_id,mobile) DO UPDATE SET name=EXCLUDED.name, whatsapp=COALESCE(EXCLUDED.whatsapp,customers.whatsapp), email=COALESCE(EXCLUDED.email,customers.email), address=COALESCE(EXCLUDED.address,customers.address), updated_at=now() RETURNING id`, [customerName, mobile, body.customer?.whatsapp || null, body.customer?.email || null, body.customer?.address || null, body.customer?.nid || null, body.customer?.passportNumber || null, body.customer?.passportExpiry || null, body.customer?.notes || null]);
+    const customerResult = await client.query(`INSERT INTO customers (name,mobile,whatsapp,email,address,nid,passport_number,passport_expiry,notes,photo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (organization_id,mobile) DO UPDATE SET name=EXCLUDED.name, whatsapp=COALESCE(EXCLUDED.whatsapp,customers.whatsapp), email=COALESCE(EXCLUDED.email,customers.email), address=COALESCE(EXCLUDED.address,customers.address), updated_at=now() RETURNING id`, [customerName, mobile, body.customer?.whatsapp || null, body.customer?.email || null, body.customer?.address || null, body.customer?.nid || null, body.customer?.passportNumber || null, body.customer?.passportExpiry || null, body.customer?.notes || null, body.customer?.photo || null]);
     const customerId = customerResult.rows[0].id;
 
     let vendorId: string | null = null;
     if (String(body.vendor?.name || body.vendorName || '').trim()) {
       const vendorName = String(body.vendor?.name || body.vendorName).trim();
       const existing = await client.query('SELECT id FROM vendors WHERE lower(name)=lower($1) LIMIT 1', [vendorName]);
-      vendorId = existing.rows[0]?.id || (await client.query('INSERT INTO vendors (name,company,mobile,whatsapp,email,address,account_info) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [vendorName, body.vendor?.company || null, body.vendor?.mobile || null, body.vendor?.whatsapp || null, body.vendor?.email || null, body.vendor?.address || null, body.vendor?.accountInfo || null])).rows[0].id;
+      if (existing.rows[0]?.id) { vendorId = existing.rows[0].id; if (body.vendor?.photo) await client.query('UPDATE vendors SET photo=$1, company=COALESCE($2,company), mobile=COALESCE($3,mobile), updated_at=now() WHERE id=$4', [body.vendor.photo, body.vendor.company || null, body.vendor.mobile || null, vendorId]); } else { vendorId = (await client.query('INSERT INTO vendors (name,company,mobile,whatsapp,email,address,account_info,photo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id', [vendorName, body.vendor?.company || null, body.vendor?.mobile || null, body.vendor?.whatsapp || null, body.vendor?.email || null, body.vendor?.address || null, body.vendor?.accountInfo || null, body.vendor?.photo || null])).rows[0].id; }
     }
 
     let serviceId: string | null = null;
