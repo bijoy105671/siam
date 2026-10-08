@@ -690,6 +690,28 @@ app.patch('/api/admin/saas/users/:id', adminOnly, async (req,res) => {
   }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(400).json({error:e instanceof Error?e.message:'Unable to edit registered user'});}finally{client.release();}
 });
 
+app.delete('/api/admin/saas/users/:id', adminOnly, async (req,res) => {
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const u=(await client.query("SELECT u.id,u.is_active,u.organization_id FROM users u WHERE u.id=$1 FOR UPDATE",[req.params.id])).rows[0];
+    if(!u) throw new Error('Registered user not found');
+    if(u.is_active) throw new Error('Active registered users cannot be deleted. Deactivate first.');
+    if(u.organization_id){
+      await client.query("DELETE FROM subscription_payments WHERE organization_id=$1",[u.organization_id]);
+      await client.query("DELETE FROM subscriptions WHERE organization_id=$1",[u.organization_id]);
+      await client.query("DELETE FROM users WHERE id=$1",[u.id]);
+      await client.query("DELETE FROM organizations WHERE id=$1",[u.organization_id]);
+    }else{
+      await client.query("DELETE FROM users WHERE id=$1",[u.id]);
+    }
+    await audit(client,req.session.userId!,'SAAS_USER_DELETED','User',u.id,null,{organizationId:u.organization_id});
+    await client.query('COMMIT');
+    res.json({ok:true});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(400).json({error:e instanceof Error?e.message:'Unable to delete registered user'});}finally{client.release();}
+});
+
+
 app.get('/api/admin/saas', adminOnly, async (_req,res) => {
   const [users,payments,plans,settings,freeTrials]=await Promise.all([
     pool.query("SELECT u.id,u.username,u.full_name,u.phone,u.email,u.photo,u.is_active,u.email_verified,u.registration_status,u.created_at,o.id AS organization_id,o.business_name,o.owner_name,o.address,o.logo_url,o.business_type,o.website,o.facebook,o.status AS organization_status FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.organization_id IS NOT NULL ORDER BY u.created_at DESC"),
