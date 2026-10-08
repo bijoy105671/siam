@@ -84,6 +84,7 @@ export const api = {
   editSaasUser: (id: string, input: Record<string,any>) => apiRequest<{ok:boolean;user:any}>(`/api/admin/saas/users/${encodeURIComponent(id)}`, { method:'PATCH', body: JSON.stringify(input) }),
   activateSaasUser: (id: string) => apiRequest<{ok:boolean;user:any;emailSent?:boolean}>(`/api/admin/saas/users/${encodeURIComponent(id)}`, { method:'PATCH', body: JSON.stringify({isActive:true,resetFailedLogin:true,registrationStatus:'approved'}) }),
   deactivateSaasUser: (id: string) => apiRequest<{ok:boolean;user:any}>(`/api/admin/saas/users/${encodeURIComponent(id)}`, { method:'PATCH', body: JSON.stringify({isActive:false}) }),
+  deleteSaasUser: (id: string) => apiRequest<{ok:boolean}>(`/api/admin/saas/users/${encodeURIComponent(id)}`, { method:'DELETE' }),
   approveSaasPayment: (id: string) => apiRequest<{ok:boolean}>(`/api/admin/saas/payments/${encodeURIComponent(id)}/approve`, { method:'POST' }),
   rejectSaasPayment: (id: string, reason: string) => apiRequest<{ok:boolean}>(`/api/admin/saas/payments/${encodeURIComponent(id)}/reject`, { method:'POST', body: JSON.stringify({reason}) }),
   updateSaasPlan: (id: string, input: Record<string,any>) => apiRequest<{plan:any}>(`/api/admin/saas/plans/${encodeURIComponent(id)}`, { method:'PATCH', body: JSON.stringify(input) }),
