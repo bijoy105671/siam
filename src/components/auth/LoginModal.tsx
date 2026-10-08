@@ -283,7 +283,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             {isSubmitting ? 'Signing In…' : 'Sign In Securely'}
           </button>
 
-          {USE_SERVER_API && <button type="button" onClick={() => setRegisterOpen(true)} className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 py-3 text-sm font-extrabold text-emerald-700 hover:bg-emerald-100">Create Business Account / Register</button>}
+          {USE_SERVER_API && <div className="space-y-2">
+            <button type="button" onClick={() => setRegisterOpen(true)} className="w-full rounded-2xl border-2 border-emerald-300 bg-emerald-50 py-3 text-sm font-extrabold text-emerald-700 hover:bg-emerald-100">Create Business Account / Register</button>
+            <button type="button" disabled={isSubmitting} onClick={async()=>{setError('');setIsSubmitting(true);try{await api.startSaasDemo();onClose();window.location.reload();}catch(err){setError(err instanceof Error?err.message:'Unable to start demo. Please try again.');}finally{setIsSubmitting(false);}}} className="w-full rounded-2xl border-2 border-amber-400 bg-amber-50 py-3.5 text-sm font-black text-amber-800 shadow-sm hover:bg-amber-100 disabled:opacity-60">▶ View Demo — Try Before You Register</button>
+          </div>}
 
           <div className="flex items-center justify-center gap-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
             <Shield className="h-3.5 w-3.5" />
