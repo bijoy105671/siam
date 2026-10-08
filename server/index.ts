@@ -671,14 +671,21 @@ app.patch('/api/admin/saas/users/:id', adminOnly, async (req,res) => {
     if(u.organization_id){
       await client.query("UPDATE organizations SET business_name=COALESCE(NULLIF($1,''),business_name),owner_name=COALESCE(NULLIF($2,''),owner_name),phone=$3,email=$4,address=$5,business_type=$6,website=$7,facebook=$8,logo_url=COALESCE(NULLIF($9,''),logo_url),photo_url=COALESCE(NULLIF($9,''),photo_url),updated_at=now() WHERE id=$10",[businessName,ownerName,phone,email,address,businessType,website||null,facebook||null,photo||null,u.organization_id]);
     }
+    const activating = b.isActive === true && !u.is_active;
     if(b.resetFailedLogin===true) await client.query("UPDATE users SET failed_login_attempts=0,login_locked_until=NULL,is_active=$1,otp_resend_count=0,otp_resend_locked_until=NULL WHERE id=$2",[b.isActive!==false,u.id]);
     else if(b.isActive!==undefined) await client.query("UPDATE users SET is_active=$1 WHERE id=$2",[b.isActive===true,u.id]);
+    if(b.isActive===true && u.organization_id) await client.query("UPDATE organizations SET status='active',updated_at=now() WHERE id=$1",[u.organization_id]);
     if(b.emailVerified===true) await client.query("UPDATE users SET email_verified=true WHERE id=$1",[u.id]);
     if(b.registrationStatus) await client.query("UPDATE users SET registration_status=$1 WHERE id=$2",[String(b.registrationStatus),u.id]);
     const updated=(await client.query("SELECT u.id,u.username,u.full_name,u.phone,u.email,u.photo,u.is_active,u.email_verified,u.registration_status,o.id AS organization_id,o.business_name,o.owner_name,o.address,o.logo_url,o.photo_url,o.business_type,o.website,o.facebook,o.status AS organization_status FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.id=$1",[u.id])).rows[0];
     await audit(client,req.session.userId!,'SAAS_USER_EDITED','User',u.id,u,updated);
     await client.query('COMMIT');
-    res.json({ok:true,user:updated});
+    if(activating && email){
+      await sendSaasEmail(email,'Congratulations — Your SIAM AIR Account Is Active',
+        'Congratulations! Your SIAM AIR & DIGITAL SERVICE account has been activated.',
+        '<p>Dear '+String(updated.full_name||updated.owner_name||'User').replace(/[<>]/g,'')+',</p><p><b>Congratulations!</b> Your SIAM AIR & DIGITAL SERVICE account has been activated by the Main Admin.</p><p>You can now log in using your registered email/username and password.</p><p><b>Business:</b> '+String(updated.business_name||'').replace(/[<>]/g,'')+'</p>');
+    }
+    res.json({ok:true,user:updated,emailSent:activating});
   }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(400).json({error:e instanceof Error?e.message:'Unable to edit registered user'});}finally{client.release();}
 });
 
