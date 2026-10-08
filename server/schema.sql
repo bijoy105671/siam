@@ -470,3 +470,49 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_org_invoice ON transactions(or
 CREATE UNIQUE INDEX IF NOT EXISTS uq_opening_balances_org_account ON account_opening_balances(organization_id,account_name);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_settings_org_key ON app_settings(organization_id,key);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_flights_org_route ON flight_directory(organization_id,flight_no,from_airport,to_airport);
+
+
+-- SIAM SAAS REGISTRATION / PAYMENT APPROVAL v2
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at timestamptz;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS registration_status text NOT NULL DEFAULT 'approved';
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS business_type text;
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS website text;
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS facebook text;
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS photo_url text;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_id uuid;
+ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS sender_account text;
+ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS payment_slip text;
+ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS transaction_id text;
+ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS submitted_at timestamptz;
+ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS verified_at timestamptz;
+ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS verified_by uuid REFERENCES users(id);
+ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS rejection_reason text;
+ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS is_lifetime boolean NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(lower(email));
+CREATE INDEX IF NOT EXISTS idx_subscription_payments_status ON subscription_payments(status,created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_payment_transaction ON subscription_payments(transaction_id) WHERE transaction_id IS NOT NULL;
+
+INSERT INTO subscription_plans(name,duration_days,price,currency,description,is_lifetime,active)
+VALUES
+ ('1 Year',365,0,'BDT','Full business access for 1 year',false,true),
+ ('2 Years',730,0,'BDT','Full business access for 2 years',false,true),
+ ('10 Years',3650,0,'BDT','Full business access for 10 years',false,true),
+ ('Lifetime',365000,0,'BDT','Lifetime business access',true,true)
+ON CONFLICT (name) DO UPDATE SET duration_days=EXCLUDED.duration_days, description=EXCLUDED.description, is_lifetime=EXCLUDED.is_lifetime;
+
+CREATE TABLE IF NOT EXISTS registration_otps (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  otp_hash text NOT NULL,
+  expires_at timestamptz NOT NULL,
+  attempts integer NOT NULL DEFAULT 0,
+  used_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_registration_otps_user ON registration_otps(user_id,created_at);
+
+INSERT INTO app_settings(key,value)
+VALUES ('saas_payment_settings','{"bkashNumber":"","bankName":"","bankAccountName":"","bankAccountNumber":"","bankBranch":"","instructions":"Send the exact package amount, then submit Transaction ID and payment slip."}'::jsonb)
+ON CONFLICT (organization_id,key) DO NOTHING;
