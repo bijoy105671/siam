@@ -105,7 +105,7 @@ export const VendorLedgerModal: React.FC<VendorLedgerModalProps> = ({
           </div>
 
           {/* Profile Banner */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-mono">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-mono"><div className="sm:col-span-3 flex items-center gap-3 pb-3 border-b border-slate-200"><div className="w-16 h-16 rounded-full overflow-hidden bg-white border-2 border-slate-200 flex items-center justify-center">{vendor.photo?<img src={vendor.photo} alt={vendor.name} className="w-full h-full object-cover"/>:<Briefcase className="w-7 h-7 text-slate-300"/>}</div><div><div className="text-[10px] uppercase text-slate-400 font-bold">Vendor Photo</div><div className="font-bold text-sm text-slate-900">{vendor.name}</div></div></div>
             <div>
               <div className="text-[10px] uppercase text-slate-400 font-bold">Vendor / Agency</div>
               <div className="font-bold text-sm text-slate-900">{vendor.name}</div>
