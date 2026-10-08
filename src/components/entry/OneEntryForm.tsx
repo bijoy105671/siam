@@ -659,6 +659,8 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
               </>
             )}
 
+            <div><label className="block text-xs font-medium text-slate-700 mb-1">Customer Photo <span className="text-slate-400">(Optional)</span></label><input type="file" accept="image/*" onChange={e=>{const file=e.target.files?.[0];if(file){const reader=new FileReader();reader.onload=()=>setCustomerPhoto(String(reader.result||''));reader.readAsDataURL(file)}}} className="w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"/></div>
+
             {/* Address */}
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
@@ -698,7 +700,7 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><label className="block text-xs font-medium text-slate-700 mb-1">Vendor Photo <span className="text-slate-400">(Optional)</span></label><input type="file" accept="image/*" onChange={e=>{const file=e.target.files?.[0];if(file){const reader=new FileReader();reader.onload=()=>setVendorPhoto(String(reader.result||''));reader.readAsDataURL(file)}}} className="w-full text-xs"/></div><div><label className="block text-xs font-medium text-slate-700 mb-1">Customer Photo <span className="text-slate-400">(Optional)</span></label><input type="file" accept="image/*" onChange={e=>{const file=e.target.files?.[0];if(file){const reader=new FileReader();reader.onload=()=>setCustomerPhoto(String(reader.result||''));reader.readAsDataURL(file)}}} className="w-full text-xs"/></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
                 Select Service <span className="text-rose-500">*</span>
@@ -990,6 +992,8 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
 
             {hasVendor ? (
               <div className="space-y-3">
+                <div><label className="block text-xs font-medium text-slate-700 mb-1">Vendor Photo <span className="text-slate-400">(Optional)</span></label><input type="file" accept="image/*" onChange={e=>{const file=e.target.files?.[0];if(file){const reader=new FileReader();reader.onload=()=>setVendorPhoto(String(reader.result||''));reader.readAsDataURL(file)}}} className="w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"/></div>
+
                 {/* Vendor Autocomplete Search */}
                 <div className="relative">
                   <label className="block text-xs font-medium text-slate-700 mb-1">
