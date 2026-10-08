@@ -29,6 +29,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const [loginOtp, setLoginOtp] = useState('');
   const [loginOtpError, setLoginOtpError] = useState('');
   const [loginOtpBusy, setLoginOtpBusy] = useState(false);
+  const [loginOtpResendCount, setLoginOtpResendCount] = useState(0);
+  const [loginOtpCooldown, setLoginOtpCooldown] = useState(30);
   const [loginOtpMessage, setLoginOtpMessage] = useState('');
   const [registerOpen, setRegisterOpen] = useState(false);
   const [businessIdentity, setBusinessIdentity] = useState({
@@ -57,11 +59,33 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       setLoginOtp('');
       setLoginOtpError('');
       setLoginOtpBusy(false);
+      setLoginOtpResendCount(0);
+      setLoginOtpCooldown(30);
       setLoginOtpOpen(true);
     };
     window.addEventListener('siam:login-otp-required', showLoginOtp);
     return () => window.removeEventListener('siam:login-otp-required', showLoginOtp);
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!loginOtpOpen || loginOtpCooldown <= 0) return;
+    const timer = window.setInterval(() => setLoginOtpCooldown(v => Math.max(0, v - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [loginOtpOpen, loginOtpCooldown]);
+
+  const resendLoginOtp = async () => {
+    if (!loginOtpChallenge || loginOtpBusy || loginOtpCooldown > 0 || loginOtpResendCount >= 3) return;
+    setLoginOtpBusy(true); setLoginOtpError('');
+    try {
+      const result = await api.resendLoginOtp(loginOtpChallenge);
+      setLoginOtpResendCount(result.resendCount);
+      setLoginOtpCooldown(30);
+      setLoginOtp('');
+      setLoginOtpMessage(result.message);
+    } catch (err) {
+      setLoginOtpError(err instanceof Error ? err.message : 'Unable to resend OTP.');
+    } finally { setLoginOtpBusy(false); }
+  };
 
   const verifyLoginOtp = async () => {
     if (!/^\d{6}$/.test(loginOtp) || !loginOtpChallenge) {
@@ -300,12 +324,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               </div>
               <div className="space-y-5 p-6">
                 <div className="rounded-2xl border border-sky-100 bg-sky-50 p-4">
-                  <div className="flex gap-3">
+                  <button type="button" onClick={() => void resendLoginOtp()} disabled={loginOtpBusy || loginOtpCooldown > 0 || loginOtpResendCount >= 3} className="w-full rounded-2xl border border-sky-200 bg-sky-50 py-3.5 text-sm font-extrabold text-sky-700 disabled:cursor-not-allowed disabled:opacity-50">{loginOtpResendCount >= 3 ? 'Resend limit reached — 1 hour lock' : loginOtpCooldown > 0 ? `Resend OTP in ${loginOtpCooldown}s` : 'Resend OTP'}</button>
+                <div className="flex gap-3">
                     <Mail className="mt-0.5 h-5 w-5 shrink-0 text-sky-600" />
                     <p className="text-xs leading-5 text-slate-600">
                       {loginOtpMessage} A new OTP is required for every sign-in.
                       <span className="mt-1 block font-semibold text-slate-800">OTP sent to the registered recovery email.</span>
-                      <span className="mt-1 block text-[11px] text-slate-400">The OTP expires in 10 minutes.</span>
+                      <span className="mt-1 block text-[11px] text-slate-400">The OTP expires in 30 seconds. Resend is available every 30 seconds, maximum 3 times.</span>
                     </p>
                   </div>
                 </div>
