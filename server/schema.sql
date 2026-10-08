@@ -513,6 +513,11 @@ CREATE TABLE IF NOT EXISTS registration_otps (
 );
 CREATE INDEX IF NOT EXISTS idx_registration_otps_user ON registration_otps(user_id,created_at);
 
-INSERT INTO app_settings(key,value)
-VALUES ('saas_payment_settings','{"bkashNumber":"","bankName":"","bankAccountName":"","bankAccountNumber":"","bankBranch":"","instructions":"Send the exact package amount, then submit Transaction ID and payment slip."}'::jsonb)
-ON CONFLICT (organization_id,key) DO NOTHING;
+INSERT INTO app_settings(organization_id,key,value)
+SELECT id, 'saas_payment_settings', '{"bkashNumber":"","bankName":"","bankAccountName":"","bankAccountNumber":"","bankBranch":"","instructions":"Send the exact package amount, then submit Transaction ID and payment slip."}'::jsonb
+FROM organizations
+WHERE business_name='SIAM AIR & DIGITAL SERVICE'
+  AND NOT EXISTS (
+    SELECT 1 FROM app_settings s
+    WHERE s.organization_id=organizations.id AND s.key='saas_payment_settings'
+  );
