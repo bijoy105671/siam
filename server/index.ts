@@ -655,7 +655,7 @@ app.patch('/api/admin/saas/users/:id', adminOnly, async (req,res) => {
     const b=req.body||{};
     const fullName=String(b.fullName??u.full_name).trim();
     const email=String(b.email??u.email).trim().toLowerCase();
-    const phone=String(b.phone??u.phone||'').trim();
+    const phone=String((b.phone??u.phone??'')).trim();
     const username=String(b.username??u.username).trim();
     const businessName=String(b.businessName??'').trim();
     const ownerName=String(b.ownerName??fullName).trim();
@@ -663,7 +663,7 @@ app.patch('/api/admin/saas/users/:id', adminOnly, async (req,res) => {
     const businessType=String(b.businessType??'').trim();
     const website=String(b.website??'').trim();
     const facebook=String(b.facebook??'').trim();
-    const photo=String(b.photo??u.photo||'').trim();
+    const photo=String((b.photo??u.photo??'')).trim();
     if(!fullName||!email||!username) throw new Error('Name, email and username are required');
     const conflict=(await client.query("SELECT id FROM users WHERE id<>$1 AND (lower(username)=lower($2) OR lower(email)=lower($3)) LIMIT 1",[u.id,username,email])).rows[0];
     if(conflict) throw new Error('Email or username is already used by another account');
