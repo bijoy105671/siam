@@ -20,6 +20,8 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL, options: '-c
 installTenantAwarePool(pool);
 
 const PASSWORD_RESET_EMAIL = 'bijoy105671@gmail.com';
+const normalizeClientIp = (req: express.Request) => String(req.ip || req.headers['x-forwarded-for'] || 'unknown').split(',')[0].trim().replace(/^::ffff:/,'');
+const isDemoSession = (req: express.Request) => Boolean((req.session as any).demoMode);
 const hashOtp = (otp: string) => createHash('sha256').update(otp).digest('hex');
 
 const seedFlightDirectory = async () => {
@@ -151,6 +153,7 @@ const audit = async (client: PoolClient, userId: string | null, action: string, 
 
 const auth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Authentication required' });
+  if (isDemoSession(req) && !['GET','HEAD','OPTIONS'].includes(req.method)) return res.status(403).json({ error: 'Demo mode is read-only. Create an account to enter real business data.' });
   next();
 };
 
@@ -504,8 +507,30 @@ const sendSaasEmail = async (to: string, subject: string, title: string, bodyHtm
   }
 };
 
+app.post('/api/saas/demo', async (req,res) => {
+  try{
+    let org=(await pool.query("SELECT id FROM organizations WHERE business_name='SIAM AIR DEMO' LIMIT 1")).rows[0];
+    if(!org) org=(await pool.query("INSERT INTO organizations(business_name,owner_name,phone,email,address,tagline,status) VALUES('SIAM AIR DEMO','Demo User','','demo@siamairanddigital.com','Demo workspace — read-only','Explore SIAM AIR before subscribing','active') RETURNING id")).rows[0];
+    let demoUser=(await pool.query("SELECT id,username,organization_id,full_name,role,permissions FROM users WHERE username='siam_demo' LIMIT 1")).rows[0];
+    if(!demoUser){
+      const hash=await bcrypt.hash(randomUUID(),12);
+      demoUser=(await pool.query("INSERT INTO users(username,password_hash,full_name,role,email,organization_id,is_active,email_verified,registration_status) VALUES('siam_demo',$1,'SIAM AIR Demo','staff','demo@siamairanddigital.com',$2,true,true,'approved') RETURNING id,username,organization_id,full_name,role,permissions",[hash,org.id])).rows[0];
+    }
+    const sub=(await pool.query("SELECT id FROM subscriptions WHERE organization_id=$1 LIMIT 1",[org.id])).rows[0];
+    if(!sub){const plan=(await pool.query("SELECT id FROM subscription_plans WHERE name='Lifetime' LIMIT 1")).rows[0];await pool.query("INSERT INTO subscriptions(organization_id,plan_id,status,starts_at,ends_at) VALUES($1,$2,'active',now(),NULL)",[org.id,plan?.id||null]);}
+    const customer=(await pool.query("INSERT INTO customers(name,mobile,organization_id,opening_due) VALUES('Demo Customer','01700000000',$1,2500) ON CONFLICT (mobile) DO UPDATE SET name=EXCLUDED.name RETURNING id",[org.id])).rows[0];
+    const service=(await pool.query("INSERT INTO services(name,category,enabled,sort_order,organization_id) VALUES('Demo Air Ticket','Air Ticket',true,1,$1) ON CONFLICT (name) DO UPDATE SET enabled=true RETURNING id",[org.id])).rows[0];
+    const count=Number((await pool.query("SELECT COUNT(*)::int AS c FROM transactions WHERE organization_id=$1",[org.id])).rows[0].c||0);
+    if(count===0) await pool.query("INSERT INTO transactions(invoice_number,date,time,created_by,customer_id,service_id,description,selling_price,customer_paid,customer_due,vendor_cost,vendor_paid,vendor_due,gross_profit,status,organization_id) VALUES('DEMO-000001',(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::time,$1,$2,$3,'Demo air ticket transaction',15000,10000,5000,12000,12000,0,3000,'PARTIAL',$4)",[demoUser.id,customer.id,service.id,org.id]);
+    req.session.userId=demoUser.id;
+    (req.session as any).demoMode=true;
+    await new Promise<void>((resolve,reject)=>req.session.save(err=>err?reject(err):resolve()));
+    res.json({ok:true,demo:true,user:{id:demoUser.id,username:demoUser.username,fullName:demoUser.full_name,role:demoUser.role,permissions:demoUser.permissions},message:'Demo mode started. Data changes are disabled.'});
+  }catch(e){res.status(500).json({error:e instanceof Error?e.message:'Unable to start demo mode'});}
+});
+
 app.get('/api/saas/plans', async (_req,res) => {
-  const { rows } = await pool.query("SELECT id,name,duration_days,price,currency,description,is_lifetime,active FROM subscription_plans WHERE active=true AND name IN ('1 Year','2 Years','10 Years','Lifetime') ORDER BY CASE name WHEN '1 Year' THEN 1 WHEN '2 Years' THEN 2 WHEN '10 Years' THEN 3 WHEN 'Lifetime' THEN 4 ELSE 5 END");
+  const { rows } = await pool.query("SELECT id,name,duration_days,price,currency,description,is_lifetime,active FROM subscription_plans WHERE active=true AND name IN ('1 Month Free','6 Months','1 Year','2 Years','5 Years','10 Years','Lifetime') ORDER BY CASE name WHEN '1 Month Free' THEN 1 WHEN '6 Months' THEN 2 WHEN '1 Year' THEN 3 WHEN '2 Years' THEN 4 WHEN '5 Years' THEN 5 WHEN '10 Years' THEN 6 WHEN 'Lifetime' THEN 7 ELSE 8 END");
   res.json({ plans: rows.map((p:any)=>({ ...p, price:Number(p.price||0) })) });
 });
 
@@ -535,41 +560,54 @@ app.post('/api/saas/register', async (req,res) => {
   const paymentSlip=String(b.paymentSlip||'').trim();
   const amount=Number(b.amount);
   const termsAccepted=b.termsAccepted===true;
-  if(!businessName||!ownerName||!phone||!email||!password||!address||!planId||!paymentMethod||!senderAccount||!transactionId||!paymentSlip||!Number.isFinite(amount)||amount<=0||!termsAccepted) {
-    return res.status(400).json({error:'All required registration, package, payment, slip, Transaction ID and Terms & Conditions fields must be completed.'});
-  }
-  if(!['bkash','bank'].includes(paymentMethod)) return res.status(400).json({error:'Payment method must be bKash or Bank.'});
+  if(!businessName||!ownerName||!phone||!email||!password||!address||!businessType||!logoUrl||!planId||!termsAccepted) return res.status(400).json({error:'All mandatory registration, business, logo/photo, package and Terms & Conditions fields must be completed.'});
   if(password.length<8) return res.status(400).json({error:'Password must be at least 8 characters.'});
-  if(paymentSlip.length>11000000) return res.status(413).json({error:'Payment slip is too large. Please use a smaller image/PDF.'});
-  const plan=(await pool.query("SELECT * FROM subscription_plans WHERE id=$1 AND active=true AND name IN ('1 Year','2 Years','10 Years','Lifetime')",[planId])).rows[0];
+  const plan=(await pool.query("SELECT * FROM subscription_plans WHERE id=$1 AND active=true AND name IN ('1 Month Free','6 Months','1 Year','2 Years','5 Years','10 Years','Lifetime')",[planId])).rows[0];
   if(!plan) return res.status(400).json({error:'Selected subscription package is unavailable.'});
-  if(Number(plan.price)>0 && Math.abs(amount-Number(plan.price))>0.01) return res.status(400).json({error:'Payment amount does not match the selected package price.'});
-  try {
+  const isFreeTrial=Number(plan.price)===0 && !plan.is_lifetime;
+  if(!isFreeTrial){
+    if(!['bkash','bank'].includes(paymentMethod)) return res.status(400).json({error:'Payment method must be bKash or Bank.'});
+    if(!senderAccount||!transactionId||!paymentSlip||!Number.isFinite(amount)||amount<=0) return res.status(400).json({error:'Payment method, amount, sender account, Transaction ID and payment slip are required for paid packages.'});
+    if(Math.abs(amount-Number(plan.price))>0.01) return res.status(400).json({error:'Payment amount does not match the selected package price.'});
+    if(paymentSlip.length>11000000) return res.status(413).json({error:'Payment slip is too large. Please use a smaller image/PDF.'});
+  }
+  try{
     const existing=(await pool.query('SELECT id FROM users WHERE lower(username)=lower($1) OR lower(email)=lower($2) LIMIT 1',[username,email])).rows[0];
     if(existing) return res.status(409).json({error:'An account with this email or username already exists.'});
+    const clientIp=normalizeClientIp(req);
+    if(isFreeTrial){
+      const trialUsed=(await pool.query("SELECT id FROM saas_trial_usages WHERE lower(trial_email)=lower($1) OR trial_ip=$2 LIMIT 1",[email,clientIp])).rows[0];
+      if(trialUsed) return res.status(409).json({error:'The 1 Month Free trial can be used only once per registered email and once per IP address. You can still choose a paid package.'});
+    }
     const client=await pool.connect();
-    try {
+    try{
       await client.query('BEGIN');
-      const org=(await client.query('INSERT INTO organizations (business_name,owner_name,phone,email,address,logo_url,photo_url,website,facebook,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,\'pending\') RETURNING *',[businessName,ownerName,phone,email,address,logoUrl||null,logoUrl||null,website||null,facebook||null])).rows[0];
+      const org=(await client.query("INSERT INTO organizations (business_name,owner_name,phone,email,address,logo_url,photo_url,website,facebook,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending') RETURNING *",[businessName,ownerName,phone,email,address,logoUrl,logoUrl,website||null,facebook||null])).rows[0];
       const hash=await bcrypt.hash(password,12);
-      const user=(await client.query("INSERT INTO users (username,password_hash,full_name,role,phone,email,photo,organization_id,is_active,email_verified,terms_accepted_at,registration_status) VALUES ($1,$2,$3,'staff',$4,$5,$6,$7,false,false,now(),'pending') RETURNING id,username,full_name,role,phone,email,organization_id,is_active,email_verified,registration_status",[username,hash,ownerName,phone,email,logoUrl||null,org.id])).rows[0];
-      const sub=(await client.query("INSERT INTO subscriptions (organization_id,plan_id,status) VALUES ($1,$2,'pending') RETURNING *",[org.id,plan.id])).rows[0];
-      const pay=(await client.query("INSERT INTO subscription_payments (organization_id,subscription_id,amount,currency,method,gateway_reference,status,sender_account,payment_slip,transaction_id,submitted_at) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,now()) RETURNING *",[org.id,sub.id,amount,plan.currency,paymentMethod,paymentMethod==='bkash'?'bKash': 'Bank',senderAccount,paymentSlip,transactionId])).rows[0];
-      await client.query('UPDATE subscriptions SET payment_id=$1 WHERE id=$2',[pay.id,sub.id]);
+      const user=(await client.query("INSERT INTO users (username,password_hash,full_name,role,phone,email,photo,organization_id,is_active,email_verified,terms_accepted_at,registration_status) VALUES ($1,$2,$3,'staff',$4,$5,$6,$7,false,false,now(),'pending') RETURNING id,username,full_name,role,phone,email,organization_id,is_active,email_verified,registration_status",[username,hash,ownerName,phone,email,logoUrl,org.id])).rows[0];
+      const sub=(await client.query("INSERT INTO subscriptions (organization_id,plan_id,status,activation_due_at) VALUES ($1,$2,'pending',now()+interval '24 hours') RETURNING *",[org.id,plan.id])).rows[0];
+      let pay:any=null;
+      if(!isFreeTrial){
+        pay=(await client.query("INSERT INTO subscription_payments (organization_id,subscription_id,amount,currency,method,gateway_reference,status,sender_account,payment_slip,transaction_id,submitted_at) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,now()) RETURNING *",[org.id,sub.id,amount,plan.currency,paymentMethod,paymentMethod==='bkash'?'bKash':'Bank',senderAccount,paymentSlip,transactionId])).rows[0];
+        await client.query('UPDATE subscriptions SET payment_id=$1 WHERE id=$2',[pay.id,sub.id]);
+      }else{
+        await client.query("INSERT INTO saas_trial_usages(trial_email,trial_ip,user_id,organization_id,used_at) VALUES($1,$2,$3,$4,now())",[email,clientIp,user.id,org.id]);
+      }
       const otp=String(randomInt(100000,1000000));
-      await client.query('INSERT INTO registration_otps(user_id,otp_hash,expires_at) VALUES($1,$2,now()+interval \'10 minutes\')',[user.id,hashOtp(otp)]);
-      await audit(client,null,'SAAS_REGISTRATION_SUBMITTED','Organization',org.id,null,{userId:user.id,planId:plan.id,paymentId:pay.id});
+      await client.query("INSERT INTO registration_otps(user_id,otp_hash,expires_at) VALUES($1,$2,now()+interval '10 minutes')",[user.id,hashOtp(otp)]);
+      await audit(client,null,'SAAS_REGISTRATION_SUBMITTED','Organization',org.id,null,{userId:user.id,planId:plan.id,paymentId:pay?.id||null,freeTrial:isFreeTrial,ipAddress:clientIp});
       await client.query('COMMIT');
-      await sendSaasEmail(email,'SIAM AIR — Email Verification OTP','Verify your business registration','<p>Your 6-digit registration OTP is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#ecfdf5;border-radius:10px">'+otp+'</div><p>This OTP expires in 10 minutes. Enter it to verify your registered email.</p>');
-      return res.status(201).json({ok:true,status:'pending',message:'Registration submitted. Verify the OTP sent to your registered email. Your account will remain pending until the payment is approved.',userId:user.id});
-    } catch(e){await client.query('ROLLBACK').catch(()=>{});throw e;} finally{client.release();}
-  } catch(e){return res.status(400).json({error:e instanceof Error?e.message:'Registration failed'});}
+      await sendSaasEmail(email,'SIAM AIR — Email Verification OTP','Verify your business registration','<p>Your 6-digit registration OTP is:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#ecfdf5;border-radius:10px">'+otp+'</div><p>This OTP expires in 10 minutes. After email verification, a Main Admin must activate your account. Free-trial activation is normally completed within 12–24 hours.</p>');
+      return res.status(201).json({ok:true,status:'pending',message:isFreeTrial?'Free trial registration submitted. Verify your email. No payment verification is required; Main Admin will activate the free trial within 12–24 hours.':'Registration submitted. Verify the OTP sent to your registered email. Your paid package will remain pending until payment is approved.',userId:user.id,freeTrial:isFreeTrial});
+    }catch(e){await client.query('ROLLBACK').catch(()=>{});throw e;}finally{client.release();}
+  }catch(e){return res.status(400).json({error:e instanceof Error?e.message:'Registration failed'});}
 });
+
 
 app.post('/api/saas/verify-registration', async (req,res) => {
   const userId=String(req.body?.userId||'').trim();
   const otp=String(req.body?.otp||'').trim();
-  if(!userId||!/^d{6}$/.test(otp)) return res.status(400).json({error:'Registration user ID and 6-digit OTP are required'});
+  if(!userId||!/^\d{6}$/.test(otp)) return res.status(400).json({error:'Registration user ID and 6-digit OTP are required'});
   const row=(await pool.query("SELECT id,user_id,otp_hash,expires_at,attempts FROM registration_otps WHERE user_id=$1 AND used_at IS NULL ORDER BY created_at DESC LIMIT 1",[userId])).rows[0];
   if(!row||new Date(row.expires_at).getTime()<=Date.now()||Number(row.attempts)>=5) return res.status(400).json({error:'Invalid or expired registration OTP'});
   if(hashOtp(otp)!==row.otp_hash){await pool.query('UPDATE registration_otps SET attempts=attempts+1 WHERE id=$1',[row.id]);return res.status(400).json({error:'Invalid or expired registration OTP'});}
@@ -577,9 +615,13 @@ app.post('/api/saas/verify-registration', async (req,res) => {
   await pool.query("UPDATE users SET email_verified=true WHERE id=$1",[userId]);
   const user=(await pool.query("SELECT organization_id,email,full_name FROM users WHERE id=$1",[userId])).rows[0];
   await pool.query("UPDATE organizations SET status='pending',updated_at=now() WHERE id=$1",[user.organization_id]);
-  await sendSaasEmail(user.email,'SIAM AIR — Email Verified','Registration email verified','<p>Hello '+String(user.full_name).replace(/[<>]/g,'')+',</p><p>Your registered email has been verified successfully. Your payment is now waiting for administrator verification.</p>');
-  res.json({ok:true,status:'pending',message:'Email verified. Payment is pending administrator approval.'});
+  const sub=(await pool.query("SELECT s.status,p.name AS plan_name,p.price,p.is_lifetime FROM subscriptions s LEFT JOIN subscription_plans p ON p.id=s.plan_id WHERE s.organization_id=$1 ORDER BY s.created_at DESC LIMIT 1",[user.organization_id])).rows[0];
+  await sendSaasEmail(user.email,'SIAM AIR — Email Verified','Registration email verified',Number(sub?.price||0)===0
+    ? '<p>Hello '+String(user.full_name).replace(/[<>]/g,'')+',</p><p>Your registered email has been verified successfully. No payment verification is required for the 1 Month Free trial. Your registration is now waiting for Main Admin activation, normally within 12–24 hours.</p>'
+    : '<p>Hello '+String(user.full_name).replace(/[<>]/g,'')+',</p><p>Your registered email has been verified successfully. Your payment is now waiting for administrator verification.</p>');
+  res.json({ok:true,status:'pending',message:Number(sub?.price||0)===0?'Email verified. No payment verification is required. Main Admin activation is pending (normally within 12–24 hours).':'Email verified. Payment is pending administrator approval.'});
 });
+
 
 app.get('/api/saas/profile', auth, async (req,res) => {
   const user=(await pool.query("SELECT u.id,u.username,u.full_name,u.phone,u.email,u.photo,u.organization_id,u.email_verified,u.registration_status,o.business_name,o.owner_name,o.phone AS business_phone,o.email AS business_email,o.address,o.logo_url,o.photo_url,o.business_type,o.website,o.facebook,o.status AS organization_status FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.id=$1",[req.session.userId])).rows[0];
@@ -605,14 +647,17 @@ app.patch('/api/saas/profile', auth, async (req,res) => {
 });
 
 app.get('/api/admin/saas', adminOnly, async (_req,res) => {
-  const [users, payments, plans, settings] = await Promise.all([
+  const [users,payments,plans,settings,freeTrials]=await Promise.all([
     pool.query("SELECT u.id,u.username,u.full_name,u.phone,u.email,u.photo,u.is_active,u.email_verified,u.registration_status,u.created_at,o.id AS organization_id,o.business_name,o.owner_name,o.address,o.logo_url,o.business_type,o.website,o.facebook,o.status AS organization_status FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.organization_id IS NOT NULL ORDER BY u.created_at DESC"),
-    pool.query("SELECT sp.*,o.business_name,o.owner_name,o.phone,o.email,p.name AS plan_name,p.duration_days,p.price,p.is_lifetime FROM subscription_payments sp JOIN organizations o ON o.id=sp.organization_id LEFT JOIN subscription_plans p ON p.id=(SELECT plan_id FROM subscriptions WHERE id=sp.subscription_id) ORDER BY sp.created_at DESC"),
-    pool.query("SELECT id,name,duration_days,price,currency,description,is_lifetime,active FROM subscription_plans WHERE name IN ('1 Year','2 Years','10 Years','Lifetime') ORDER BY CASE name WHEN '1 Year' THEN 1 WHEN '2 Years' THEN 2 WHEN '10 Years' THEN 3 WHEN 'Lifetime' THEN 4 ELSE 5 END"),
-    pool.query("SELECT value FROM app_settings WHERE key='saas_payment_settings'")
+    pool.query("SELECT sp.*,o.business_name,o.owner_name,o.phone,o.email,p.name AS plan_name,p.duration_days,p.price,p.is_lifetime FROM subscription_payments sp JOIN organizations o ON o.id=sp.organization_id LEFT JOIN subscriptions s ON s.id=sp.subscription_id LEFT JOIN subscription_plans p ON p.id=s.plan_id ORDER BY sp.created_at DESC"),
+    pool.query("SELECT id,name,duration_days,price,currency,description,is_lifetime,active FROM subscription_plans ORDER BY CASE name WHEN '1 Month Free' THEN 1 WHEN '6 Months' THEN 2 WHEN '1 Year' THEN 3 WHEN '2 Years' THEN 4 WHEN '5 Years' THEN 5 WHEN '10 Years' THEN 6 WHEN 'Lifetime' THEN 7 ELSE 8 END"),
+    pool.query("SELECT value FROM app_settings WHERE key='saas_payment_settings'"),
+    pool.query("SELECT s.id AS subscription_id,s.activation_due_at,s.created_at,u.id AS user_id,u.email,u.email_verified,u.is_active,o.business_name,o.owner_name,p.name AS plan_name,EXTRACT(EPOCH FROM (now()-s.created_at))/3600 AS age_hours FROM subscriptions s JOIN organizations o ON o.id=s.organization_id JOIN users u ON u.organization_id=o.id LEFT JOIN subscription_plans p ON p.id=s.plan_id WHERE s.status='pending' AND COALESCE(p.price,0)=0 ORDER BY s.created_at ASC")
   ]);
-  res.json({users:users.rows,payments:payments.rows.map((p:any)=>({...p,amount:Number(p.amount||0),price:Number(p.price||0)})),plans:plans.rows.map((p:any)=>({...p,price:Number(p.price||0)})),paymentSettings:settings.rows[0]?.value||{}});
+  const freeTrialNotifications=freeTrials.rows.map((r:any)=>({...r,ageHours:Number(r.age_hours||0),reminderDue:Number(r.age_hours||0)>=12,deadlinePassed:Number(r.age_hours||0)>24}));
+  res.json({users:users.rows,payments:payments.rows.map((p:any)=>({...p,amount:Number(p.amount||0),price:Number(p.price||0)})),plans:plans.rows.map((p:any)=>({...p,price:Number(p.price||0)})),paymentSettings:settings.rows[0]?.value||{},freeTrials:freeTrialNotifications,notificationCount:freeTrialNotifications.filter((r:any)=>r.reminderDue||r.deadlinePassed).length});
 });
+
 
 app.patch('/api/admin/saas/plans/:id', adminOnly, async (req,res) => {
   const price=Number(req.body?.price);
@@ -627,6 +672,25 @@ app.patch('/api/admin/saas/payment-settings', adminOnly, async (req,res) => {
   const value={bkashNumber:String(req.body?.bkashNumber||'').trim(),bankName:String(req.body?.bankName||'').trim(),bankAccountName:String(req.body?.bankAccountName||'').trim(),bankAccountNumber:String(req.body?.bankAccountNumber||'').trim(),bankBranch:String(req.body?.bankBranch||'').trim(),instructions:String(req.body?.instructions||'').trim()};
   await pool.query("INSERT INTO app_settings(key,value) VALUES('saas_payment_settings',$1::jsonb) ON CONFLICT (organization_id,key) DO UPDATE SET value=EXCLUDED.value,updated_at=now()",[JSON.stringify(value)]);
   res.json({settings:value});
+});
+
+app.post('/api/admin/saas/free-trials/:subscriptionId/activate', adminOnly, async (req,res) => {
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const sub=(await client.query("SELECT s.*,p.name AS plan_name,p.price,p.duration_days,p.is_lifetime,o.business_name,o.owner_name,o.email FROM subscriptions s JOIN organizations o ON o.id=s.organization_id LEFT JOIN subscription_plans p ON p.id=s.plan_id WHERE s.id=$1 FOR UPDATE",[req.params.subscriptionId])).rows[0];
+    if(!sub) throw new Error('Free trial subscription not found');
+    if(Number(sub.price)!==0 || sub.plan_name!=='1 Month Free') throw new Error('This is not the 1 Month Free trial');
+    if(sub.status!=='pending') throw new Error('Free trial is not pending activation');
+    const ends=new Date(Date.now()+Number(sub.duration_days||30)*86400000);
+    await client.query("UPDATE subscriptions SET status='trial',starts_at=COALESCE(starts_at,now()),ends_at=$1,updated_at=now() WHERE id=$2",[ends,sub.id]);
+    await client.query("UPDATE organizations SET status='active',updated_at=now() WHERE id=$1",[sub.organization_id]);
+    await client.query("UPDATE users SET is_active=true,registration_status='approved' WHERE organization_id=$1",[sub.organization_id]);
+    await audit(client,req.session.userId!,'SAAS_FREE_TRIAL_ACTIVATED','Subscription',sub.id,null,{organizationId:sub.organization_id,endsAt:ends.toISOString()});
+    await client.query('COMMIT');
+    await sendSaasEmail(sub.email,'Congratulations — SIAM AIR Free Trial Activated','Congratulations! Your 1 Month Free Trial is Active','<p>Dear '+String(sub.owner_name).replace(/[<>]/g,'')+',</p><p>Your SIAM AIR & DIGITAL SERVICE 1 Month Free Trial has been activated by the Main Admin.</p><p><b>Valid until:</b> '+ends.toLocaleString('en-GB',{timeZone:'Asia/Dhaka'})+'</p><p>You can now log in using your registered email/username and password.</p>');
+    res.json({ok:true});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(400).json({error:e instanceof Error?e.message:'Free trial activation failed'});}finally{client.release();}
 });
 
 app.post('/api/admin/saas/payments/:id/approve', adminOnly, async (req,res) => {
