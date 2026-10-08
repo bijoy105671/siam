@@ -16,6 +16,7 @@ import {
   Database,
   ShieldCheck,
   ShoppingBag,
+  CreditCard,
   X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -113,6 +114,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: ShoppingBag,
       badge: 'STORE',
       badgeColor: 'bg-emerald-100 text-emerald-800',
+    },
+    {
+      id: 'saas_admin',
+      label: 'Subscription & Payment',
+      icon: CreditCard,
+      badge: 'SAAS',
+      badgeColor: 'bg-amber-100 text-amber-800',
     },
     {
       id: 'admin',
