@@ -16,7 +16,7 @@ export const SaasSubscriptionAdmin: React.FC = () => {
   const reject=async(id:string)=>{const reason=prompt('Reason for rejection:','Payment proof rejected');if(reason===null)return;setBusy(true);try{await api.rejectSaasPayment(id,reason);setNotice('Payment rejected.');await load();}catch(e){setError(e instanceof Error?e.message:'Rejection failed.');}finally{setBusy(false);}};
   const savePlan=async(p:any)=>{try{await api.updateSaasPlan(p.id,{price:Number(p.price),active:p.active!==false});setNotice(p.name+' package updated.');await load();}catch(e){setError(e instanceof Error?e.message:'Package update failed.');}};
   const saveSettings=async()=>{try{await api.updateSaasPaymentSettings(data.paymentSettings);setNotice('Payment instructions updated.');}catch(e){setError(e instanceof Error?e.message:'Payment settings update failed.');}};
-  return <><div className="space-y-6">
+  return <div className="space-y-6">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-xl sm:text-2xl font-extrabold text-slate-900">SaaS Subscription & Payment Management</h1><p className="text-xs text-slate-500 mt-1">Verify customer payments, manage packages, and control subscription activation.</p></div><button onClick={()=>void load()} disabled={busy} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700"><RefreshCw className="h-4 w-4"/>Refresh</button></div>
     {error&&<div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-700">{error}</div>}
     {notice&&<div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-700">{notice}</div>}
