@@ -92,6 +92,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }),
+  resendLoginOtp: (challengeId: string) => apiRequest<{ok:boolean;resendCount:number;message:string}>('/api/auth/resend-login-otp', { method:'POST', body: JSON.stringify({ challengeId }) }),
   verifyLoginOtp: (challengeId: string, otp: string) =>
     apiRequest<{ user: unknown }>('/api/auth/verify-login-otp', {
       method: 'POST',
