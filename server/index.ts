@@ -165,7 +165,7 @@ const historicalChangeAdminOnly = async (req: express.Request, res: express.Resp
       const otp = String(randomInt(100000, 1000000));
       await pool.query('CREATE TABLE IF NOT EXISTS security_otps (id UUID PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, otp_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now())');
       await pool.query('UPDATE security_otps SET used_at=now() WHERE user_id=$1 AND used_at IS NULL', [req.session.userId]);
-      await pool.query("INSERT INTO security_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval '30 seconds')", [randomUUID(), req.session.userId, hashOtp(otp)]);
+      await pool.query("INSERT INTO security_otps (id,user_id,otp_hash,expires_at) VALUES ($1,$2,$3,now()+interval '10 minutes')", [randomUUID(), req.session.userId, hashOtp(otp)]);
       await sendSecurityOtp(otp, String((await pool.query('SELECT email FROM users WHERE id=$1',[req.session.userId])).rows[0]?.email || PASSWORD_RESET_EMAIL));
       return res.status(428).json({ error: 'SECURITY_OTP_REQUIRED', message: 'A historical transaction edit/correction security OTP was sent to the recovery email. Enter it to continue.' });
     }
