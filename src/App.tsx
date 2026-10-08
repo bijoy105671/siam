@@ -16,6 +16,7 @@ import { FundTransferModal } from './components/transfers/FundTransferModal';
 import { ReminderManager } from './components/reminders/ReminderManager';
 import { ReportsView } from './components/reports/ReportsView';
 import { AdminSettings } from './components/admin/AdminSettings';
+import { SaasSubscriptionAdmin } from './components/admin/SaasSubscriptionAdmin';
 import { InvoiceModal } from './components/transactions/InvoiceModal';
 import { PaymentModal } from './components/common/PaymentModal';
 import { DuePaymentManager } from './components/payments/DuePaymentManager';
@@ -313,6 +314,7 @@ const MainLayout: React.FC = () => {
           {currentView === 'ecommerce' && <EcommerceControl />}
 
           {currentView === 'admin' && <AdminSettings defaultTab="business" />}
+          {currentView === 'saas_admin' && <SaasSubscriptionAdmin />}
 
           {currentView === 'audit' && <AdminSettings defaultTab="audit" />}
 
