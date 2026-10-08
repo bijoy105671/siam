@@ -397,7 +397,7 @@ DO $$ DECLARE org_id uuid; BEGIN
   UPDATE fund_transfers SET organization_id=org_id WHERE organization_id IS NULL;
   UPDATE audit_logs SET organization_id=org_id WHERE organization_id IS NULL;
   UPDATE account_opening_balances SET organization_id=org_id WHERE organization_id IS NULL;
-  UPDATE app_settings SET organization_id=org_id WHERE organization_id IS NULL;
+  UPDATE app_settings SET organization_id=org_id WHERE organization_id IS NULL AND NOT EXISTS (SELECT 1 FROM app_settings existing WHERE existing.organization_id=org_id AND existing.key=app_settings.key);
   UPDATE account_entries SET organization_id=org_id WHERE organization_id IS NULL;
   UPDATE loan_advances SET organization_id=org_id WHERE organization_id IS NULL;
   UPDATE loan_advance_adjustments SET organization_id=org_id WHERE organization_id IS NULL;
