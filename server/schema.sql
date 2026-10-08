@@ -496,11 +496,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_payment_transaction ON subscr
 
 INSERT INTO subscription_plans(name,duration_days,price,currency,description,is_lifetime,active)
 VALUES
- ('1 Year',365,0,'BDT','Full business access for 1 year',false,true),
- ('2 Years',730,0,'BDT','Full business access for 2 years',false,true),
- ('10 Years',3650,0,'BDT','Full business access for 10 years',false,true),
- ('Lifetime',365000,0,'BDT','Lifetime business access',true,true)
-ON CONFLICT (name) DO UPDATE SET duration_days=EXCLUDED.duration_days, description=EXCLUDED.description, is_lifetime=EXCLUDED.is_lifetime;
+ ('1 Month Free',30,0,'BDT','Free trial access for 1 month',false,true),
+ ('6 Months',180,3000,'BDT','Full business access for 6 months',false,true),
+ ('1 Year',365,5000,'BDT','Full business access for 1 year',false,true),
+ ('2 Years',730,8000,'BDT','Full business access for 2 years',false,true),
+ ('5 Years',1825,15000,'BDT','Full business access for 5 years',false,true),
+ ('Lifetime',365000,30000,'BDT','Lifetime business access',true,true)
+ON CONFLICT (name) DO UPDATE SET
+ duration_days=EXCLUDED.duration_days,
+ price=EXCLUDED.price,
+ currency=EXCLUDED.currency,
+ description=EXCLUDED.description,
+ is_lifetime=EXCLUDED.is_lifetime,
+ active=EXCLUDED.active;
+UPDATE subscription_plans SET active=false WHERE name='10 Years';
 
 CREATE TABLE IF NOT EXISTS registration_otps (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
