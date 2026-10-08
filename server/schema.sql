@@ -544,3 +544,18 @@ ALTER TABLE login_otps ADD COLUMN IF NOT EXISTS resend_count integer NOT NULL DE
 ALTER TABLE login_otps ADD COLUMN IF NOT EXISTS last_sent_at timestamptz;
 ALTER TABLE registration_otps ADD COLUMN IF NOT EXISTS resend_count integer NOT NULL DEFAULT 0;
 ALTER TABLE registration_otps ADD COLUMN IF NOT EXISTS last_sent_at timestamptz;
+
+CREATE TABLE IF NOT EXISTS saas_trial_usages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  trial_email text NOT NULL,
+  trial_ip text NOT NULL,
+  user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  organization_id uuid REFERENCES organizations(id) ON DELETE SET NULL,
+  used_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_saas_trial_email ON saas_trial_usages(lower(trial_email));
+CREATE UNIQUE INDEX IF NOT EXISTS uq_saas_trial_ip ON saas_trial_usages(trial_ip);
+
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS activation_due_at timestamptz;
+CREATE INDEX IF NOT EXISTS idx_subscriptions_activation_due ON subscriptions(status,activation_due_at);
+
