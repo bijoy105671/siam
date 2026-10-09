@@ -723,19 +723,19 @@ app.delete('/api/admin/saas/users/:id', adminOnly, async (req,res) => {
     if(!u) throw new Error('Registered user not found');
     if(u.is_active) throw new Error('Active registered users cannot be deleted. Deactivate first.');
     if(u.organization_id){
-      await client.query("DELETE FROM subscription_payments WHERE organization_id=$1",[u.organization_id]);
-      await client.query("DELETE FROM subscriptions WHERE organization_id=$1",[u.organization_id]);
-      await client.query("DELETE FROM users WHERE id=$1",[u.id]);
-      await client.query("DELETE FROM organizations WHERE id=$1",[u.organization_id]);
-    }else{
-      await client.query("DELETE FROM users WHERE id=$1",[u.id]);
+      // Preserve business/accounting history. Removing a login must not cascade-delete
+      // invoices, payments, ledgers, audit rows or subscription history.
+      const orgId=String(u.organization_id);
+      await client.query("UPDATE users SET organization_id=NULL WHERE id=$1",[u.id]);
+      const otherActive=(await client.query("SELECT count(*)::int AS count FROM users WHERE organization_id=$1 AND is_active=true AND id<>$2",[orgId,u.id])).rows[0]?.count||0;
+      if(Number(otherActive)===0) await client.query("UPDATE organizations SET status='inactive',updated_at=now() WHERE id=$1",[orgId]);
     }
-    await audit(client,req.session.userId!,'SAAS_USER_DELETED','User',u.id,null,{organizationId:u.organization_id});
+    await client.query("DELETE FROM users WHERE id=$1",[u.id]);
+    await audit(client,req.session.userId!,'SAAS_USER_LOGIN_REMOVED','User',u.id,null,{organizationId:u.organization_id, businessDataPreserved:true});
     await client.query('COMMIT');
-    res.json({ok:true});
-  }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(400).json({error:e instanceof Error?e.message:'Unable to delete registered user'});}finally{client.release();}
+    res.json({ok:true,businessDataPreserved:true});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(400).json({error:e instanceof Error?e.message:'Unable to remove registered login'});}finally{client.release();}
 });
-
 
 app.get('/api/admin/saas', adminOnly, async (_req,res) => {
   const [users,payments,plans,settings,freeTrials]=await Promise.all([
