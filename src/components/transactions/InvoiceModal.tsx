@@ -316,16 +316,22 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              <tr>
-                <td className="py-3 px-3 font-mono">1</td>
-                <td className="py-3 px-3">
-                  <div className="font-bold text-slate-900">{transaction.serviceName}</div>
-                  <div className="text-slate-500">{transaction.description || 'Standard travel agency service booking'}</div>
-                </td>
-                <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 tabular-nums">
-                  {formatCurrency(transaction.sellingPrice)}
-                </td>
-              </tr>
+              {(transaction.serviceItems && transaction.serviceItems.length > 0 ? transaction.serviceItems : [{
+                serviceName: transaction.serviceName,
+                description: transaction.description || 'Standard travel agency service booking',
+                sellingPrice: transaction.sellingPrice,
+              }]).map((item, index) => (
+                <tr key={item.id || `${item.serviceId || item.serviceName}-${index}`}>
+                  <td className="py-2 px-3 font-mono">{index + 1}</td>
+                  <td className="py-2 px-3">
+                    <div className="font-bold text-slate-900">{item.serviceName}</div>
+                    <div className="text-slate-500">{item.description || item.serviceName}</div>
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 tabular-nums">
+                    {formatCurrency(Number(item.sellingPrice) || 0)}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
 
