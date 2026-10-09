@@ -48,6 +48,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     try {
       await addPartialPayment({
         transactionId: transaction.id,
+        entityId: paymentType === 'vendor' ? transaction.vendorId : undefined,
         paymentType,
         amount: numAmount,
         paymentMethod: method,
