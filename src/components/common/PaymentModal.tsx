@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, CheckCircle, MessageSquare, DollarSign, Wallet } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { PaymentMethod, Transaction } from '../../types';
@@ -15,12 +15,35 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   paymentType,
   onClose,
 }) => {
-  const { addPartialPayment, settings } = useApp();
+  const { addPartialPayment, settings, vendors } = useApp();
 
   if (!transaction) return null;
 
-  const maxDue = paymentType === 'customer' ? transaction.customerDue : transaction.vendorDue;
-  const entityName = paymentType === 'customer' ? transaction.customerName : (transaction.vendorName || 'Vendor');
+  const vendorOptions = paymentType === 'vendor'
+    ? (transaction.serviceItems?.length
+        ? Array.from(new Map(transaction.serviceItems.filter((item) => item.vendorId).map((item) => [
+            item.vendorId as string,
+            { id: item.vendorId as string, name: vendors.find((vendor) => vendor.id === item.vendorId)?.name || item.vendorName || 'Vendor' }
+          ])).values())
+        : (transaction.vendorId
+            ? [{ id: transaction.vendorId, name: vendors.find((vendor) => vendor.id === transaction.vendorId)?.name || transaction.vendorName || 'Vendor' }]
+            : []))
+    : [];
+  const [selectedVendorId, setSelectedVendorId] = useState(
+    transaction.vendorId || transaction.serviceItems?.find((item) => item.vendorId)?.vendorId || ''
+  );
+  const maxDue = paymentType === 'customer'
+    ? transaction.customerDue
+    : transaction.serviceItems?.length
+      ? transaction.serviceItems.filter((item) => item.vendorId === selectedVendorId).reduce((sum, item) => sum + Number(item.vendorDue || 0), 0)
+      : transaction.vendorDue;
+  const entityName = paymentType === 'customer'
+    ? transaction.customerName
+    : (vendorOptions.find((vendor) => vendor.id === selectedVendorId)?.name || transaction.vendorName || 'Vendor');
+
+  useEffect(() => {
+    setAmount(maxDue);
+  }, [maxDue]);
 
   const [amount, setAmount] = useState<number | ''>(maxDue);
   const [method, setMethod] = useState<PaymentMethod>('Cash');
@@ -48,7 +71,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     try {
       await addPartialPayment({
         transactionId: transaction.id,
-        entityId: paymentType === 'vendor' ? transaction.vendorId : undefined,
+        entityId: paymentType === 'vendor' ? selectedVendorId : undefined,
         paymentType,
         amount: numAmount,
         paymentMethod: method,
@@ -162,6 +185,30 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 <div className="text-slate-500 mt-0.5">Customer payment ↑ selected account balance · Vendor payment ↓ selected account balance</div>
               </div>
             </div>
+
+            {paymentType === 'vendor' && (
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Vendor linked to this service <span className="text-rose-500">*</span>
+                </label>
+                {vendorOptions.length > 0 ? (
+                  <select
+                    value={selectedVendorId}
+                    onChange={(e) => setSelectedVendorId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  >
+                    {vendorOptions.map((vendor) => (
+                      <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2">
+                    No vendor is linked to this invoice yet. Close this window, edit the invoice to link the correct vendor, then record payment.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Payment Amount */}
             <div>
