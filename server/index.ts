@@ -2342,18 +2342,28 @@ app.patch('/api/loan-advances/:id', auth, async (req, res) => {
     if (oldMethod !== method || oldDelta !== newDelta) {
       const locks = [...new Set([oldMethod,method])].sort();
       for (const account of locks) await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[account]);
-      const oldBalance = await accountBalance(client, oldMethod);
-      // Restoring the original entry must never create a negative balance.
-      const restoredOldBalance = oldBalance - oldDelta;
-      if (restoredOldBalance < 0) throw new Error('Invalid source balance for reversal');
-      const newBalance = await accountBalance(client, method);
-      // accountBalance() already includes the original loan/advance entry.
-      // Remove that original delta before validating the replacement entry.
-      const effectiveNewBalance = oldMethod === method ? newBalance - oldDelta : newBalance;
-      if (newDelta < 0 && effectiveNewBalance < amount) throw new Error('Insufficient balance for updated loan/advance');
-      await client.query('UPDATE account_entries SET reversed_at=now() WHERE source_type=$1 AND source_id=$2 AND reversed_at IS NULL',['loan_advance',old.id]);
-      await addAccountEntry(client, oldMethod, -oldDelta, 'loan_advance', old.id, req.session.userId!, 'Reversal of original loan/advance');
-      await addAccountEntry(client, method, newDelta, 'loan_advance', old.id, req.session.userId!, 'Updated loan/advance');
+
+      if (oldMethod === method) {
+        // Same account: apply only the difference. Reversing the full original
+        // amount first can fail when part of the received funds has since been spent,
+        // even though the corrected balance would remain valid.
+        const balance = await accountBalance(client, method);
+        const difference = newDelta - oldDelta;
+        if (difference < 0 && balance + difference < 0) {
+          throw new Error('Insufficient current account balance for this amount reduction');
+        }
+        if (Math.abs(difference) > 0.000001) {
+          await addAccountEntry(client, method, difference, 'loan_advance', old.id, req.session.userId!, 'Correction of loan/advance amount or direction');
+        }
+      } else {
+        const oldBalance = await accountBalance(client, oldMethod);
+        const restoredOldBalance = oldBalance - oldDelta;
+        if (restoredOldBalance < 0) throw new Error('Cannot change payment method: the original account no longer has enough balance to reverse this entry');
+        const newBalance = await accountBalance(client, method);
+        if (newDelta < 0 && newBalance < amount) throw new Error('Insufficient balance for updated loan/advance');
+        await addAccountEntry(client, oldMethod, -oldDelta, 'loan_advance', old.id, req.session.userId!, 'Reversal of original loan/advance for payment-method change');
+        await addAccountEntry(client, method, newDelta, 'loan_advance', old.id, req.session.userId!, 'Updated loan/advance with new payment method');
+      }
     }
     const updated=(await client.query(`UPDATE loan_advances SET party_name=COALESCE($1,party_name), kind=$2,direction=$3,amount=$4,payment_method=$5,note=$6,reference=$7 WHERE id=$8 RETURNING *`,[req.body.partyName || null,kind,direction,amount,method,req.body.note || null,req.body.reference || null,old.id])).rows[0];
     await audit(client, req.session.userId!, 'LOAN_ADVANCE_UPDATED','LoanAdvance',old.id,old,updated);
