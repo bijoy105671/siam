@@ -41,6 +41,7 @@ import {
   ServiceItem,
   TicketStatus,
   Transaction,
+  TransactionServiceItem,
   User,
   Vendor,
   LoanAdvanceRecord,
@@ -64,6 +65,7 @@ interface OneEntryInput {
   customerPassportExpiry?: string;
 
   // Service
+  serviceItems?: TransactionServiceItem[];
   serviceId: string;
   serviceName: string;
   description?: string;
