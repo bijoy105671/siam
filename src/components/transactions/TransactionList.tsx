@@ -111,7 +111,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   };
 
   type DisplayTransaction = Transaction & {
-    recordType?: 'sale' | 'payment' | 'transfer';
+    recordType?: 'sale' | 'payment' | 'transfer' | 'cash_adjustment';
     transferFrom?: string;
     transferTo?: string;
     transferAmount?: number;
@@ -200,7 +200,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
         customerId: '', customerName: 'Balance Adjustment', customerMobile: '', serviceId: '',
         serviceName: `${direction} · ${account.toUpperCase()}`, sellingPrice: 0, customerPaid: 0, customerDue: 0,
         customerPaymentMethod: account, vendorCost: 0, vendorPaid: 0, vendorDue: 0, vendorPaymentMethod: account,
-        grossProfit: 0, status: 'PAID' as const, recordType: 'transfer' as const,
+        grossProfit: 0, status: 'PAID' as const, recordType: 'cash_adjustment' as const,
         transferFrom: ca.direction === 'cash_in' ? 'Adjustment' : account,
         transferTo: ca.direction === 'cash_in' ? account : 'Adjustment',
         transferAmount: Number(ca.amount || 0), transferReason: ca.reason, notes: ca.note,
@@ -250,7 +250,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     }
 
     if (paymentMethodFilter !== 'all') {
-      const methods = tx.recordType === 'payment' ? [tx.paymentMethodDisplay] : tx.recordType === 'transfer' ? [tx.transferFrom, tx.transferTo] : [tx.customerPaymentMethod, tx.vendorPaymentMethod];
+      const methods = tx.recordType === 'payment' ? [tx.paymentMethodDisplay] : tx.recordType === 'transfer' ? [tx.transferFrom, tx.transferTo] : tx.recordType === 'cash_adjustment' ? [tx.customerPaymentMethod] : [tx.customerPaymentMethod, tx.vendorPaymentMethod];
       if (!methods.some((m) => String(m || '').toLowerCase() === paymentMethodFilter.toLowerCase())) return false;
     }
 
@@ -266,6 +266,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       if (serviceFilter !== 'all') return false;
       if (statusFilter !== 'all') return false;
     } else if (tx.recordType === 'transfer') {
+      if (serviceFilter !== 'all') return false;
+      if (statusFilter !== 'all') return false;
+    } else if (tx.recordType === 'cash_adjustment') {
       if (serviceFilter !== 'all') return false;
       if (statusFilter !== 'all') return false;
     } else if (tx.recordType === 'payment') {
@@ -674,6 +677,22 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                             }} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded" aria-label="Delete loan or advance"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         </td>
+                      </tr>
+                    );
+                  }
+
+                  if (tx.recordType === 'cash_adjustment') {
+                    const isIn = String(tx.serviceName).startsWith('Cash In');
+                    return (
+                      <tr key={tx.id} className={`border-l-4 ${isIn ? 'border-emerald-400 bg-emerald-50/50' : 'border-rose-400 bg-rose-50/50'}`}>
+                        <td className="py-3 px-4"><div className="font-bold font-mono text-slate-800">{tx.invoiceNumber}</div><div className="text-[11px] text-slate-500">{formatDate(tx.date)} {formatTime(tx.time)}</div></td>
+                        <td className="py-3 px-4"><div className={`font-bold ${isIn ? 'text-emerald-700' : 'text-rose-700'}`}>{tx.serviceName}</div><div className="text-[10px] text-slate-500">Balance Adjustment · Non-P&amp;L</div></td>
+                        <td className="py-3 px-4"><div className="font-semibold text-slate-800">{tx.transferReason || 'Cash adjustment'}</div><div className="text-[10px] text-slate-500">Edit from Cash Adjustment menu</div></td>
+                        <td className="py-3 px-4">{tx.customerPaymentMethod}</td>
+                        <td className={`py-3 px-4 text-right font-bold tabular-nums ${isIn ? 'text-emerald-700' : 'text-rose-700'}`}>{isIn ? '+' : '−'}{formatCurrency(Number(tx.transferAmount || 0))}</td>
+                        <td className="py-3 px-4 text-right text-slate-400">—</td><td className="py-3 px-4 text-right text-slate-400">—</td><td className="py-3 px-4 text-right font-bold text-slate-400">—</td>
+                        <td className="py-3 px-4 text-center"><span className="rounded border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-700">BALANCE ADJUSTMENT</span></td>
+                        <td className="py-3 px-4 text-right text-xs text-slate-500">See Cash Adjustment</td>
                       </tr>
                     );
                   }
