@@ -69,6 +69,15 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [editCustomerPaymentMethod, setEditCustomerPaymentMethod] = useState<PaymentMethod>('Cash');
   const [editCustomerDue, setEditCustomerDue] = useState<number | ''>('');
   const [savingEdit, setSavingEdit] = useState(false);
+  const [editingFinancialRecord, setEditingFinancialRecord] = useState<any | null>(null);
+  const [financialEditAmount, setFinancialEditAmount] = useState('');
+  const [financialEditMethod, setFinancialEditMethod] = useState('cash');
+  const [financialEditNote, setFinancialEditNote] = useState('');
+  const [financialEditReference, setFinancialEditReference] = useState('');
+  const [financialEditFrom, setFinancialEditFrom] = useState('cash');
+  const [financialEditTo, setFinancialEditTo] = useState('bank');
+  const [financialEditReason, setFinancialEditReason] = useState('Account Transfer');
+  const [savingFinancialEdit, setSavingFinancialEdit] = useState(false);
   const [pageSize, setPageSize] = useState<20 | 50 | 100>(20);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -625,18 +634,11 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         <td className="py-3 px-4 text-center"><span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-amber-100 text-amber-800 border-amber-200">LOAN / ADVANCE · NON-SALE</span></td>
                         <td className="py-3 px-4 text-right font-sans">
                           <div className="flex items-center justify-end gap-1">
-                            <button type="button" title="Edit Loan / Advance" onClick={async () => {
-                              const amountText = window.prompt('Correct loan / advance amount', String(Number(tx.loanAmount || 0)));
-                              if (amountText === null) return;
-                              const amount = Number(amountText);
-                              if (!Number.isFinite(amount) || amount <= 0) { window.alert('Enter a valid amount greater than zero.'); return; }
-                              const note = window.prompt('Update note (leave blank to keep current note)', tx.notes || '');
-                              if (note === null) return;
-                              try {
-                                await updateLoanAdvance(tx.id, { amount, note } as any);
-                                window.alert('Loan / advance updated.');
-                                window.location.reload();
-                              } catch (error) { window.alert(error instanceof Error ? error.message : 'Loan / advance could not be updated.'); }
+                            <button type="button" title="Edit Loan / Advance" onClick={() => {
+                              setEditingFinancialRecord(tx);
+                              setFinancialEditAmount(String(Number(tx.loanAmount || 0)));
+                              setFinancialEditNote(String(tx.notes || ''));
+                              setFinancialEditMethod(String(tx.paymentMethodDisplay || 'cash').toLowerCase());
                             }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" aria-label="Edit loan or advance"><Edit className="w-4 h-4" /></button>
                             <button type="button" title="Delete Loan / Advance" onClick={async () => {
                               if (!window.confirm('Delete this loan / advance record? This affects party and account balances and will be audited.')) return;
@@ -677,24 +679,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         <td className="py-3 px-4 text-center"><span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-sky-100 text-sky-800 border-sky-200">TRANSFER · NON-SALE</span></td>
                         <td className="py-3 px-4 text-right font-sans">
                           <div className="flex items-center justify-end gap-1">
-                            <button type="button" title="Edit Fund Transfer" onClick={async () => {
-                              const fromAccount = window.prompt('Source account (cash, bkash, nagad, rocket, bank, card, other)', String(tx.transferFrom || 'cash').toLowerCase());
-                              if (fromAccount === null) return;
-                              const toAccount = window.prompt('Destination account (cash, bkash, nagad, rocket, bank, card, other)', String(tx.transferTo || 'bank').toLowerCase());
-                              if (toAccount === null) return;
-                              const amountText = window.prompt('Transfer amount', String(Number(tx.transferAmount || 0)));
-                              if (amountText === null) return;
-                              const amount = Number(amountText);
-                              if (!Number.isFinite(amount) || amount <= 0) { window.alert('Enter a valid amount greater than zero.'); return; }
-                              const reason = window.prompt('Transfer reason', String(tx.transferReason || 'Account Transfer'));
-                              if (reason === null) return;
-                              const note = window.prompt('Transfer note (optional)', '');
-                              if (note === null) return;
-                              try {
-                                await api.updateFundTransfer(tx.id, { fromAccount: fromAccount.trim().toLowerCase(), toAccount: toAccount.trim().toLowerCase(), amount, reason: reason.trim(), note });
-                                window.alert('Fund transfer updated. Both account balances have been recalculated.');
-                                window.location.reload();
-                              } catch (error) { window.alert(error instanceof Error ? error.message : 'Fund transfer could not be updated.'); }
+                            <button type="button" title="Edit Fund Transfer" onClick={() => {
+                              setEditingFinancialRecord(tx);
+                              setFinancialEditAmount(String(Number(tx.transferAmount || 0)));
+                              setFinancialEditFrom(String(tx.transferFrom || 'cash').toLowerCase());
+                              setFinancialEditTo(String(tx.transferTo || 'bank').toLowerCase());
+                              setFinancialEditReason(String(tx.transferReason || 'Account Transfer'));
+                              setFinancialEditNote('');
                             }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" aria-label="Edit fund transfer"><Edit className="w-4 h-4" /></button>
                             <button type="button" title="Delete / Reverse Fund Transfer" onClick={async () => {
                               if (!window.confirm('Reverse this fund transfer? Both account balances will be recalculated.')) return;
@@ -760,23 +751,12 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         <td className="py-3 px-4 text-right font-sans">
                           <div className="text-[10px] text-slate-500 mb-1">{tx.paymentMethodDisplay} · {tx.paymentReference || 'No reference'}</div>
                           <div className="flex items-center justify-end gap-1">
-                            <button type="button" title="Edit Payment" onClick={async () => {
-                              const amountText = window.prompt('Correct payment amount', String(amount));
-                              if (amountText === null) return;
-                              const correctedAmount = Number(amountText);
-                              if (!Number.isFinite(correctedAmount) || correctedAmount <= 0) { window.alert('Enter a valid amount greater than zero.'); return; }
-                              const currentMethod = String(tx.paymentMethodDisplay || 'cash');
-                              const methodText = window.prompt('Payment method (cash, bkash, nagad, rocket, bank, card, other)', currentMethod.toLowerCase());
-                              if (methodText === null) return;
-                              const noteText = window.prompt('Payment note', '');
-                              if (noteText === null) return;
-                              const referenceText = window.prompt('Payment reference', tx.paymentReference || '');
-                              if (referenceText === null) return;
-                              try {
-                                await api.updatePayment(tx.id, { amount: correctedAmount, paymentMethod: methodText.trim().toLowerCase(), note: noteText, reference: referenceText });
-                                window.alert('Payment updated. Due and account balance have been recalculated.');
-                                window.location.reload();
-                              } catch (error) { window.alert(error instanceof Error ? error.message : 'Payment could not be updated.'); }
+                            <button type="button" title="Edit Payment" onClick={() => {
+                              setEditingFinancialRecord(tx);
+                              setFinancialEditAmount(String(amount));
+                              setFinancialEditMethod(String(tx.paymentMethodDisplay || 'cash').toLowerCase());
+                              setFinancialEditNote(String(tx.notes || ''));
+                              setFinancialEditReference(String(tx.paymentReference || ''));
                             }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" aria-label="Edit payment"><Edit className="w-4 h-4" /></button>
                             <button type="button" title="Delete / Reverse Payment" onClick={async () => {
                               if (!window.confirm('Reverse this payment? The linked due balance and account balance will be recalculated.')) return;
@@ -954,6 +934,106 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           </table>
         </div>
       </div>
+
+      {editingFinancialRecord && (
+        <div className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5" onClick={() => !savingFinancialEdit && setEditingFinancialRecord(null)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="financial-edit-title" className="w-full max-w-xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200" onClick={(e) => e.stopPropagation()}>
+            <div className={`px-5 py-4 text-white ${editingFinancialRecord.recordType === 'payment' ? 'bg-gradient-to-r from-blue-700 to-indigo-600' : editingFinancialRecord.recordType === 'transfer' ? 'bg-gradient-to-r from-sky-700 to-cyan-600' : 'bg-gradient-to-r from-amber-600 to-orange-500'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] opacity-80">SIAM AIR · Edit Record</div>
+                  <h2 id="financial-edit-title" className="mt-1 text-xl font-bold">
+                    {editingFinancialRecord.recordType === 'payment' ? 'Edit Payment' : editingFinancialRecord.recordType === 'transfer' ? 'Edit Fund Transfer' : 'Edit Loan / Advance'}
+                  </h2>
+                  <p className="mt-1 text-sm text-white/80">{editingFinancialRecord.invoiceNumber} · {editingFinancialRecord.date ? formatDate(editingFinancialRecord.date) : 'Date unavailable'}</p>
+                </div>
+                <button type="button" disabled={savingFinancialEdit} onClick={() => setEditingFinancialRecord(null)} className="rounded-xl p-2 hover:bg-white/15 disabled:opacity-50" aria-label="Close edit form"><X className="w-5 h-5" /></button>
+              </div>
+            </div>
+            <form className="p-5 space-y-4" onSubmit={async (event) => {
+              event.preventDefault();
+              const amount = Number(financialEditAmount);
+              if (!Number.isFinite(amount) || amount <= 0) { window.alert('Amount অবশ্যই ০-এর বেশি হতে হবে।'); return; }
+              setSavingFinancialEdit(true);
+              try {
+                if (editingFinancialRecord.recordType === 'payment') {
+                  await api.updatePayment(editingFinancialRecord.id, { amount, paymentMethod: financialEditMethod.trim().toLowerCase(), note: financialEditNote, reference: financialEditReference });
+                } else if (editingFinancialRecord.recordType === 'transfer') {
+                  if (financialEditFrom === financialEditTo) throw new Error('Source ও destination account আলাদা হতে হবে।');
+                  if (!financialEditReason.trim()) throw new Error('Transfer reason লিখুন।');
+                  await api.updateFundTransfer(editingFinancialRecord.id, { fromAccount: financialEditFrom, toAccount: financialEditTo, amount, reason: financialEditReason.trim(), note: financialEditNote });
+                } else {
+                  await updateLoanAdvance(editingFinancialRecord.id, { amount, note: financialEditNote } as any);
+                }
+                setEditingFinancialRecord(null);
+                window.location.reload();
+              } catch (error) {
+                window.alert(error instanceof Error ? error.message : 'Record update করা যায়নি।');
+              } finally { setSavingFinancialEdit(false); }
+            }}>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="text-xs text-slate-500">Record / Party</div>
+                <div className="mt-1 font-semibold text-slate-800">{editingFinancialRecord.recordType === 'payment' ? (editingFinancialRecord.paymentType === 'customer' ? editingFinancialRecord.customerName : editingFinancialRecord.vendorName || 'Vendor') : editingFinancialRecord.recordType === 'transfer' ? 'Internal Account Transfer' : editingFinancialRecord.customerName !== '—' ? editingFinancialRecord.customerName : editingFinancialRecord.vendorName || 'Loan / Advance'}</div>
+                <div className="mt-1 text-xs text-slate-500">নতুন তথ্য Save করার আগে ভালো করে যাচাই করুন। Save হলে সংশ্লিষ্ট balance পুনর্গণনা হবে।</div>
+              </div>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-semibold text-slate-700">Amount (৳)</span>
+                <input autoFocus type="number" min="0.01" step="0.01" required value={financialEditAmount} onChange={(e) => setFinancialEditAmount(e.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-lg font-bold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+              </label>
+              {editingFinancialRecord.recordType === 'payment' && (
+                <>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-semibold text-slate-700">Payment Method</span>
+                    <select value={financialEditMethod} onChange={(e) => setFinancialEditMethod(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                      <option value="cash">Cash</option><option value="bkash">bKash</option><option value="nagad">Nagad</option><option value="rocket">Rocket</option><option value="bank">Bank</option><option value="card">Card</option><option value="other">Other</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-semibold text-slate-700">Payment Reference</span>
+                    <input value={financialEditReference} onChange={(e) => setFinancialEditReference(e.target.value)} placeholder="Receipt / reference number" className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                  </label>
+                </>
+              )}
+              {editingFinancialRecord.recordType === 'transfer' && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="block"><span className="mb-1.5 block text-sm font-semibold text-slate-700">From Account</span>
+                      <select value={financialEditFrom} onChange={(e) => setFinancialEditFrom(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm">
+                        <option value="cash">Cash</option><option value="bkash">bKash</option><option value="nagad">Nagad</option><option value="rocket">Rocket</option><option value="bank">Bank</option><option value="card">Card</option><option value="other">Other</option>
+                      </select>
+                    </label>
+                    <label className="block"><span className="mb-1.5 block text-sm font-semibold text-slate-700">To Account</span>
+                      <select value={financialEditTo} onChange={(e) => setFinancialEditTo(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm">
+                        <option value="cash">Cash</option><option value="bkash">bKash</option><option value="nagad">Nagad</option><option value="rocket">Rocket</option><option value="bank">Bank</option><option value="card">Card</option><option value="other">Other</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label className="block"><span className="mb-1.5 block text-sm font-semibold text-slate-700">Transfer Reason</span>
+                    <input required value={financialEditReason} onChange={(e) => setFinancialEditReason(e.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm" />
+                  </label>
+                </>
+              )}
+              {editingFinancialRecord.recordType !== 'transfer' && (
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-semibold text-slate-700">{editingFinancialRecord.recordType === 'payment' ? 'Payment Note' : 'Loan / Advance Note'}</span>
+                  <textarea rows={3} value={financialEditNote} onChange={(e) => setFinancialEditNote(e.target.value)} placeholder="Write a note (optional)" className="w-full resize-y rounded-xl border border-slate-300 px-3 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                </label>
+              )}
+              {editingFinancialRecord.recordType === 'transfer' && (
+                <label className="block"><span className="mb-1.5 block text-sm font-semibold text-slate-700">Note (optional)</span>
+                  <textarea rows={2} value={financialEditNote} onChange={(e) => setFinancialEditNote(e.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm" />
+                </label>
+              )}
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 border-t border-slate-100 pt-4">
+                <button type="button" disabled={savingFinancialEdit} onClick={() => setEditingFinancialRecord(null)} className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+                <button type="submit" disabled={savingFinancialEdit} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-800 disabled:cursor-wait disabled:opacity-60">
+                  {savingFinancialEdit ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> Saving…</> : <><Save className="h-4 w-4" /> Save Changes</>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {editingTransaction && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
