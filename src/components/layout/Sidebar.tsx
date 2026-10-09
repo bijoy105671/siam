@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   CreditCard,
+  Trash2,
   X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -135,6 +136,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: null,
     },
     {
+      id: 'recycle_bin',
+      label: 'Recycle Bin',
+      icon: Trash2,
+      badge: null,
+    },
+    {
       id: 'backup',
       label: 'Automated Backup',
       icon: Database,
@@ -232,7 +239,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Agency Footer Stamp */}
         <div className="p-3 border-t border-slate-100 bg-slate-50/60">
           <div className="text-[11px] font-semibold text-slate-800">SIAM AIR & DIGITAL</div>
-          <div className="text-[10px] text-slate-500">Dhaka & Noakhali, Bangladesh</div>
+          <div className="text-[10px] text-slate-500">Ramkrisnapur Bazar, Homna, Cumilla, Bangladesh</div>
           <div className="text-[9px] font-mono text-emerald-600 mt-1">One Entry Engine Active</div>
         </div>
       </aside>
