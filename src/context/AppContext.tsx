@@ -1377,11 +1377,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newTransaction;
   };
 
-  const updateTransaction = (id: string, updates: Partial<Transaction>, changeReason?: string) => {
+  const updateTransaction = async (id: string, updates: Partial<Transaction>, changeReason?: string) => {
     const target = data.transactions.find((t: Transaction) => t.id === id);
     if (!target) return;
     if (USE_SERVER_API) {
-      void api.updateTransaction(id, updates as Record<string, any>).then(() => {
+      await api.updateTransaction(id, updates as Record<string, any>).then(() => {
         setData((prev: any) => ({
           ...prev,
           transactions: prev.transactions.map((t: Transaction) => {
@@ -1407,7 +1407,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         recordAudit('Updated Transaction', 'Transaction', id, JSON.stringify(target), `Updated: ${JSON.stringify(updates)} ${changeReason ? `(Reason: ${changeReason})` : ''}`);
       }).catch((error) => {
         console.error('Server transaction update failed:', error);
-        window.alert(error instanceof Error ? error.message : 'Transaction could not be updated.');
+        throw error;
       });
       return;
     }
@@ -1436,11 +1436,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     recordAudit('Updated Transaction', 'Transaction', id, JSON.stringify(oldTx), `Updated: ${JSON.stringify(updates)} ${changeReason ? `(Reason: ${changeReason})` : ''}`);
   };
 
-  const deleteTransaction = (id: string) => {
+  const deleteTransaction = async (id: string) => {
     const deletedTx = data.transactions.find((t: Transaction) => t.id === id);
     if (!deletedTx) return;
     if (USE_SERVER_API) {
-      void api.deleteTransaction(id).then(() => {
+      await api.deleteTransaction(id).then(() => {
         setData((prev: any) => ({
           ...prev,
           transactions: prev.transactions.filter((t: Transaction) => t.id !== id),
@@ -1449,7 +1449,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }));
       }).catch((error) => {
         console.error('Server transaction delete failed:', error);
-        window.alert(error instanceof Error ? error.message : 'Transaction could not be deleted.');
+        throw error;
       });
       return;
     }
