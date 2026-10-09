@@ -1985,10 +1985,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }> => {
     const isManual = options?.isManual ?? true;
     const dest = options?.destination || data.backupSchedule?.backupDestination || 'both';
-    const passphrase =
-      options?.overridePassphrase ||
-      data.backupSchedule?.encryption?.passphrase ||
-      'SiamAirSecure2026!';
+    const passphrase = String(options?.overridePassphrase || data.backupSchedule?.encryption?.passphrase || '').trim();
+    if (passphrase.length < 16) throw new Error('Backup encryption passphrase must be at least 16 characters. Set your own secret passphrase before generating a backup.');
 
     // Prepare complete database snapshot
     const backupSnapshot = {
@@ -2017,29 +2015,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Encrypt payload using AES-256-GCM via Web Crypto
     const encResult = await encryptDatabasePayload(backupSnapshot, passphrase);
 
-    // Calculate delivery destinations
-    const destinationsDelivered: string[] = [];
-    if (dest === 'email' || dest === 'both') {
-      const email = data.backupSchedule?.emailConfig?.recipientEmail || 'bijoy105671@gmail.com';
-      destinationsDelivered.push(`Email: ${email}`);
-      if (data.backupSchedule?.emailConfig?.ccEmail) {
-        destinationsDelivered.push(`CC: ${data.backupSchedule.emailConfig.ccEmail}`);
-      }
-    }
-    if (dest === 'cloud' || dest === 'both') {
-      const provider = data.backupSchedule?.cloudConfig?.provider || 'google_drive';
-      const providerLabel =
-        provider === 'google_drive'
-          ? 'Google Drive'
-          : provider === 'dropbox'
-          ? 'Dropbox'
-          : provider === 'aws_s3'
-          ? 'AWS S3'
-          : 'OneDrive';
-      const folderPath = data.backupSchedule?.cloudConfig?.folderPath || 'SIAM_AIR_Backups';
-      destinationsDelivered.push(`${providerLabel}: ${folderPath}/${fileName}`);
-    }
-
+    // External email/cloud delivery is not implemented in this client-side backup flow.
+    // Never record a destination as delivered unless a real provider confirms it.
+    const destinationsDelivered: string[] = ['Encrypted file generated in browser; download required'];
+    
     const log: BackupExecutionLog = {
       id: `bkl_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       timestamp: `${dateStr} ${timeStr}`,
@@ -2052,8 +2031,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       encryptionAlgorithm: 'AES-256-GCM',
       checksumSha256: encResult.checksumSha256,
       details: isManual
-        ? `Manual on-demand encrypted backup generated and dispatched to ${destinationsDelivered.join(', ')}`
-        : `Scheduled automated daily backup executed and successfully routed to ${destinationsDelivered.join(', ')}`,
+        ? 'Encrypted app-state snapshot generated locally. No email/cloud upload occurred; download and store the file securely.'
+        : 'Browser-generated encrypted snapshot only. This is not a server-side scheduled backup and no external upload occurred.',
       fileName,
     };
 
@@ -2064,7 +2043,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev.backupSchedule,
         lastRunTimestamp: now.toISOString(),
         lastRunStatus: 'success',
-        lastRunMessage: `Encrypted backup (${encResult.sizeKb} KB) sent to ${destinationsDelivered.join(' & ')}`,
+        lastRunMessage: `Encrypted local snapshot generated (${encResult.sizeKb} KB). No email/cloud delivery occurred.`,
         lastBackupSizeKb: encResult.sizeKb,
         lastBackupChecksum: encResult.checksumSha256,
         totalAutomatedRuns: (prev.backupSchedule?.totalAutomatedRuns || 0) + (isManual ? 0 : 1),
@@ -2077,7 +2056,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'Settings',
       'backup',
       undefined,
-      `Encrypted backup archive (${encResult.sizeKb} KB, AES-256-GCM) dispatched to ${destinationsDelivered.join(', ')}. SHA-256: ${encResult.checksumSha256.substring(0, 16)}...`
+      `Encrypted local app-state snapshot (${encResult.sizeKb} KB, AES-256-GCM) generated. No external delivery. SHA-256: ${encResult.checksumSha256.substring(0, 16)}...`
     );
 
     const blob = new Blob([encResult.jsonString], { type: 'application/json' });
@@ -2088,7 +2067,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       log,
       downloadDataUrl,
       jsonString: encResult.jsonString,
-      message: `Encrypted database backup (${encResult.sizeKb} KB) dispatched successfully to ${destinationsDelivered.join(' and ')}!`,
+      message: `Encrypted local app-state snapshot generated (${encResult.sizeKb} KB). Download it now; email/cloud upload and server database backup are not implemented in this flow.`,
     };
   };
 
@@ -2096,6 +2075,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fileContent: string,
     passphrase: string
   ): Promise<{ success: boolean; message: string }> => {
+    if (USE_SERVER_API) return { success: false, message: 'Server-backed restore is not implemented yet. Restore is blocked here to avoid falsely claiming that PostgreSQL data was restored.' };
     const decryptResult = await decryptDatabasePayload(fileContent, passphrase);
     if (!decryptResult.success || !decryptResult.data) {
       return { success: false, message: decryptResult.error || 'Decryption failed.' };
@@ -2140,37 +2120,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     return {
       success: true,
-      message: 'Database restored successfully with verified AES-256 SHA-256 integrity!',
+      message: 'Encrypted snapshot restored to this browser app state. This does not restore a server database.',
     };
   };
 
   const testBackupDestination = async (
     dest: BackupDestination
   ): Promise<{ success: boolean; message: string }> => {
-    // Artificial latency for realism
-    await new Promise((r) => setTimeout(r, 600));
+    // No real email/cloud provider connection exists in this client-side flow.
+    await new Promise((r) => setTimeout(r, 100));
     if (dest === 'email') {
       const email = data.backupSchedule?.emailConfig?.recipientEmail || 'bijoy105671@gmail.com';
       if (!email || !email.includes('@')) {
         return { success: false, message: 'Invalid recipient email address.' };
       }
-      return {
-        success: true,
-        message: `Handshake successful! Test verification dispatch successfully pinged ${email}.`,
-      };
+      return { success: false, message: 'Email delivery is not integrated. This only checks the address format; no test email was sent.' };
     }
     if (dest === 'cloud') {
       const provider = data.backupSchedule?.cloudConfig?.provider || 'Google Drive';
       const folder = data.backupSchedule?.cloudConfig?.folderPath || 'SIAM_AIR_Backups';
-      return {
-        success: true,
-        message: `Connected! Verified authentication and write access for ${provider} in directory '${folder}'.`,
-      };
+      return { success: false, message: `No live ${provider} connector is configured. No authentication or write-access test was performed.` };
     }
-    return {
-      success: true,
-      message: `Both connections verified: Email test pinged ${data.backupSchedule?.emailConfig?.recipientEmail} and cloud directory '${data.backupSchedule?.cloudConfig?.folderPath}' verified.`,
-    };
+    return { success: false, message: 'Email and cloud upload are not integrated. No external destination was tested.' };
   };
 
   const deleteBackupLog = (id: string) => {
@@ -2189,7 +2160,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Automated Daily Backup Schedule Background Worker
   useEffect(() => {
-    if (!data.backupSchedule?.enabled) return;
+    // Browser timers are not a reliable server-side scheduler. Do not present them as production backups.
+    if (USE_SERVER_API || !data.backupSchedule?.enabled) return;
 
     const checkAndRunSchedule = () => {
       const now = new Date();
