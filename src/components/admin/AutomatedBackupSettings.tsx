@@ -99,7 +99,7 @@ export const AutomatedBackupSettings: React.FC = () => {
     backupSchedule.encryption.enabled ?? true
   );
   const [passphrase, setPassphrase] = useState(
-    backupSchedule.encryption.passphrase || 'SiamAirSecure2026!'
+    backupSchedule.encryption.passphrase || ''
   );
   const [keyHint, setKeyHint] = useState(
     backupSchedule.encryption.keyHint || 'Primary Agency Safe Passphrase (2026)'
@@ -161,8 +161,13 @@ export const AutomatedBackupSettings: React.FC = () => {
   };
 
   // Save Schedule Settings
-  const handleSaveSchedule = (e?: React.FormEvent) => {
+  // Email/cloud destination fields are configuration only; provider upload is not yet integrated.
+  const handleSaveSchedule = (e?: React.FormEvent): boolean => {
     if (e) e.preventDefault();
+    if (encryptionEnabled && passphrase.trim().length < 16) {
+      setSaveStatus('Backup encryption requires your own passphrase of at least 16 characters.');
+      return false;
+    }
     updateBackupSchedule({
       enabled,
       frequency,
@@ -181,7 +186,7 @@ export const AutomatedBackupSettings: React.FC = () => {
         bucketName: bucketName.trim(),
         autoPurgeDays,
         connectedAccount,
-        isConnected: true,
+        isConnected: backupSchedule.cloudConfig.isConnected === true,
       },
       encryption: {
         enabled: encryptionEnabled,
@@ -192,7 +197,8 @@ export const AutomatedBackupSettings: React.FC = () => {
     });
 
     setSaveStatus('Automated backup schedule and encryption settings saved successfully!');
-    setTimeout(() => setSaveStatus(null), 3500);
+    setTimeout(() => setSaveStatus(null), 5000);
+    return true;
   };
 
   // Run Backup Now
@@ -201,7 +207,7 @@ export const AutomatedBackupSettings: React.FC = () => {
     setBackupRunResult(null);
     try {
       // First save current inputs if modified
-      handleSaveSchedule();
+      if (!handleSaveSchedule()) return;
 
       const result = await triggerEncryptedBackup({
         destination: backupDestination,
