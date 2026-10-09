@@ -277,14 +277,55 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
         reminderNote: reminderNote || ('Collect remaining balance ' + formatCurrency(calculatedCustomerDue)),
         notes: generalNotes,
       };
+      const additionalItemPayloads = additionalServices.map((line) => {
+        const lineService = services.find((s) => s.id === line.serviceId);
+        const name = (lineService?.name || '').toLowerCase();
+        const category = (lineService?.category || '').toLowerCase();
+        const lineTicket = name.includes('ticket') || name.includes('flight') || name.includes('reissue') ||
+          name.includes('refund') || name.includes('void') || name.includes('date change') || category.includes('air ticket');
+        const lineSelling = Number(line.sellingPrice) || 0;
+        if (lineSelling <= 0) throw new Error(`Please enter a valid selling price for ${lineService?.name || 'additional service'}.`);
+        if (lineTicket && !line.pnr.trim()) throw new Error(`PNR is required for ${lineService?.name || 'ticket service'}.`);
+        return {
+          serviceId: line.serviceId, serviceName: lineService?.name || 'General Service',
+          description: line.description || lineService?.name || 'Additional Service',
+          sellingPrice: lineSelling, customerPaid: Number(line.customerPaid) || 0,
+          customerPaymentMethod: line.customerPaymentMethod,
+          hasVendor: line.hasVendor, vendorName: line.hasVendor ? line.vendorName.trim() : '',
+          vendorCost: line.hasVendor ? Number(line.vendorCost) || 0 : 0,
+          vendorPaid: line.hasVendor ? Number(line.vendorPaid) || 0 : 0,
+          vendorPaymentMethod: line.vendorPaymentMethod,
+          accountCost: line.hasVendor ? 0 : Number(line.accountCost) || 0,
+          accountCostPaymentMethod: line.accountCostPaymentMethod,
+          flightDetails: lineTicket ? {
+            pnr: line.pnr.trim().toUpperCase(), ticketNumber: line.ticketNumber.trim(),
+            passengerName: line.passengerName.trim() || customerQuery.trim(), airline: line.airline.trim(),
+            flightNumber: line.flightNumber.trim().toUpperCase(), route: line.route.trim().toUpperCase(),
+            departureDate: line.departureDate, departureTime: line.departureTime,
+            flightClass: 'Economy (V)', ticketStatus: 'Confirmed', notes: '',
+          } : undefined,
+        };
+      });
+      input.serviceItems = [
+        {
+          serviceId, serviceName: selectedService?.name || 'General Service',
+          description: input.description, sellingPrice: numSellingPrice, customerPaid: numCustomerPaid,
+          customerPaymentMethod, hasVendor, vendorId: selectedVendor?.id,
+          vendorName: hasVendor ? vendorQuery.trim() : '', vendorMobile, vendorCompany, vendorPhoto,
+          vendorCost: numVendorCost, vendorPaid: numVendorPaid, vendorPaymentMethod,
+          accountCost: numAccountCost, accountCostPaymentMethod,
+          flightDetails,
+        } as any,
+        ...additionalItemPayloads,
+      ];
       const created = USE_SERVER_API ? await createOneEntryAsync(input) : createOneEntry(input);
       let lastTx = created;
       if (setAppointment) {
         await createAppointment({ customerId: created.customerId, transactionId: created.id, serviceId: created.serviceId, serviceName: created.serviceName, customerName: created.customerName, customerMobile: created.customerMobile, customerEmail: customerEmail || undefined, title: `${created.serviceName} Appointment`, appointmentDate, appointmentTime, note: appointmentNote || description || `Scheduled ${created.serviceName}`, status: 'pending' });
       }
 
-      // Additional services are saved as separate linked transaction records under the same customer.
-      // This preserves clean Customer/Vendor ledgers and keeps each service's vendor/cost independent.
+      // Offline fallback retains legacy per-line behavior; production API stores all lines on one transaction.
+      if (!USE_SERVER_API) {
       for (const line of additionalServices) {
         const lineService = services.find((s) => s.id === line.serviceId);
         const lineTicket = (() => {
@@ -343,6 +384,7 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
           notes: generalNotes,
         };
         lastTx = USE_SERVER_API ? await createOneEntryAsync(lineInput) : createOneEntry(lineInput);
+      }
       }
       setCreatedTx(lastTx);
     } catch (error) {
