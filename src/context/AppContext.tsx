@@ -2476,7 +2476,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           serviceId: item.serviceId || t.serviceId, serviceName: item.serviceName,
           description: item.description || t.description, flightDetails: item.flightDetails || t.flightDetails,
           vendorCost: Number(item.vendorCost || 0), vendorPaid: Number(item.vendorPaid || 0),
-          vendorDue: Number(item.vendorDue || 0), serviceItems: t.serviceItems,
+          vendorDue: Number(item.vendorDue || 0), lineItemId: item.id || item.lineNo, serviceItems: t.serviceItems,
         } as Transaction));
       }
       return t.vendorId === vendorId ? [t] : [];
