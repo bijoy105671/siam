@@ -670,7 +670,7 @@ app.patch('/api/admin/saas/users/:id', adminOnly, async (req,res) => {
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
-    const u=(await client.query("SELECT u.*,o.id AS organization_id FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.id=$1 FOR UPDATE",[req.params.id])).rows[0];
+    const u=(await client.query("SELECT u.*,o.id AS organization_id FROM users u LEFT JOIN organizations o ON o.id=u.organization_id WHERE u.id=$1 FOR UPDATE OF u",[req.params.id])).rows[0];
     if(!u) throw new Error('Registered user not found');
     const b=req.body||{};
     const fullName=String(b.fullName??u.full_name).trim();
@@ -770,7 +770,7 @@ app.post('/api/admin/saas/free-trials/:subscriptionId/activate', adminOnly, asyn
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
-    const sub=(await client.query("SELECT s.*,p.name AS plan_name,p.price,p.duration_days,p.is_lifetime,o.business_name,o.owner_name,o.email FROM subscriptions s JOIN organizations o ON o.id=s.organization_id LEFT JOIN subscription_plans p ON p.id=s.plan_id WHERE s.id=$1 FOR UPDATE",[req.params.subscriptionId])).rows[0];
+    const sub=(await client.query("SELECT s.*,p.name AS plan_name,p.price,p.duration_days,p.is_lifetime,o.business_name,o.owner_name,o.email FROM subscriptions s JOIN organizations o ON o.id=s.organization_id LEFT JOIN subscription_plans p ON p.id=s.plan_id WHERE s.id=$1 FOR UPDATE OF s",[req.params.subscriptionId])).rows[0];
     if(!sub) throw new Error('Free trial subscription not found');
     if(Number(sub.price)!==0 || sub.plan_name!=='1 Month Free') throw new Error('This is not the 1 Month Free trial');
     if(sub.status!=='pending') throw new Error('Free trial is not pending activation');
@@ -789,7 +789,7 @@ app.post('/api/admin/saas/payments/:id/approve', adminOnly, async (req,res) => {
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
-    const pay=(await client.query("SELECT sp.*,o.business_name,o.owner_name,o.email,p.name AS plan_name,p.duration_days,p.is_lifetime FROM subscription_payments sp JOIN organizations o ON o.id=sp.organization_id LEFT JOIN subscriptions s ON s.id=sp.subscription_id LEFT JOIN subscription_plans p ON p.id=s.plan_id WHERE sp.id=$1 FOR UPDATE",[req.params.id])).rows[0];
+    const pay=(await client.query("SELECT sp.*,o.business_name,o.owner_name,o.email,p.name AS plan_name,p.duration_days,p.is_lifetime FROM subscription_payments sp JOIN organizations o ON o.id=sp.organization_id LEFT JOIN subscriptions s ON s.id=sp.subscription_id LEFT JOIN subscription_plans p ON p.id=s.plan_id WHERE sp.id=$1 FOR UPDATE OF sp",[req.params.id])).rows[0];
     if(!pay) throw new Error('Payment not found');
     if(pay.status==='paid') throw new Error('Payment already approved');
     const sub=(await client.query("SELECT * FROM subscriptions WHERE id=$1 FOR UPDATE",[pay.subscription_id])).rows[0];
