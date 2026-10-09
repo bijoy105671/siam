@@ -840,14 +840,14 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
                           {canManageTransactions && (
                             <button
-                              onClick={() => {
+                              onClick={async () => {
                                 if (
                                   confirm(
                                     `Are you sure you want to delete Invoice ${tx.invoiceNumber}? This will be recorded permanently in the Audit History.`
                                   )
                                 ) {
                                   try {
-                                    deleteTransaction(tx.id);
+                                    await deleteTransaction(tx.id);
                                   } catch (error) {
                                     alert(error instanceof Error ? error.message : 'Transaction could not be deleted.');
                                   }
