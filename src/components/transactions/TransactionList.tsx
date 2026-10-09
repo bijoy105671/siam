@@ -848,6 +848,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                 ) {
                                   try {
                                     await deleteTransaction(tx.id);
+                                    // Reload canonical server-backed data so every ledger/dashboard reflects the deletion.
+                                    window.location.reload();
                                   } catch (error) {
                                     alert(error instanceof Error ? error.message : 'Transaction could not be deleted.');
                                   }
@@ -1099,6 +1101,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         ...(editingTransaction.flightDetails ? { flightStatus: editFlightStatus } : {}),
                       }, 'Admin transaction edit');
                       setEditingTransaction(null);
+                      // Reload canonical server-backed data so customer/vendor ledgers, balances and reports stay in sync.
+                      window.location.reload();
                     } catch (error) {
                       alert(error instanceof Error ? error.message : 'Transaction could not be updated.');
                     } finally {
