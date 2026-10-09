@@ -186,6 +186,18 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
       </div>
 
       {/* Vendors Directory Table */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+          <div className="text-xs font-semibold text-rose-700">Total Vendor Payable — টাকা দিতে হবে</div>
+          <div className="mt-1 text-xl font-bold text-rose-800 tabular-nums">{formatCurrency(vendors.reduce((sum, v) => sum + Math.max(0, getVendorLedger(v.id).currentPayable), 0))}</div>
+          <div className="mt-1 text-[11px] text-rose-700">All vendors' outstanding payable</div>
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="text-xs font-semibold text-emerald-700">Total Vendor Receivable — টাকা পাবো</div>
+          <div className="mt-1 text-xl font-bold text-emerald-800 tabular-nums">{formatCurrency(vendors.reduce((sum, v) => sum + Math.max(0, getVendorLedger(v.id).vendorReceivable), 0))}</div>
+          <div className="mt-1 text-[11px] text-emerald-700">Amounts recoverable from vendors</div>
+        </div>
+      </div>
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
