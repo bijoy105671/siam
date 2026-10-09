@@ -2374,6 +2374,82 @@ app.get('/api/accounts/balances', auth, async (_req, res) => {
   res.json({ balances, total: Object.values(balances).reduce((a,b) => a+b, 0) });
 });
 
+app.get('/api/cash-adjustments', auth, async (_req, res) => {
+  const { rows } = await pool.query(`
+    SELECT ca.*, u.full_name AS created_by_name
+    FROM cash_adjustments ca LEFT JOIN users u ON u.id=ca.created_by
+    WHERE ca.reversed_at IS NULL
+    ORDER BY ca.occurred_at DESC, ca.id DESC
+  `);
+  res.json(rows);
+});
+
+app.post('/api/cash-adjustments', auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const direction = String(req.body?.direction || '').toLowerCase();
+    const account = String(req.body?.account || '').toLowerCase();
+    const amount = Number(req.body?.amount);
+    const reason = String(req.body?.reason || '').trim();
+    const note = req.body?.note == null ? null : String(req.body.note).trim() || null;
+    const occurredAt = req.body?.occurredAt ? new Date(req.body.occurredAt) : new Date();
+    if (!['cash_in','cash_out'].includes(direction)) throw new Error('Choose Cash In or Cash Out');
+    if (!ACCOUNT_METHODS.has(account)) throw new Error('Choose a valid account');
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero');
+    if (!reason) throw new Error('Reason is required');
+    if (Number.isNaN(occurredAt.getTime())) throw new Error('Invalid date/time');
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [account]);
+    const adjustment = (await client.query(
+      'INSERT INTO cash_adjustments (direction,account_name,amount,occurred_at,reason,note,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [direction,account,amount,occurredAt.toISOString(),reason,note,req.session.userId]
+    )).rows[0];
+    const signedAmount = direction === 'cash_in' ? amount : -amount;
+    await addAccountEntry(client, account, signedAmount, 'cash_adjustment', adjustment.id, req.session.userId!, reason);
+    await audit(client, req.session.userId!, 'CASH_ADJUSTMENT_CREATED', 'CashAdjustment', adjustment.id, null, adjustment);
+    await client.query('COMMIT');
+    res.status(201).json({ adjustment });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Cash adjustment failed' });
+  } finally { client.release(); }
+});
+
+app.patch('/api/cash-adjustments/:id', adminOnly, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const direction = String(req.body?.direction || '').toLowerCase();
+    const account = String(req.body?.account || '').toLowerCase();
+    const amount = Number(req.body?.amount);
+    const reason = String(req.body?.reason || '').trim();
+    const note = req.body?.note == null ? null : String(req.body.note).trim() || null;
+    const occurredAt = req.body?.occurredAt ? new Date(req.body.occurredAt) : new Date();
+    if (!['cash_in','cash_out'].includes(direction)) throw new Error('Choose Cash In or Cash Out');
+    if (!ACCOUNT_METHODS.has(account)) throw new Error('Choose a valid account');
+    if (!Number.isFinite(amount) || amount <= 0 || !reason) throw new Error('Enter a positive amount and reason');
+    if (Number.isNaN(occurredAt.getTime())) throw new Error('Invalid date/time');
+    await client.query('BEGIN');
+    const old = (await client.query('SELECT * FROM cash_adjustments WHERE id=$1 AND reversed_at IS NULL FOR UPDATE', [req.params.id])).rows[0];
+    if (!old) throw new Error('Cash adjustment not found');
+    const accounts = [...new Set([String(old.account_name).toLowerCase(), account])].sort();
+    for (const name of accounts) await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [name]);
+    const entries = (await client.query("SELECT * FROM account_entries WHERE source_type='cash_adjustment' AND source_id=$1 AND reversed_at IS NULL FOR UPDATE", [old.id])).rows;
+    if (entries.length !== 1) throw new Error('Adjustment accounting entry is missing or ambiguous; no changes were saved');
+    await client.query('UPDATE account_entries SET reversed_at=now() WHERE id=$1', [entries[0].id]);
+    const updated = (await client.query(
+      'UPDATE cash_adjustments SET direction=$2,account_name=$3,amount=$4,occurred_at=$5,reason=$6,note=$7,updated_at=now() WHERE id=$1 RETURNING *',
+      [old.id,direction,account,amount,occurredAt.toISOString(),reason,note]
+    )).rows[0];
+    await addAccountEntry(client, account, direction === 'cash_in' ? amount : -amount, 'cash_adjustment', updated.id, req.session.userId!, reason);
+    await audit(client, req.session.userId!, 'CASH_ADJUSTMENT_UPDATED', 'CashAdjustment', updated.id, old, updated);
+    await client.query('COMMIT');
+    res.json({ adjustment: updated });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Cash adjustment update failed' });
+  } finally { client.release(); }
+});
+
 app.post('/api/entries', auth, async (req, res) => {
   const client = await pool.connect();
   try {
