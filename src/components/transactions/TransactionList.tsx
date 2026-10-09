@@ -19,6 +19,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { PaymentMethod, Transaction, TransactionStatus } from '../../types';
 import { formatCurrency, formatDate, formatTime, getTransactionStatusColor } from '../../utils/formatters';
+import { api } from '../../services/apiClient';
 
 interface TransactionListProps {
   onSelectTransaction: (tx: Transaction) => void;
@@ -33,7 +34,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   paymentFocus = null,
   onOpenPayment,
 }) => {
-  const { transactions, partialPayments, transfers, loanAdvances, services, vendors, addVendorAsync, deleteTransaction, updateTransaction, currentUser } = useApp();
+  const { transactions, partialPayments, transfers, loanAdvances, services, vendors, addVendorAsync, deleteTransaction, updateTransaction, updateLoanAdvance, deleteLoanAdvance, currentUser } = useApp();
   // Support the role labels used by older accounts and the permission-based user model.
   // Some production users are stored as "Super Admin", "super_admin", etc.
   const normalizedRole = String(currentUser?.role || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -622,7 +623,24 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         <td className="py-3 px-4 text-right text-slate-400">—</td>
                         <td className="py-3 px-4 text-right font-bold ${received ? 'text-slate-400' : 'text-amber-700'}">{received ? '—' : `-${formatCurrency(Number(tx.loanAmount || 0))}`}</td>
                         <td className="py-3 px-4 text-center"><span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-amber-100 text-amber-800 border-amber-200">LOAN / ADVANCE · NON-SALE</span></td>
-                        <td className="py-3 px-4 text-right text-[10px] text-slate-500">{tx.paymentReference || 'No reference'}</td>
+                        <td className="py-3 px-4 text-right font-sans">
+                          <div className="flex items-center justify-end gap-1">
+                            <button type="button" title="Edit Loan / Advance" onClick={() => {
+                              const amountText = window.prompt('Correct loan / advance amount', String(Number(tx.loanAmount || 0)));
+                              if (amountText === null) return;
+                              const amount = Number(amountText);
+                              if (!Number.isFinite(amount) || amount <= 0) { window.alert('Enter a valid amount greater than zero.'); return; }
+                              const note = window.prompt('Update note (leave blank to keep current note)', tx.notes || '');
+                              updateLoanAdvance(tx.id, { amount, ...(note !== null ? { note } : {}) } as any);
+                              window.location.reload();
+                            }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" aria-label="Edit loan or advance"><Edit className="w-4 h-4" /></button>
+                            <button type="button" title="Delete Loan / Advance" onClick={() => {
+                              if (!window.confirm('Delete this loan / advance record? This affects party and account balances and will be audited.')) return;
+                              deleteLoanAdvance(tx.id);
+                              window.location.reload();
+                            }} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded" aria-label="Delete loan or advance"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   }
@@ -650,7 +668,16 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         <td className="py-3 px-4 text-right text-slate-400">—</td>
                         <td className="py-3 px-4 text-right font-bold text-slate-400">—</td>
                         <td className="py-3 px-4 text-center"><span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-sky-100 text-sky-800 border-sky-200">TRANSFER · NON-SALE</span></td>
-                        <td className="py-3 px-4 text-right text-[10px] text-slate-500 font-sans">{tx.transferAmount ? formatCurrency(Number(tx.transferAmount)) : '—'}</td>
+                        <td className="py-3 px-4 text-right font-sans">
+                          <div className="flex items-center justify-end gap-1">
+                            <button type="button" title="Edit Fund Transfer" onClick={() => window.alert('Fund Transfer direct editing needs a server-side edit endpoint. To protect account balances, this record has not been changed.')} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" aria-label="Edit fund transfer"><Edit className="w-4 h-4" /></button>
+                            <button type="button" title="Delete / Reverse Fund Transfer" onClick={async () => {
+                              if (!window.confirm('Reverse this fund transfer? Both account balances will be recalculated.')) return;
+                              try { await api.reverseFundTransfer(tx.id); window.location.reload(); }
+                              catch (error) { window.alert(error instanceof Error ? error.message : 'Fund transfer could not be reversed.'); }
+                            }} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded" aria-label="Delete fund transfer"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   }
@@ -705,8 +732,16 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                             {isCustomerPayment ? 'DUE PAID' : 'VENDOR PAID'}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-right font-sans text-[10px] text-slate-500">
-                          {tx.paymentMethodDisplay} · {tx.paymentReference || 'No reference'}
+                        <td className="py-3 px-4 text-right font-sans">
+                          <div className="text-[10px] text-slate-500 mb-1">{tx.paymentMethodDisplay} · {tx.paymentReference || 'No reference'}</div>
+                          <div className="flex items-center justify-end gap-1">
+                            <button type="button" title="Edit Payment" onClick={() => window.alert('Direct payment editing needs a server-side edit endpoint. To protect the customer/vendor ledger and account balance, this record has not been changed.')} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" aria-label="Edit payment"><Edit className="w-4 h-4" /></button>
+                            <button type="button" title="Delete / Reverse Payment" onClick={async () => {
+                              if (!window.confirm('Reverse this payment? The linked due balance and account balance will be recalculated.')) return;
+                              try { await api.reversePayment(tx.id); window.location.reload(); }
+                              catch (error) { window.alert(error instanceof Error ? error.message : 'Payment could not be reversed.'); }
+                            }} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded" aria-label="Delete payment"><Trash2 className="w-4 h-4" /></button>
+                          </div>
                         </td>
                       </tr>
                     );
