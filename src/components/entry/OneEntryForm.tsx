@@ -1154,7 +1154,7 @@ export const OneEntryForm: React.FC<OneEntryFormProps> = ({ onClose, onViewInvoi
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs font-bold text-blue-900 uppercase">Additional Services</div>
-                <div className="text-[11px] text-slate-500 mt-0.5">Same customer • each service gets its own vendor, cost, payment & ledger record.</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">One customer invoice • each service keeps its own vendor, cost, payment & internal ledger details.</div>
               </div>
               <button type="button" onClick={() => setAdditionalServices((rows) => rows.filter((r) => r.id !== additionalServices[additionalServices.length - 1]?.id))} className="text-xs text-rose-600 font-semibold">Remove Last</button>
             </div>
