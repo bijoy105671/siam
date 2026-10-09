@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { api, USE_SERVER_API } from '../../services/apiClient';
 import {
   BarChart3,
   TrendingUp,
@@ -27,6 +28,28 @@ export const ReportsView: React.FC = () => {
   } = useApp();
 
   const [timeframe, setTimeframe] = useState<'all' | 'today' | 'this_month' | 'this_year'>('this_month');
+  const [allTimeTotals, setAllTimeTotals] = useState<{ totalSales: number; signedGrossProfit: number; totalExpenses: number } | null>(null);
+  const [allTimeTotalsError, setAllTimeTotalsError] = useState<string | null>(null);
+
+  // All Time totals must come from the server, not the UI's capped 500-row transaction list
+  // or locally cached expenses.
+  useEffect(() => {
+    if (!USE_SERVER_API || timeframe !== 'all') return;
+    let cancelled = false;
+    setAllTimeTotalsError(null);
+    api.dashboard().then((response: any) => {
+      if (cancelled) return;
+      setAllTimeTotals({
+        totalSales: Number(response.sales?.total_sales || 0),
+        signedGrossProfit: Number(response.sales?.signed_gross_profit || 0),
+        totalExpenses: Number(response.expenses?.total_expense || 0),
+      });
+    }).catch((error) => {
+      if (cancelled) return;
+      setAllTimeTotalsError(error instanceof Error ? error.message : 'Could not load all-time totals.');
+    });
+    return () => { cancelled = true; };
+  }, [timeframe]);
 
   // Reporting periods always use Bangladesh time (Asia/Dhaka).
   const dhakaParts = new Intl.DateTimeFormat('en-US', {
@@ -61,14 +84,18 @@ export const ReportsView: React.FC = () => {
 
   // Direct service cost includes either vendor/airline cost or an in-house
   // account-funded service cost. This matches the transaction and dashboard P&L.
-  const totalSales = filteredTxs.reduce((sum, t) => sum + t.sellingPrice, 0);
-  const totalVendorCost = filteredTxs.reduce((sum, t) => sum + t.vendorCost, 0);
-  const totalAccountCost = filteredTxs.reduce((sum, t) => sum + Number(t.accountCost || 0), 0);
-  const totalDirectCost = totalVendorCost + totalAccountCost;
-  const signedGrossProfit = filteredTxs.reduce((sum, t) => sum + (t.sellingPrice - t.vendorCost - Number(t.accountCost || 0)), 0);
+  const localTotalSales = filteredTxs.reduce((sum, t) => sum + t.sellingPrice, 0);
+  const localVendorCost = filteredTxs.reduce((sum, t) => sum + t.vendorCost, 0);
+  const localAccountCost = filteredTxs.reduce((sum, t) => sum + Number(t.accountCost || 0), 0);
+  const localSignedGrossProfit = filteredTxs.reduce((sum, t) => sum + (t.sellingPrice - t.vendorCost - Number(t.accountCost || 0)), 0);
+  const localTotalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const useServerAllTime = timeframe === 'all' && USE_SERVER_API && allTimeTotals !== null && !allTimeTotalsError;
+  const totalSales = useServerAllTime ? allTimeTotals.totalSales : localTotalSales;
+  const signedGrossProfit = useServerAllTime ? allTimeTotals.signedGrossProfit : localSignedGrossProfit;
+  const totalDirectCost = useServerAllTime ? totalSales - signedGrossProfit : localVendorCost + localAccountCost;
   const totalGrossProfit = Math.max(0, signedGrossProfit);
   const totalGrossLoss = Math.max(0, -signedGrossProfit);
-  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalExpenses = useServerAllTime ? allTimeTotals.totalExpenses : localTotalExpenses;
   const netProfit = signedGrossProfit - totalExpenses;
 
   // Service-wise breakdown
