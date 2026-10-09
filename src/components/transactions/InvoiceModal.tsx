@@ -466,25 +466,20 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               {/* Invoice Seal & Sign Section */}
               <div className="shrink-0 mt-5 w-full sm:w-auto">
                 <div className="text-center text-[10px] font-bold uppercase tracking-[0.18em] text-slate-700 mb-3">Seal and Sign</div>
-                <div className="flex items-end justify-center sm:justify-end gap-5">
-                  <div className="text-center shrink-0">
-                    <div className="w-[88px] h-[88px] rounded-full border-[3px] border-double border-rose-700 text-rose-800 flex flex-col items-center justify-center rotate-[-10deg] bg-rose-50/40 shadow-sm px-1">
+                <div className="w-[190px] mx-auto sm:ml-auto sm:mr-0 text-center">
+                  <div className="relative h-[100px] w-[150px] mx-auto flex items-center justify-center">
+                    <div className="absolute inset-0 m-auto w-[88px] h-[88px] rounded-full border-[3px] border-double border-blue-900 text-blue-950 flex flex-col items-center justify-center rotate-[-10deg] bg-blue-50/20 px-1">
                       <div className="text-[7px] font-black tracking-wide leading-tight">SIAM AIR AND</div>
                       <div className="text-[7px] font-black tracking-wide leading-tight">DIGITAL SERVICE</div>
-                      <div className="w-full text-center text-[6px] font-bold border-y border-rose-700 px-0.5 py-1 my-1">OFFICIAL SEAL</div>
+                      <div className="w-full text-center text-[6px] font-bold border-y border-blue-900 px-0.5 py-1 my-1">OFFICIAL SEAL</div>
                       <div className="text-[7px] font-bold">{formatDate(transaction.date)}</div>
                     </div>
+                    {settings.authorizedSignatureUrl && (
+                      <img src={settings.authorizedSignatureUrl} alt="Authorized signature" className="absolute inset-0 m-auto w-[145px] h-[58px] object-contain opacity-80 z-10" />
+                    )}
                   </div>
-                  <div className="text-center w-[150px] shrink-0">
-                    <div className="h-[58px] flex items-end justify-center relative">
-                      {settings.authorizedSignatureUrl && (
-                        <img src={settings.authorizedSignatureUrl} alt="Authorized signature" className="absolute inset-x-0 bottom-0 h-12 w-full object-contain opacity-70" />
-                      )}
-                      <span className="relative z-10 mb-1 text-xs font-semibold text-slate-800">{issuerName}</span>
-                    </div>
-                    <div className="border-b-2 border-slate-800 w-full" />
-                    <div className="text-[9px] text-slate-600 font-semibold mt-1 uppercase tracking-wide">Authorized Seal &amp; Sign</div>
-                  </div>
+                  <div className="border-b-2 border-blue-950 w-full mt-1" />
+                  <div className="text-[9px] text-slate-700 font-semibold mt-1 uppercase tracking-wide">Authorized Seal &amp; Sign</div>
                 </div>
               </div>            </div>
           </div>
