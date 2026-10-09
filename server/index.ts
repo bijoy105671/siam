@@ -1245,7 +1245,13 @@ app.get('/api/reports/profit-loss', auth, async (req, res) => {
     OR ($1::text = 'this_month' AND (e.occurred_at AT TIME ZONE 'Asia/Dhaka')::date >= date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date AND (e.occurred_at AT TIME ZONE 'Asia/Dhaka')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date)
     OR ($1::text = 'this_year' AND (e.occurred_at AT TIME ZONE 'Asia/Dhaka')::date >= date_trunc('year', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date AND (e.occurred_at AT TIME ZONE 'Asia/Dhaka')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date)
   )`;
-  const [sales, expenses, byExpense] = await Promise.all([
+  const adjustmentPeriod = `(
+    $1::text = 'all'
+    OR ($1::text = 'today' AND (ca.occurred_at AT TIME ZONE 'Asia/Dhaka')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date)
+    OR ($1::text = 'this_month' AND (ca.occurred_at AT TIME ZONE 'Asia/Dhaka')::date >= date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date AND (ca.occurred_at AT TIME ZONE 'Asia/Dhaka')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date)
+    OR ($1::text = 'this_year' AND (ca.occurred_at AT TIME ZONE 'Asia/Dhaka')::date >= date_trunc('year', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date AND (ca.occurred_at AT TIME ZONE 'Asia/Dhaka')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date)
+  )`;
+  const [sales, expenses, byExpense, adjustments] = await Promise.all([
     pool.query(`SELECT COUNT(*)::int transaction_count,
       COALESCE(SUM(t.selling_price),0) total_sales,
       COALESCE(SUM(t.selling_price-t.vendor_cost-t.account_cost),0) signed_gross_profit,
@@ -1256,12 +1262,20 @@ app.get('/api/reports/profit-loss', auth, async (req, res) => {
       FROM expenses e WHERE e.reversed_at IS NULL AND ${expensePeriod}`, [timeframe]),
     pool.query(`SELECT e.category, COALESCE(SUM(e.amount),0) amount
       FROM expenses e WHERE e.reversed_at IS NULL AND ${expensePeriod}
-      GROUP BY e.category ORDER BY SUM(e.amount) DESC`, [timeframe])
+      GROUP BY e.category ORDER BY SUM(e.amount) DESC`, [timeframe]),
+    pool.query(`SELECT
+      COALESCE(SUM(CASE WHEN ca.direction='cash_in' THEN ca.amount ELSE -ca.amount END),0) net_adjustment,
+      COALESCE(SUM(CASE WHEN ca.direction='cash_in' THEN ca.amount ELSE 0 END),0) cash_in_total,
+      COALESCE(SUM(CASE WHEN ca.direction='cash_out' THEN ca.amount ELSE 0 END),0) cash_out_total,
+      COUNT(*)::int adjustment_count
+      FROM cash_adjustments ca WHERE ca.reversed_at IS NULL AND ${adjustmentPeriod}`, [timeframe])
   ]);
   const row = sales.rows[0] || {};
   const expenseRow = expenses.rows[0] || {};
+  const adjustmentRow = adjustments.rows[0] || {};
   const signedGrossProfit = Number(row.signed_gross_profit || 0);
   const totalExpenses = Number(expenseRow.total_expenses || 0);
+  const netCashAdjustment = Number(adjustmentRow.net_adjustment || 0);
   res.json({
     timeframe,
     totalSales: Number(row.total_sales || 0),
@@ -1270,7 +1284,11 @@ app.get('/api/reports/profit-loss', auth, async (req, res) => {
     accountCost: Number(row.account_cost || 0),
     totalDirectCost: Number(row.vendor_cost || 0) + Number(row.account_cost || 0),
     totalExpenses,
-    netProfit: signedGrossProfit - totalExpenses,
+    cashInAdjustments: Number(adjustmentRow.cash_in_total || 0),
+    cashOutAdjustments: Number(adjustmentRow.cash_out_total || 0),
+    netCashAdjustment,
+    adjustmentCount: Number(adjustmentRow.adjustment_count || 0),
+    netProfit: signedGrossProfit - totalExpenses + netCashAdjustment,
     transactionCount: Number(row.transaction_count || 0),
     expenseCount: Number(expenseRow.expense_count || 0),
     expensesByCategory: byExpense.rows.map((e: any) => ({ category: e.category, amount: Number(e.amount || 0) }))
