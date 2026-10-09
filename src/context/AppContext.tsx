@@ -1093,9 +1093,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       address: row.address || undefined, accountInfo: row.account_info ?? row.accountInfo ?? undefined,
       openingPayable: Number(row.opening_payable || 0), createdAt: row.created_at || new Date().toISOString(),
     } as Vendor));
+    // Keep the just-submitted entry's customer details visible immediately, even if
+    // the transactions endpoint's joined customer fields are briefly stale or empty.
+    const refreshedTransactions = mappedTransactions.map((row: Transaction) =>
+      row.id === tx.id || row.invoiceNumber === tx.invoiceNumber
+        ? {
+            ...row,
+            customerId: row.customerId || tx.customerId,
+            customerName: row.customerName || tx.customerName,
+            customerMobile: row.customerMobile || tx.customerMobile,
+            serviceItems: row.serviceItems?.length ? row.serviceItems : tx.serviceItems,
+          }
+        : row
+    );
     setData((prev: any) => ({
       ...prev,
-      transactions: mappedTransactions,
+      transactions: refreshedTransactions,
       customers: mappedCustomers,
       vendors: mappedVendors,
     }));
