@@ -1230,6 +1230,53 @@ app.get('/api/dashboard', auth, async (_req, res) => {
   });
 });
 
+app.get('/api/reports/profit-loss', auth, async (req, res) => {
+  const requested = String(req.query.timeframe || 'this_month');
+  const timeframe = ['all','today','this_month','this_year'].includes(requested) ? requested : 'this_month';
+  const txPeriod = `(
+    $1::text = 'all'
+    OR ($1::text = 'today' AND t.date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date)
+    OR ($1::text = 'this_month' AND t.date >= date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date AND t.date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date)
+    OR ($1::text = 'this_year' AND t.date >= date_trunc('year', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date AND t.date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date)
+  )`;
+  const expensePeriod = `(
+    $1::text = 'all'
+    OR ($1::text = 'today' AND (e.occurred_at AT TIME ZONE 'Asia/Dhaka')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date)
+    OR ($1::text = 'this_month' AND (e.occurred_at AT TIME ZONE 'Asia/Dhaka')::date >= date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date AND (e.occurred_at AT TIME ZONE 'Asia/Dhaka')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date)
+    OR ($1::text = 'this_year' AND (e.occurred_at AT TIME ZONE 'Asia/Dhaka')::date >= date_trunc('year', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date AND (e.occurred_at AT TIME ZONE 'Asia/Dhaka')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date)
+  )`;
+  const [sales, expenses, byExpense] = await Promise.all([
+    pool.query(`SELECT COUNT(*)::int transaction_count,
+      COALESCE(SUM(t.selling_price),0) total_sales,
+      COALESCE(SUM(t.selling_price-t.vendor_cost-t.account_cost),0) signed_gross_profit,
+      COALESCE(SUM(t.vendor_cost),0) vendor_cost,
+      COALESCE(SUM(t.account_cost),0) account_cost
+      FROM transactions t WHERE t.deleted_at IS NULL AND t.status <> 'CANCELLED' AND ${txPeriod}`, [timeframe]),
+    pool.query(`SELECT COUNT(*)::int expense_count, COALESCE(SUM(e.amount),0) total_expenses
+      FROM expenses e WHERE e.reversed_at IS NULL AND ${expensePeriod}`, [timeframe]),
+    pool.query(`SELECT e.category, COALESCE(SUM(e.amount),0) amount
+      FROM expenses e WHERE e.reversed_at IS NULL AND ${expensePeriod}
+      GROUP BY e.category ORDER BY SUM(e.amount) DESC`, [timeframe])
+  ]);
+  const row = sales.rows[0] || {};
+  const expenseRow = expenses.rows[0] || {};
+  const signedGrossProfit = Number(row.signed_gross_profit || 0);
+  const totalExpenses = Number(expenseRow.total_expenses || 0);
+  res.json({
+    timeframe,
+    totalSales: Number(row.total_sales || 0),
+    signedGrossProfit,
+    vendorCost: Number(row.vendor_cost || 0),
+    accountCost: Number(row.account_cost || 0),
+    totalDirectCost: Number(row.vendor_cost || 0) + Number(row.account_cost || 0),
+    totalExpenses,
+    netProfit: signedGrossProfit - totalExpenses,
+    transactionCount: Number(row.transaction_count || 0),
+    expenseCount: Number(expenseRow.expense_count || 0),
+    expensesByCategory: byExpense.rows.map((e: any) => ({ category: e.category, amount: Number(e.amount || 0) }))
+  });
+});
+
 app.post('/api/customers', auth, async (req,res) => {
   try {
     const name=String(req.body?.name||'').trim(), mobile=String(req.body?.mobile||'').trim();
