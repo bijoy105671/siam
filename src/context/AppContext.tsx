@@ -1071,6 +1071,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       vendorPaid: Number(row.vendor_paid ?? row.vendorPaid ?? 0),
       vendorDue: Number(row.vendor_due ?? row.vendorDue ?? 0),
       grossProfit: Number(row.gross_profit ?? row.grossProfit ?? 0),
+      vendorPaymentMethod: row.vendor_payment_method ?? row.vendorPaymentMethod ?? 'Cash',
+      customerPaymentMethod: row.customer_payment_method ?? row.customerPaymentMethod ?? 'Cash',
+      accountCost: Number(row.account_cost ?? row.accountCost ?? 0),
+      accountCostPaymentMethod: row.account_cost_payment_method ?? row.accountCostPaymentMethod,
+      serviceItems: (() => {
+        const rawItems = row.service_items ?? row.serviceItems;
+        if (typeof rawItems === 'string') {
+          try { return JSON.parse(rawItems); } catch { return []; }
+        }
+        return Array.isArray(rawItems) ? rawItems : [];
+      })(),
       flightDetails: row.flight_details
         ? (typeof row.flight_details === 'string' ? JSON.parse(row.flight_details) : row.flight_details)
         : row.flightDetails,
