@@ -31,18 +31,19 @@ export const ReportsView: React.FC = () => {
   const [allTimeTotals, setAllTimeTotals] = useState<{ totalSales: number; signedGrossProfit: number; totalExpenses: number } | null>(null);
   const [allTimeTotalsError, setAllTimeTotalsError] = useState<string | null>(null);
 
-  // All Time totals must come from the server, not the UI's capped 500-row transaction list
-  // or locally cached expenses.
+  // All reporting periods use server aggregates so an incomplete/cached client list
+  // cannot incorrectly show expenses without their matching sales and service costs.
   useEffect(() => {
-    if (!USE_SERVER_API || timeframe !== 'all') return;
+    if (!USE_SERVER_API) return;
     let cancelled = false;
     setAllTimeTotalsError(null);
-    api.dashboard().then((response: any) => {
+    setAllTimeTotals(null);
+    api.profitLossReport(timeframe).then((response: any) => {
       if (cancelled) return;
       setAllTimeTotals({
-        totalSales: Number(response.sales?.total_sales || 0),
-        signedGrossProfit: Number(response.sales?.signed_gross_profit || 0),
-        totalExpenses: Number(response.expenses?.total_expense || 0),
+        totalSales: Number(response.totalSales || 0),
+        signedGrossProfit: Number(response.signedGrossProfit || 0),
+        totalExpenses: Number(response.totalExpenses || 0),
       });
     }).catch((error) => {
       if (cancelled) return;
@@ -89,13 +90,13 @@ export const ReportsView: React.FC = () => {
   const localAccountCost = filteredTxs.reduce((sum, t) => sum + Number(t.accountCost || 0), 0);
   const localSignedGrossProfit = filteredTxs.reduce((sum, t) => sum + (t.sellingPrice - t.vendorCost - Number(t.accountCost || 0)), 0);
   const localTotalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const useServerAllTime = timeframe === 'all' && USE_SERVER_API && allTimeTotals !== null && !allTimeTotalsError;
-  const totalSales = useServerAllTime ? allTimeTotals.totalSales : localTotalSales;
-  const signedGrossProfit = useServerAllTime ? allTimeTotals.signedGrossProfit : localSignedGrossProfit;
-  const totalDirectCost = useServerAllTime ? totalSales - signedGrossProfit : localVendorCost + localAccountCost;
+  const useServerReport = USE_SERVER_API && allTimeTotals !== null && !allTimeTotalsError;
+  const totalSales = useServerReport ? allTimeTotals.totalSales : localTotalSales;
+  const signedGrossProfit = useServerReport ? allTimeTotals.signedGrossProfit : localSignedGrossProfit;
+  const totalDirectCost = useServerReport ? totalSales - signedGrossProfit : localVendorCost + localAccountCost;
   const totalGrossProfit = Math.max(0, signedGrossProfit);
   const totalGrossLoss = Math.max(0, -signedGrossProfit);
-  const totalExpenses = useServerAllTime ? allTimeTotals.totalExpenses : localTotalExpenses;
+  const totalExpenses = useServerReport ? allTimeTotals.totalExpenses : localTotalExpenses;
   const netProfit = signedGrossProfit - totalExpenses;
 
   // Service-wise breakdown
@@ -210,7 +211,7 @@ export const ReportsView: React.FC = () => {
             <div>
               <div className="text-[10px] text-slate-500 uppercase font-semibold">Gross Profit / (Loss)</div>
               <div className={`text-lg font-bold mt-0.5 ${signedGrossProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                {timeframe === 'all' && USE_SERVER_API && !allTimeTotals
+                {USE_SERVER_API && !allTimeTotals
                   ? (allTimeTotalsError ? 'Unable to verify' : 'Loading…')
                   : formatCurrency(signedGrossProfit)}
               </div>
