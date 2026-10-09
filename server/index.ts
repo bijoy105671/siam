@@ -2190,70 +2190,166 @@ app.post('/api/entries', auth, async (req, res) => {
     const body = req.body ?? {};
     const customerName = String(body.customer?.name || body.customerName || '').trim();
     const mobile = String(body.customer?.mobile || body.mobile || '').trim();
-    const sellingPrice = Number(body.sellingPrice || 0);
-    const customerPaid = Number(body.customerPaid || 0);
-    const vendorCost = Number(body.vendorCost || 0);
-    const vendorPaid = Number(body.vendorPaid || 0);
-    const accountCost = Number(body.accountCost || 0);
-    const accountCostPaymentMethod = String(body.accountCostPaymentMethod || 'cash').toLowerCase();
-    const customerPaymentMethod = String(body.customerPaymentMethod || body.paymentMethod || 'cash').toLowerCase();
-    const vendorPaymentMethod = String(body.vendorPaymentMethod || 'cash').toLowerCase();
     if (!customerName || !mobile) return res.status(400).json({ error: 'Customer name and mobile are required' });
-    if (![sellingPrice, customerPaid, vendorCost, vendorPaid, accountCost].every(Number.isFinite) || [sellingPrice, customerPaid, vendorCost, vendorPaid, accountCost].some(v => v < 0)) return res.status(400).json({ error: 'Financial amounts must be valid non-negative numbers' });
-    if (customerPaid > sellingPrice) return res.status(400).json({ error: 'Customer payment cannot exceed selling price' });
-    if (vendorPaid > vendorCost) return res.status(400).json({ error: 'Vendor payment cannot exceed vendor cost' });
-    if (accountCost > 0 && vendorCost > 0) return res.status(400).json({ error: 'Use either vendor cost or account-funded cost, not both' });
-    if (accountCost > 0 && !ACCOUNT_METHODS.has(accountCostPaymentMethod)) return res.status(400).json({ error: 'Invalid account-funded cost payment method' });
-    if (customerPaid > 0 && !ACCOUNT_METHODS.has(customerPaymentMethod)) return res.status(400).json({ error: 'Invalid customer payment method' });
-    if (vendorPaid > 0 && !ACCOUNT_METHODS.has(vendorPaymentMethod)) return res.status(400).json({ error: 'Invalid vendor payment method' });
-    await client.query('BEGIN');
 
-    const customerResult = await client.query(`INSERT INTO customers (name,mobile,whatsapp,email,address,nid,passport_number,passport_expiry,notes,photo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (organization_id,mobile) DO UPDATE SET name=EXCLUDED.name, whatsapp=COALESCE(EXCLUDED.whatsapp,customers.whatsapp), email=COALESCE(EXCLUDED.email,customers.email), address=COALESCE(EXCLUDED.address,customers.address), updated_at=now() RETURNING id`, [customerName, mobile, body.customer?.whatsapp || null, body.customer?.email || null, body.customer?.address || null, body.customer?.nid || null, body.customer?.passportNumber || null, body.customer?.passportExpiry || null, body.customer?.notes || null, body.customer?.photo || null]);
+    const incomingItems = Array.isArray(body.serviceItems) && body.serviceItems.length
+      ? body.serviceItems
+      : [{
+          serviceName: body.serviceName || body.service?.name || 'General Service',
+          description: body.description,
+          flightDetails: body.flightDetails,
+          sellingPrice: body.sellingPrice,
+          customerPaid: body.customerPaid,
+          customerPaymentMethod: body.customerPaymentMethod || body.paymentMethod || 'cash',
+          hasVendor: Boolean(body.vendor?.name || body.vendorName),
+          vendorName: body.vendor?.name || body.vendorName || '',
+          vendorMobile: body.vendor?.mobile || body.vendorMobile || '',
+          vendorCompany: body.vendor?.company || body.vendorCompany || '',
+          vendorPhoto: body.vendor?.photo || null,
+          vendorCost: body.vendorCost,
+          vendorPaid: body.vendorPaid,
+          vendorPaymentMethod: body.vendorPaymentMethod || 'cash',
+          accountCost: body.accountCost,
+          accountCostPaymentMethod: body.accountCostPaymentMethod || 'cash',
+        }];
+    const items = incomingItems.map((raw: any, index: number) => ({
+      lineNo: index + 1,
+      serviceName: String(raw.serviceName || 'General Service').trim(),
+      description: String(raw.description || '').trim() || null,
+      flightDetails: raw.flightDetails || null,
+      sellingPrice: Number(raw.sellingPrice || 0),
+      customerPaid: Number(raw.customerPaid || 0),
+      customerPaymentMethod: String(raw.customerPaymentMethod || body.customerPaymentMethod || 'cash').toLowerCase(),
+      hasVendor: Boolean(raw.hasVendor),
+      vendorId: null as string | null,
+      vendorName: String(raw.vendorName || '').trim(),
+      vendorMobile: String(raw.vendorMobile || '').trim(),
+      vendorCompany: String(raw.vendorCompany || '').trim(),
+      vendorPhoto: raw.vendorPhoto || null,
+      vendorCost: Number(raw.vendorCost || 0),
+      vendorPaid: Number(raw.vendorPaid || 0),
+      vendorPaymentMethod: String(raw.vendorPaymentMethod || 'cash').toLowerCase(),
+      accountCost: Number(raw.accountCost || 0),
+      accountCostPaymentMethod: String(raw.accountCostPaymentMethod || 'cash').toLowerCase(),
+      serviceId: null as string | null,
+    }));
+    if (!items.length) throw new Error('At least one service is required');
+    for (const item of items) {
+      if (![item.sellingPrice, item.customerPaid, item.vendorCost, item.vendorPaid, item.accountCost].every(Number.isFinite) ||
+          [item.sellingPrice, item.customerPaid, item.vendorCost, item.vendorPaid, item.accountCost].some((v:number) => v < 0)) {
+        throw new Error('Service financial amounts must be valid non-negative numbers');
+      }
+      if (item.sellingPrice <= 0) throw new Error('Every service must have a selling price greater than zero');
+      if (item.customerPaid > item.sellingPrice) throw new Error('Customer payment cannot exceed that service selling price');
+      if (item.vendorPaid > item.vendorCost) throw new Error('Vendor payment cannot exceed that service vendor cost');
+      if (item.accountCost > 0 && item.vendorCost > 0) throw new Error('For each service, use either vendor cost or account-funded cost, not both');
+      if (item.hasVendor && item.vendorCost > 0 && !item.vendorName) throw new Error('Vendor name is required when a service has vendor cost');
+      if (item.customerPaid > 0 && !ACCOUNT_METHODS.has(item.customerPaymentMethod)) throw new Error('Invalid customer payment method');
+      if (item.vendorPaid > 0 && !ACCOUNT_METHODS.has(item.vendorPaymentMethod)) throw new Error('Invalid vendor payment method');
+      if (item.accountCost > 0 && !ACCOUNT_METHODS.has(item.accountCostPaymentMethod)) throw new Error('Invalid account-funded cost payment method');
+    }
+    const sellingPrice = items.reduce((sum:number,item:any)=>sum+item.sellingPrice,0);
+    const customerPaid = items.reduce((sum:number,item:any)=>sum+item.customerPaid,0);
+    const vendorCost = items.reduce((sum:number,item:any)=>sum+item.vendorCost,0);
+    const vendorPaid = items.reduce((sum:number,item:any)=>sum+item.vendorPaid,0);
+    const accountCost = items.reduce((sum:number,item:any)=>sum+item.accountCost,0);
+    const customerDue = Math.max(0, sellingPrice - customerPaid);
+    const vendorDue = Math.max(0, vendorCost - vendorPaid);
+    const grossProfit = sellingPrice - vendorCost - accountCost;
+    const status = customerDue === 0 ? 'PAID' : customerPaid > 0 ? 'PARTIAL' : 'DUE';
+
+    await client.query('BEGIN');
+    const customerResult = await client.query(
+      `INSERT INTO customers (name,mobile,whatsapp,email,address,nid,passport_number,passport_expiry,notes,photo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (organization_id,mobile) DO UPDATE SET name=EXCLUDED.name,
+       whatsapp=COALESCE(EXCLUDED.whatsapp,customers.whatsapp), email=COALESCE(EXCLUDED.email,customers.email),
+       address=COALESCE(EXCLUDED.address,customers.address), updated_at=now() RETURNING id`,
+      [customerName,mobile,body.customer?.whatsapp||null,body.customer?.email||null,body.customer?.address||null,
+       body.customer?.nid||null,body.customer?.passportNumber||null,body.customer?.passportExpiry||null,
+       body.customer?.notes||null,body.customer?.photo||null]
+    );
     const customerId = customerResult.rows[0].id;
 
-    let vendorId: string | null = null;
-    if (String(body.vendor?.name || body.vendorName || '').trim()) {
-      const vendorName = String(body.vendor?.name || body.vendorName).trim();
-      const existing = await client.query('SELECT id FROM vendors WHERE lower(name)=lower($1) LIMIT 1', [vendorName]);
-      if (existing.rows[0]?.id) { vendorId = existing.rows[0].id; if (body.vendor?.photo) await client.query('UPDATE vendors SET photo=$1, company=COALESCE($2,company), mobile=COALESCE($3,mobile), updated_at=now() WHERE id=$4', [body.vendor.photo, body.vendor.company || null, body.vendor.mobile || null, vendorId]); } else { vendorId = (await client.query('INSERT INTO vendors (name,company,mobile,whatsapp,email,address,account_info,photo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id', [vendorName, body.vendor?.company || null, body.vendor?.mobile || null, body.vendor?.whatsapp || null, body.vendor?.email || null, body.vendor?.address || null, body.vendor?.accountInfo || null, body.vendor?.photo || null])).rows[0].id; }
+    for (const item of items) {
+      const existingService = await client.query('SELECT id FROM services WHERE lower(name)=lower($1) LIMIT 1',[item.serviceName]);
+      item.serviceId = existingService.rows[0]?.id ||
+        (await client.query('INSERT INTO services (name,category) VALUES ($1,$2) RETURNING id',[item.serviceName,'Other Service'])).rows[0].id;
+      if (!item.hasVendor) {
+        item.vendorCost = 0;
+        item.vendorPaid = 0;
+        item.vendorName = '';
+      } else if (item.vendorName) {
+        const existingVendor = await client.query('SELECT id FROM vendors WHERE lower(name)=lower($1) LIMIT 1',[item.vendorName]);
+        if (existingVendor.rows[0]?.id) {
+          item.vendorId = existingVendor.rows[0].id;
+          if (item.vendorPhoto || item.vendorCompany || item.vendorMobile) {
+            await client.query('UPDATE vendors SET photo=COALESCE($1,photo), company=COALESCE($2,company), mobile=COALESCE($3,mobile), updated_at=now() WHERE id=$4',
+              [item.vendorPhoto,item.vendorCompany||null,item.vendorMobile||null,item.vendorId]);
+          }
+        } else {
+          item.vendorId = (await client.query('INSERT INTO vendors (name,company,mobile,photo) VALUES ($1,$2,$3,$4) RETURNING id',
+            [item.vendorName,item.vendorCompany||null,item.vendorMobile||null,item.vendorPhoto])).rows[0].id;
+        }
+      }
     }
-
-    let serviceId: string | null = null;
-    const serviceName = String(body.serviceName || body.service?.name || '').trim();
-    if (serviceName) {
-      const existing = await client.query('SELECT id FROM services WHERE lower(name)=lower($1) LIMIT 1', [serviceName]);
-      serviceId = existing.rows[0]?.id || (await client.query('INSERT INTO services (name,category) VALUES ($1,$2) RETURNING id', [serviceName, body.service?.category || 'Other Service'])).rows[0].id;
-    }
-
+    const vendorIds = [...new Set(items.map((item:any)=>item.vendorId).filter(Boolean))];
+    const parentVendorId = vendorIds.length === 1 ? vendorIds[0] : null;
+    const firstItem = items[0];
     const invoice = 'SIAM-' + String((await client.query("SELECT nextval('invoice_number_seq') seq")).rows[0].seq).padStart(6, '0');
-    const due = sellingPrice - customerPaid;
-    const vendorDue = vendorCost - vendorPaid;
-    const status = due === 0 ? 'PAID' : customerPaid > 0 ? 'PARTIAL' : 'DUE';
-    const grossProfit = sellingPrice - vendorCost - accountCost;
-    const tx = (await client.query(`INSERT INTO transactions (invoice_number,date,time,created_by,customer_id,service_id,description,flight_details,selling_price,customer_paid,customer_due,vendor_id,vendor_cost,vendor_paid,vendor_due,account_cost,account_cost_payment_method,gross_profit,reminder_date,reminder_time,reminder_status,reminder_note,status,notes) VALUES ($1,COALESCE($2::date,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date),COALESCE($3::time,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::time),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`, [invoice, body.date || null, body.time || null, req.session.userId, customerId, serviceId, body.description || null, body.flightDetails ? JSON.stringify(body.flightDetails) : null, sellingPrice, customerPaid, due, vendorId, vendorCost, vendorPaid, vendorDue, accountCost, accountCost > 0 ? accountCostPaymentMethod : null, grossProfit, body.reminderDate || null, body.reminderTime || null, body.reminderStatus || null, body.reminderNote || null, status, body.notes || null])).rows[0];
+    const tx = (await client.query(
+      `INSERT INTO transactions (invoice_number,date,time,created_by,customer_id,service_id,description,flight_details,
+       selling_price,customer_paid,customer_due,vendor_id,vendor_cost,vendor_paid,vendor_due,account_cost,
+       account_cost_payment_method,gross_profit,reminder_date,reminder_time,reminder_status,reminder_note,status,notes)
+       VALUES ($1,COALESCE($2::date,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::date),
+       COALESCE($3::time,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Dhaka')::time),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
+      [invoice,body.date||null,body.time||null,req.session.userId,customerId,firstItem.serviceId,
+       items.map((item:any)=>item.description || item.serviceName).join(' / '),
+       firstItem.flightDetails ? JSON.stringify(firstItem.flightDetails) : null,
+       sellingPrice,customerPaid,customerDue,parentVendorId,vendorCost,vendorPaid,vendorDue,accountCost,
+       items.find((item:any)=>item.accountCost>0)?.accountCostPaymentMethod || null,grossProfit,
+       body.reminderDate||null,body.reminderTime||null,body.reminderStatus||null,body.reminderNote||null,status,body.notes||null]
+    )).rows[0];
 
-    if (accountCost > 0) {
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [accountCostPaymentMethod]);
-      const balance = await accountBalance(client, accountCostPaymentMethod);
-      if (accountCost > balance) throw new Error('Insufficient balance for account-funded service cost');
-      await addAccountEntry(client, accountCostPaymentMethod, -accountCost, 'service_cost', tx.id, req.session.userId!, body.notes || 'In-house service cost');
+    for (const item of items) {
+      await client.query(
+        `INSERT INTO transaction_items (transaction_id,line_no,service_id,description,flight_details,selling_price,customer_paid,
+         customer_payment_method,vendor_id,vendor_cost,vendor_paid,vendor_due,account_cost,account_cost_payment_method,gross_profit)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        [tx.id,item.lineNo,item.serviceId,item.description,item.flightDetails?JSON.stringify(item.flightDetails):null,
+         item.sellingPrice,item.customerPaid,item.customerPaymentMethod,item.vendorId,item.vendorCost,item.vendorPaid,
+         Math.max(0,item.vendorCost-item.vendorPaid),item.accountCost,item.accountCost>0?item.accountCostPaymentMethod:null,
+         item.sellingPrice-item.vendorCost-item.accountCost]
+      );
+      if (item.accountCost > 0) {
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[item.accountCostPaymentMethod]);
+        const balance = await accountBalance(client,item.accountCostPaymentMethod);
+        if (item.accountCost > balance) throw new Error('Insufficient balance for account-funded service cost');
+        await addAccountEntry(client,item.accountCostPaymentMethod,-item.accountCost,'service_cost',tx.id,req.session.userId!,
+          item.description || item.serviceName);
+      }
+      if (item.customerPaid > 0) {
+        const payment = (await client.query(
+          "INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,'customer',$2,$3,$4,$5,$6,$7) RETURNING *",
+          [tx.id,customerId,item.customerPaid,item.customerPaymentMethod,req.session.userId,body.paymentNote||null,body.paymentReference||null]
+        )).rows[0];
+        await addAccountEntry(client,item.customerPaymentMethod,item.customerPaid,'customer_payment',tx.id,req.session.userId!,
+          body.paymentNote || item.description || item.serviceName,payment.id);
+      }
+      if (item.vendorPaid > 0) {
+        if (!item.vendorId) throw new Error('Vendor is required when vendor payment is entered');
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[item.vendorPaymentMethod]);
+        const balance = await accountBalance(client,item.vendorPaymentMethod);
+        if (item.vendorPaid > balance) throw new Error('Insufficient balance for vendor payment');
+        const payment = (await client.query(
+          "INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,'vendor',$2,$3,$4,$5,$6,$7) RETURNING *",
+          [tx.id,item.vendorId,item.vendorPaid,item.vendorPaymentMethod,req.session.userId,body.vendorPaymentNote||null,body.vendorPaymentReference||null]
+        )).rows[0];
+        await addAccountEntry(client,item.vendorPaymentMethod,-item.vendorPaid,'vendor_payment',tx.id,req.session.userId!,
+          body.vendorPaymentNote || item.description || item.serviceName,payment.id);
+      }
     }
-
-    if (customerPaid > 0) {
-      const payment = (await client.query('INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,\'customer\',$2,$3,$4,$5,$6,$7) RETURNING *', [tx.id, customerId, customerPaid, customerPaymentMethod, req.session.userId, body.paymentNote || null, body.paymentReference || null])).rows[0];
-      await addAccountEntry(client, customerPaymentMethod, customerPaid, 'customer_payment', tx.id, req.session.userId!, body.paymentNote, payment.id);
-    }
-
-    if (vendorPaid > 0) {
-      if (!vendorId) throw new Error('Vendor is required when vendor payment is entered');
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [vendorPaymentMethod]);
-      const balance = await accountBalance(client, vendorPaymentMethod);
-      if (vendorPaid > balance) throw new Error('Insufficient balance for vendor payment');
-      const payment = (await client.query('INSERT INTO payments (transaction_id,payment_type,entity_id,amount,payment_method,recorded_by,note,reference) VALUES ($1,\'vendor\',$2,$3,$4,$5,$6,$7) RETURNING *', [tx.id, vendorId, vendorPaid, vendorPaymentMethod, req.session.userId, body.vendorPaymentNote || null, body.vendorPaymentReference || null])).rows[0];
-      await addAccountEntry(client, vendorPaymentMethod, -vendorPaid, 'vendor_payment', tx.id, req.session.userId!, body.vendorPaymentNote, payment.id);
-    }
-
-    await audit(client, req.session.userId!, 'ONE_ENTRY_CREATED', 'Transaction', tx.id, null, tx);
+    await audit(client,req.session.userId!,'ONE_ENTRY_CREATED','Transaction',tx.id,null,{...tx,serviceItems:items});
     await client.query('COMMIT');
     res.status(201).json({ transaction: tx, invoiceNumber: invoice });
   } catch (e) {
