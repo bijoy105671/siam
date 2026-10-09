@@ -247,6 +247,29 @@ function mapServerTransaction(tx: ServerTransaction): ServerTransaction {
     flightDetails: tx.flight_details
       ? (typeof tx.flight_details === 'string' ? JSON.parse(tx.flight_details) : tx.flight_details)
       : undefined,
+    serviceItems: (() => {
+      const rows = tx.service_items ?? tx.serviceItems;
+      if (!rows) return undefined;
+      const parsed = typeof rows === 'string' ? JSON.parse(rows) : rows;
+      return Array.isArray(parsed) ? parsed.map((item: any) => ({
+        id: item.id,
+        lineNo: Number(item.lineNo ?? item.line_no ?? 0),
+        serviceId: item.serviceId ?? item.service_id,
+        serviceName: item.serviceName ?? item.service_name ?? 'General Service',
+        description: item.description || undefined,
+        sellingPrice: Number(item.sellingPrice ?? item.selling_price ?? 0),
+        customerPaid: Number(item.customerPaid ?? item.customer_paid ?? 0),
+        customerPaymentMethod: item.customerPaymentMethod ?? item.customer_payment_method,
+        vendorId: item.vendorId ?? item.vendor_id ?? undefined,
+        vendorName: item.vendorName ?? item.vendor_name ?? undefined,
+        vendorCost: Number(item.vendorCost ?? item.vendor_cost ?? 0),
+        vendorPaid: Number(item.vendorPaid ?? item.vendor_paid ?? 0),
+        vendorDue: Number(item.vendorDue ?? item.vendor_due ?? 0),
+        accountCost: Number(item.accountCost ?? item.account_cost ?? 0),
+        accountCostPaymentMethod: item.accountCostPaymentMethod ?? item.account_cost_payment_method,
+        flightDetails: item.flightDetails ?? item.flight_details ?? undefined,
+      })) : undefined;
+    })(),
     sellingPrice: Number(tx.selling_price || 0),
     customerPaid: Number(tx.customer_paid || 0),
     customerDue: Number(tx.customer_due || 0),
@@ -326,5 +349,5 @@ export const createServerOneEntry = async (input: Record<string, any>) => {
     '/api/entries',
     { method: 'POST', body: JSON.stringify(payload) }
   );
-  return { ...result, transaction: mapServerTransaction(result.transaction) };
+  return { ...result, transaction: { ...mapServerTransaction(result.transaction), serviceItems: input.serviceItems || [] } };
 };
