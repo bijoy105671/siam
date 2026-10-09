@@ -1526,9 +1526,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    const vendorEntityId = params.entityId || targetTx.vendorId;
+    const lineVendorIds = Array.from(new Set(
+      (targetTx.serviceItems || [])
+        .map((item) => item.vendorId)
+        .filter((id): id is string => Boolean(id))
+    ));
+    // For a single-vendor invoice, infer the vendor from its service line.
+    // Multi-vendor invoices must pass the explicitly selected vendor entityId.
+    const vendorEntityId = params.entityId || targetTx.vendorId ||
+      (lineVendorIds.length === 1 ? lineVendorIds[0] : undefined);
     if (params.paymentType === 'vendor' && !vendorEntityId) {
-      window.alert('Select the vendor linked to this service before recording payment.');
+      window.alert(lineVendorIds.length > 1
+        ? 'This invoice has multiple vendors. Select the vendor for the service you are paying.'
+        : 'This service has no linked vendor yet. Edit the invoice and link the correct vendor before recording payment.');
       return;
     }
 
@@ -1551,7 +1561,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         transactionId: params.transactionId,
         paymentType: params.paymentType,
         entityId: params.paymentType === 'customer' ? targetTx.customerId : (vendorEntityId || 'vend_unknown'),
-        entityName: params.paymentType === 'customer' ? targetTx.customerName : (targetTx.vendorName || data.vendors.find((v: Vendor) => v.id === vendorEntityId)?.name || 'Vendor'),
+        entityName: params.paymentType === 'customer' ? targetTx.customerName : (
+          data.vendors.find((v: Vendor) => v.id === vendorEntityId)?.name ||
+          targetTx.serviceItems?.find((item) => item.vendorId === vendorEntityId)?.vendorName ||
+          targetTx.vendorName || 'Vendor'
+        ),
         amount,
         paymentMethod: params.paymentMethod,
         date: params.date,
