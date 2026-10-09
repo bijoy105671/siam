@@ -625,19 +625,26 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         <td className="py-3 px-4 text-center"><span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-amber-100 text-amber-800 border-amber-200">LOAN / ADVANCE · NON-SALE</span></td>
                         <td className="py-3 px-4 text-right font-sans">
                           <div className="flex items-center justify-end gap-1">
-                            <button type="button" title="Edit Loan / Advance" onClick={() => {
+                            <button type="button" title="Edit Loan / Advance" onClick={async () => {
                               const amountText = window.prompt('Correct loan / advance amount', String(Number(tx.loanAmount || 0)));
                               if (amountText === null) return;
                               const amount = Number(amountText);
                               if (!Number.isFinite(amount) || amount <= 0) { window.alert('Enter a valid amount greater than zero.'); return; }
                               const note = window.prompt('Update note (leave blank to keep current note)', tx.notes || '');
-                              updateLoanAdvance(tx.id, { amount, ...(note !== null ? { note } : {}) } as any);
-                              window.location.reload();
+                              if (note === null) return;
+                              try {
+                                await updateLoanAdvance(tx.id, { amount, note } as any);
+                                window.alert('Loan / advance updated.');
+                                window.location.reload();
+                              } catch (error) { window.alert(error instanceof Error ? error.message : 'Loan / advance could not be updated.'); }
                             }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" aria-label="Edit loan or advance"><Edit className="w-4 h-4" /></button>
-                            <button type="button" title="Delete Loan / Advance" onClick={() => {
+                            <button type="button" title="Delete Loan / Advance" onClick={async () => {
                               if (!window.confirm('Delete this loan / advance record? This affects party and account balances and will be audited.')) return;
-                              deleteLoanAdvance(tx.id);
-                              window.location.reload();
+                              try {
+                                await deleteLoanAdvance(tx.id);
+                                window.alert('Loan / advance reversed and account balance recalculated.');
+                                window.location.reload();
+                              } catch (error) { window.alert(error instanceof Error ? error.message : 'Loan / advance could not be deleted.'); }
                             }} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded" aria-label="Delete loan or advance"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         </td>
@@ -670,7 +677,25 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         <td className="py-3 px-4 text-center"><span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-sky-100 text-sky-800 border-sky-200">TRANSFER · NON-SALE</span></td>
                         <td className="py-3 px-4 text-right font-sans">
                           <div className="flex items-center justify-end gap-1">
-                            <button type="button" title="Edit Fund Transfer" onClick={() => window.alert('Fund Transfer direct editing needs a server-side edit endpoint. To protect account balances, this record has not been changed.')} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" aria-label="Edit fund transfer"><Edit className="w-4 h-4" /></button>
+                            <button type="button" title="Edit Fund Transfer" onClick={async () => {
+                              const fromAccount = window.prompt('Source account (cash, bkash, nagad, rocket, bank, card, other)', String(tx.transferFrom || 'cash').toLowerCase());
+                              if (fromAccount === null) return;
+                              const toAccount = window.prompt('Destination account (cash, bkash, nagad, rocket, bank, card, other)', String(tx.transferTo || 'bank').toLowerCase());
+                              if (toAccount === null) return;
+                              const amountText = window.prompt('Transfer amount', String(Number(tx.transferAmount || 0)));
+                              if (amountText === null) return;
+                              const amount = Number(amountText);
+                              if (!Number.isFinite(amount) || amount <= 0) { window.alert('Enter a valid amount greater than zero.'); return; }
+                              const reason = window.prompt('Transfer reason', String(tx.transferReason || 'Account Transfer'));
+                              if (reason === null) return;
+                              const note = window.prompt('Transfer note (optional)', '');
+                              if (note === null) return;
+                              try {
+                                await api.updateFundTransfer(tx.id, { fromAccount: fromAccount.trim().toLowerCase(), toAccount: toAccount.trim().toLowerCase(), amount, reason: reason.trim(), note });
+                                window.alert('Fund transfer updated. Both account balances have been recalculated.');
+                                window.location.reload();
+                              } catch (error) { window.alert(error instanceof Error ? error.message : 'Fund transfer could not be updated.'); }
+                            }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" aria-label="Edit fund transfer"><Edit className="w-4 h-4" /></button>
                             <button type="button" title="Delete / Reverse Fund Transfer" onClick={async () => {
                               if (!window.confirm('Reverse this fund transfer? Both account balances will be recalculated.')) return;
                               try { await api.reverseFundTransfer(tx.id); window.location.reload(); }
