@@ -17,6 +17,12 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
   const [note, setNote] = useState('');
   const [reference, setReference] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [settlementId, setSettlementId] = useState<string | null>(null);
+  const [settlementAmount, setSettlementAmount] = useState<number | ''>('');
+  const [settlementMethod, setSettlementMethod] = useState<PaymentMethod>('Cash');
+  const [settlementNote, setSettlementNote] = useState('Loan / Advance settlement');
+  const [savingSettlement, setSavingSettlement] = useState(false);
   const [profileModal, setProfileModal] = useState<'customer' | 'vendor' | null>(null);
   const [profileName, setProfileName] = useState('');
   const [profileMobile, setProfileMobile] = useState('');
@@ -67,7 +73,7 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
 
   const reset = () => {
     setPartyId(''); setKind('advance'); setDirection('received'); setAmount('');
-    setPaymentMethod('Cash'); setNote(''); setReference(''); setEditingId(null);
+    setPaymentMethod('Cash'); setNote(''); setReference(''); setEditingId(null); setEditModalOpen(false);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -91,6 +97,7 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
       if (editingId) await updateLoanAdvanceAsync(editingId, payload);
       else await addLoanAdvanceAsync(payload);
       reset();
+      setEditModalOpen(false);
     } catch (err) { alert(err instanceof Error ? err.message : 'Could not save loan/advance.'); }
   };
 
@@ -105,7 +112,7 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
     setEditingId(r.id); setPartyType(r.partyType); setPartyId(r.partyId); setKind(r.kind);
     setDirection(r.direction); setAmount(r.amount); setPaymentMethod(r.paymentMethod);
     setNote(r.note || ''); setReference(r.reference || '');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setEditModalOpen(true);
   };
 
   const partyBalances = useMemo(() => {
@@ -194,7 +201,7 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
     adjustLoanAdvanceAsync(loanAdvanceId, tx.id, value, noteValue).then(() => alert('Loan / Advance adjusted successfully.')).catch(err => alert(err instanceof Error ? err.message : 'Adjustment could not be completed.'));
   };
 
-  const handleCashSettlement = async (loanAdvanceId: string) => {
+  const handleCashSettlement = (loanAdvanceId: string) => {
     const record = loanAdvances.find((r) => r.id === loanAdvanceId);
     if (!record) return;
     const available = getAvailable(loanAdvanceId);
@@ -202,23 +209,28 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
       alert('এই Loan/Advance-এর settle করার মতো অবশিষ্ট ব্যালেন্স নেই।');
       return;
     }
-    const raw = window.prompt(
-      'Party: ' + record.partyName + '\\nAvailable balance: ৳' + available +
-      '\\nএখন বাস্তবে যত টাকা ফেরত/পরিশোধ হচ্ছে সেই Amount লিখুন:',
-      String(available)
-    );
-    if (raw === null) return;
-    const value = Number(raw);
+    setSettlementId(loanAdvanceId);
+    setSettlementAmount(available);
+    setSettlementMethod(record.paymentMethod);
+    setSettlementNote('Loan / Advance settlement');
+  };
+
+  const saveSettlement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const record = loanAdvances.find((r) => r.id === settlementId);
+    if (!record) return;
+    const available = getAvailable(record.id);
+    const value = Number(settlementAmount);
     if (!Number.isFinite(value) || value <= 0 || value > available) {
       alert('Amount অবশ্যই ০-এর বেশি এবং Available Balance-এর সমান বা কম হতে হবে।');
       return;
     }
-    const noteValue = window.prompt('Settlement note (optional):', 'Loan / Advance settlement');
     const now = new Date();
     const dhaka = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit', hour12: false,
     }).formatToParts(now).reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {} as Record<string, string>);
+    setSavingSettlement(true);
     try {
       await addLoanAdvanceAsync({
         partyType: record.partyType,
@@ -227,16 +239,16 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
         kind: record.kind,
         direction: record.direction === 'received' ? 'given' : 'received',
         amount: value,
-        paymentMethod: record.paymentMethod,
+        paymentMethod: settlementMethod,
         date: `${dhaka.year}-${dhaka.month}-${dhaka.day}`,
         time: `${dhaka.hour}:${dhaka.minute}`,
-        note: noteValue?.trim() || 'Loan / Advance settlement',
+        note: settlementNote.trim() || 'Loan / Advance settlement',
         reference: record.reference || undefined,
       });
-      alert('Settlement record saved. Account balance and Loan / Advance balance have been updated.');
+      setSettlementId(null);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Settlement save করা যায়নি।');
-    }
+    } finally { setSavingSettlement(false); }
   };
 
   const totals = useMemo(() => {
@@ -391,6 +403,51 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
           })}{!adjustmentRows.length && <tr><td colSpan={6} className="p-8 text-center text-slate-400">No adjustments yet.</td></tr>}</tbody>
         </table></div>
       </div>
+
+      {editModalOpen && editingId && (
+        <div className="fixed inset-0 z-[70] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
+          <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-200">
+            <div className="sticky top-0 z-10 bg-gradient-to-r from-blue-700 to-indigo-700 text-white p-4 sm:p-5 flex items-center justify-between">
+              <div><div className="flex items-center gap-2 text-sm font-bold"><Pencil className="w-4 h-4"/> Edit Loan / Advance</div><p className="text-[11px] text-blue-100 mt-1">Amount, payment method and entry details update here.</p></div>
+              <button type="button" onClick={() => { setEditModalOpen(false); reset(); }} className="p-2 rounded-lg hover:bg-white/15" aria-label="Close edit"><X className="w-5 h-5"/></button>
+            </div>
+            <form onSubmit={handleSave} className="p-4 sm:p-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="block text-xs font-semibold mb-1">Party Type</label><select value={partyType} onChange={e=>{setPartyType(e.target.value as LoanAdvancePartyType);setPartyId('')}} className="w-full border rounded-xl p-3 text-sm"><option value="customer">Customer</option><option value="vendor">Vendor</option></select></div>
+                <div><label className="block text-xs font-semibold mb-1">Customer / Vendor</label><select required value={partyId} onChange={e=>setPartyId(e.target.value)} className="w-full border rounded-xl p-3 text-sm"><option value="">Select party</option>{parties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+                <div><label className="block text-xs font-semibold mb-1">Entry Type</label><select value={kind} onChange={e=>setKind(e.target.value as LoanAdvanceKind)} className="w-full border rounded-xl p-3 text-sm"><option value="advance">Advance</option><option value="loan">Loan</option></select></div>
+                <div><label className="block text-xs font-semibold mb-1">Direction</label><select value={direction} onChange={e=>setDirection(e.target.value as LoanAdvanceDirection)} className="w-full border rounded-xl p-3 text-sm"><option value="received">Received (+ Account)</option><option value="given">Given (- Account)</option></select></div>
+                <div><label className="block text-xs font-semibold mb-1">Amount (৳)</label><input required min="0.01" step="0.01" type="number" value={amount} onChange={e=>setAmount(e.target.value===''?'':Number(e.target.value))} className="w-full border rounded-xl p-3 text-base font-bold"/></div>
+                <div><label className="block text-xs font-semibold mb-1">Payment Method</label><select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value as PaymentMethod)} className="w-full border rounded-xl p-3 text-sm"><option>Cash</option><option>bKash</option><option>Nagad</option><option>Rocket</option><option>Bank</option><option>Card</option><option>Other</option></select></div>
+                <div><label className="block text-xs font-semibold mb-1">Reference</label><input value={reference} onChange={e=>setReference(e.target.value)} className="w-full border rounded-xl p-3 text-sm" placeholder="Optional reference"/></div>
+                <div><label className="block text-xs font-semibold mb-1">Note</label><input value={note} onChange={e=>setNote(e.target.value)} className="w-full border rounded-xl p-3 text-sm" placeholder="Optional note"/></div>
+              </div>
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">Amount বা method পরিবর্তন করলে সংশ্লিষ্ট account balance-ও পুনরায় হিসাব হবে। এই এন্ট্রিতে আগে invoice adjustment থাকলে আগে adjustment reverse করতে হবে।</div>
+              <div className="flex justify-end gap-2 border-t pt-4"><button type="button" onClick={()=>{setEditModalOpen(false);reset();}} className="px-4 py-2.5 rounded-xl border text-sm font-semibold">Cancel</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold flex items-center gap-2"><CheckCircle2 className="w-4 h-4"/>Save Changes</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {settlementId && (
+        <div className="fixed inset-0 z-[70] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            {(() => { const record=loanAdvances.find(r=>r.id===settlementId); return <>
+              <div className="bg-gradient-to-r from-emerald-700 to-teal-600 text-white p-5 flex items-start justify-between">
+                <div><div className="flex items-center gap-2 font-bold"><CheckCircle2 className="w-5 h-5"/> Settle Loan / Advance</div><p className="text-xs text-emerald-100 mt-1">রিপেমেন্টের তথ্য দিন — browser notification নয়, এখানেই save হবে।</p></div>
+                <button type="button" onClick={()=>setSettlementId(null)} className="p-1 rounded-lg hover:bg-white/15" aria-label="Close settlement"><X className="w-5 h-5"/></button>
+              </div>
+              <form onSubmit={saveSettlement} className="p-5 space-y-4">
+                <div className="rounded-xl border bg-slate-50 p-3"><div className="text-xs text-slate-500">Party</div><div className="font-bold text-slate-900">{record?.partyName || '—'}</div><div className="flex justify-between mt-3 text-xs"><span className="text-slate-500">Available to settle</span><strong className="text-emerald-700">{formatCurrency(record ? getAvailable(record.id) : 0)}</strong></div></div>
+                <div><label className="block text-xs font-semibold mb-1">Settlement Amount (৳)</label><input required min="0.01" max={record ? getAvailable(record.id) : undefined} step="0.01" type="number" value={settlementAmount} onChange={e=>setSettlementAmount(e.target.value===''?'':Number(e.target.value))} className="w-full rounded-xl border p-3 text-lg font-bold focus:ring-2 focus:ring-emerald-500 outline-none"/></div>
+                <div><label className="block text-xs font-semibold mb-1">Payment Method</label><select value={settlementMethod} onChange={e=>setSettlementMethod(e.target.value as PaymentMethod)} className="w-full rounded-xl border p-3 text-sm"><option>Cash</option><option>bKash</option><option>Nagad</option><option>Rocket</option><option>Bank</option><option>Card</option><option>Other</option></select></div>
+                <div><label className="block text-xs font-semibold mb-1">Note</label><input value={settlementNote} onChange={e=>setSettlementNote(e.target.value)} className="w-full rounded-xl border p-3 text-sm"/></div>
+                <div className="flex justify-end gap-2 border-t pt-4"><button type="button" onClick={()=>setSettlementId(null)} className="px-4 py-2.5 rounded-xl border text-sm font-semibold" disabled={savingSettlement}>Cancel</button><button type="submit" disabled={savingSettlement} className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white text-sm font-semibold">{savingSettlement?'Saving…':'Confirm Settlement'}</button></div>
+              </form>
+            </>; })()}
+          </div>
+        </div>
+      )}
 
       {profileModal && (
         <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
