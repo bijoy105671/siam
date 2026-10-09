@@ -27,14 +27,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenLogin,
   onNavigate,
 }) => {
-  const { currentUser, logout, settings, todayReminders, overdueReminders } = useApp();
+  const { currentUser, logout, settings, todayReminders, overdueReminders, accountBalances } = useApp();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
   const totalAlerts = todayReminders.length + overdueReminders.length;
 
   return (
-    <header className="sticky top-0 z-30 h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between no-print">
+    <div className="sticky top-0 z-30 no-print bg-white shadow-sm">
+    <header className="relative h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between">
       {/* Left: Mobile Toggle & Brand Title */}
       <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
         <button
@@ -189,5 +190,17 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
     </header>
+      <div className="border-b border-slate-200 bg-slate-950 text-white px-3 sm:px-6 py-1.5">
+        <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+          <span className="text-[9px] uppercase tracking-wider font-bold text-sky-300 shrink-0">Account Balances</span>
+          {Object.entries(accountBalances).map(([account, balance]) => (
+            <div key={account} className="shrink-0 rounded-md bg-white/10 px-2 py-1 text-[10px]">
+              <span className="text-slate-300">{account}</span>
+              <span className="ml-1.5 font-mono font-bold text-white">{new Intl.NumberFormat('en-BD', { maximumFractionDigits: 2 }).format(Number(balance || 0))}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 };
