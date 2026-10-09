@@ -455,25 +455,22 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 )}
               </div>
 
-              {/* Authorized Officer Signature & Official Seal */}
+              {/* Staff Signature & Dated Business Seal */}
               <div className="flex items-end justify-center sm:justify-end gap-3 shrink-0 mt-4 sm:mt-0">
                 <div className="text-center shrink-0">
-                  <div className="w-[76px] h-[76px] rounded-full border-[3px] border-double border-rose-700 text-rose-800 flex flex-col items-center justify-center rotate-[-10deg] bg-rose-50/40 shadow-sm">
-                    <div className="text-[7px] font-black tracking-widest">SIAM AIR</div>
-                    <div className="text-[6px] font-bold border-y border-rose-700 px-1 py-0.5 my-0.5">OFFICIAL SEAL</div>
-                    <div className="text-[6px] font-black">BANGLADESH</div>
+                  <div className="w-[88px] h-[88px] rounded-full border-[3px] border-double border-rose-700 text-rose-800 flex flex-col items-center justify-center rotate-[-10deg] bg-rose-50/40 shadow-sm px-1">
+                    <div className="text-[7px] font-black tracking-wide leading-tight">SIAM AIR AND</div>
+                    <div className="text-[7px] font-black tracking-wide leading-tight">DIGITAL SERVICE</div>
+                    <div className="w-full text-center text-[6px] font-bold border-y border-rose-700 px-0.5 py-1 my-1">OFFICIAL SEAL</div>
+                    <div className="text-[7px] font-bold">{formatDate(transaction.date)}</div>
                   </div>
-                  <div className="text-[8px] text-slate-500 mt-1">Agency Seal</div>
                 </div>
                 <div className="text-center sm:text-right min-w-[130px]">
                   {settings.authorizedSignatureUrl && (
-                    <img src={settings.authorizedSignatureUrl} alt="Authorized officer signature" className="h-12 max-w-[150px] object-contain ml-auto mb-1" />
+                    <img src={settings.authorizedSignatureUrl} alt="Authorized signature" className="h-12 max-w-[150px] object-contain ml-auto mb-1" />
                   )}
                   <div className="w-40 border-b-2 border-slate-900 pb-1 font-mono text-xs font-bold text-slate-800 sm:ml-auto">
                     {issuerName}
-                  </div>
-                  <div className="text-[10px] text-slate-500 uppercase font-semibold mt-1">
-                    {settings.signatureLabel || 'Authorized Officer'}
                   </div>
                 </div>
               </div>
