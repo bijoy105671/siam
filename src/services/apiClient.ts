@@ -52,7 +52,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     }
     if (!response.ok) {
       const error = new Error(payload?.error || `Request failed (${response.status})`);
-      Object.assign(error, payload);
+      Object.assign(error, payload, { status: response.status });
       throw error;
     }
     return payload;
