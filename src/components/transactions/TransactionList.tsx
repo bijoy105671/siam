@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ReceiptText,
   Search,
@@ -80,6 +80,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [savingFinancialEdit, setSavingFinancialEdit] = useState(false);
   const [pageSize, setPageSize] = useState<20 | 50 | 100>(20);
   const [currentPage, setCurrentPage] = useState(1);
+  const [cashAdjustments, setCashAdjustments] = useState<any[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    api.cashAdjustments().then(rows => { if (active) setCashAdjustments(Array.isArray(rows) ? rows : []); }).catch(() => { if (active) setCashAdjustments([]); });
+    return () => { active = false; };
+  }, []);
 
   // Filtering logic
   // Use the browser's local calendar date instead of UTC (toISOString),
@@ -182,6 +189,23 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       paymentReference: la.reference || undefined,
       notes: la.note || la.notes,
     })),
+    ...cashAdjustments.map((ca) => {
+      const occurred = new Date(ca.occurred_at);
+      const date = Number.isNaN(occurred.getTime()) ? '' : `${occurred.getFullYear()}-${String(occurred.getMonth()+1).padStart(2,'0')}-${String(occurred.getDate()).padStart(2,'0')}`;
+      const time = Number.isNaN(occurred.getTime()) ? '' : `${String(occurred.getHours()).padStart(2,'0')}:${String(occurred.getMinutes()).padStart(2,'0')}`;
+      const account = String(ca.account_name || 'cash');
+      const direction = ca.direction === 'cash_in' ? 'Cash In' : 'Cash Out';
+      return {
+        id: ca.id, invoiceNumber: `ADJ-${String(ca.id).slice(0,8)}`, date, time, createdBy: ca.created_by_name || '',
+        customerId: '', customerName: 'Balance Adjustment', customerMobile: '', serviceId: '',
+        serviceName: `${direction} · ${account.toUpperCase()}`, sellingPrice: 0, customerPaid: 0, customerDue: 0,
+        customerPaymentMethod: account, vendorCost: 0, vendorPaid: 0, vendorDue: 0, vendorPaymentMethod: account,
+        grossProfit: 0, status: 'PAID' as const, recordType: 'transfer' as const,
+        transferFrom: ca.direction === 'cash_in' ? 'Adjustment' : account,
+        transferTo: ca.direction === 'cash_in' ? account : 'Adjustment',
+        transferAmount: Number(ca.amount || 0), transferReason: ca.reason, notes: ca.note,
+      };
+    }),
     ...transfers.map((tr) => ({
       id: tr.id,
       invoiceNumber: `TRANSFER-${tr.id.replace(/^trf_/, '')}`,
