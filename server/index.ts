@@ -2068,13 +2068,31 @@ app.post('/api/payments/:id/reverse', adminOnly, async (req, res) => {
     if (!tx || tx.deleted_at) throw new Error('Linked transaction is missing or deleted');
     if (payment.payment_type === 'customer') {
       const newPaid = Math.max(0, Number(tx.customer_paid) - Number(payment.amount));
-      const newDue = Number(tx.selling_price) - newPaid;
-      const status = newDue === 0 ? 'PAID' : newPaid > 0 ? 'PARTIAL' : 'DUE';
+      const newDue = Math.max(0, Number(tx.selling_price) - newPaid);
+      const status = newDue <= 0.009 ? 'PAID' : newPaid > 0.009 ? 'PARTIAL' : 'DUE';
       await client.query('UPDATE transactions SET customer_paid=$1, customer_due=$2, status=$3, updated_at=now() WHERE id=$4', [newPaid,newDue,status,tx.id]);
+    } else if (payment.payment_type === 'vendor') {
+      const lines = (await client.query('SELECT id,vendor_paid,vendor_due,vendor_cost FROM transaction_items WHERE transaction_id=$1 AND vendor_id=$2 ORDER BY line_no DESC FOR UPDATE', [tx.id,payment.entity_id])).rows;
+      if (lines.length) {
+        let remaining = Number(payment.amount);
+        for (const line of lines) {
+          if (remaining <= 0.009) break;
+          const undo = Math.min(Number(line.vendor_paid || 0), remaining);
+          if (undo > 0) {
+            await client.query('UPDATE transaction_items SET vendor_paid=GREATEST(0,vendor_paid-$1),vendor_due=LEAST(vendor_cost,GREATEST(0,vendor_due+$1)) WHERE id=$2', [undo,line.id]);
+            remaining -= undo;
+          }
+        }
+        if (remaining > 0.009) throw new Error('Vendor service-line balance mismatch; no changes were saved.');
+        const sums = (await client.query('SELECT COALESCE(SUM(vendor_paid),0) paid,COALESCE(SUM(vendor_due),0) due FROM transaction_items WHERE transaction_id=$1', [tx.id])).rows[0];
+        await client.query('UPDATE transactions SET vendor_paid=$1,vendor_due=$2,updated_at=now() WHERE id=$3', [Number(sums.paid),Number(sums.due),tx.id]);
+      } else {
+        const newPaid = Math.max(0, Number(tx.vendor_paid) - Number(payment.amount));
+        const newDue = Math.max(0, Number(tx.vendor_cost) - newPaid);
+        await client.query('UPDATE transactions SET vendor_paid=$1,vendor_due=$2,updated_at=now() WHERE id=$3', [newPaid,newDue,tx.id]);
+      }
     } else {
-      const newPaid = Math.max(0, Number(tx.vendor_paid) - Number(payment.amount));
-      const newDue = Number(tx.vendor_cost) - newPaid;
-      await client.query('UPDATE transactions SET vendor_paid=$1, vendor_due=$2, updated_at=now() WHERE id=$3', [newPaid,newDue,tx.id]);
+      throw new Error('Unsupported payment type');
     }
     await client.query('UPDATE payments SET reversed_at=now(), reversed_by=$1 WHERE id=$2', [req.session.userId, payment.id]);
     await audit(client, req.session.userId!, 'PAYMENT_REVERSED', 'Payment', payment.id, payment, { reversedAt: new Date().toISOString(), transactionId: tx.id });
