@@ -2611,6 +2611,45 @@ app.post('/api/fund-transfers', auth, async (req, res) => {
   finally { client.release(); }
 });
 
+app.patch('/api/fund-transfers/:id', adminOnly, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const from = String(req.body?.fromAccount || '').toLowerCase();
+    const to = String(req.body?.toAccount || '').toLowerCase();
+    const amount = Number(req.body?.amount);
+    const reason = String(req.body?.reason || '').trim();
+    const note = req.body?.note == null ? null : String(req.body.note);
+    if (!ACCOUNT_METHODS.has(from) || !ACCOUNT_METHODS.has(to)) throw new Error('Invalid account');
+    if (from === to || !Number.isFinite(amount) || amount <= 0 || !reason) throw new Error('Choose different accounts and enter a positive amount and reason');
+    await client.query('BEGIN');
+    const transfer = (await client.query('SELECT * FROM fund_transfers WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!transfer || transfer.reversed_at) throw new Error('Fund transfer not found or already reversed');
+    const oldFrom = String(transfer.from_account).toLowerCase();
+    const oldTo = String(transfer.to_account).toLowerCase();
+    const locks = [...new Set([oldFrom, oldTo, from, to])].sort();
+    for (const account of locks) await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [account]);
+    const entries = (await client.query('SELECT * FROM account_entries WHERE fund_transfer_id=$1 AND reversed_at IS NULL FOR UPDATE', [transfer.id])).rows;
+    if (entries.length !== 2) throw new Error('Fund transfer accounting entries are missing or ambiguous; no changes were saved');
+    const balances = new Map<string, number>();
+    for (const account of locks) balances.set(account, await accountBalance(client, account));
+    const oldAmount = Number(transfer.amount);
+    // Restore the original transfer in-memory before checking the replacement.
+    balances.set(oldFrom, (balances.get(oldFrom) || 0) + oldAmount);
+    balances.set(oldTo, (balances.get(oldTo) || 0) - oldAmount);
+    if ((balances.get(from) || 0) < amount) throw new Error('Insufficient balance in the selected source account');
+    await client.query('UPDATE account_entries SET reversed_at=now() WHERE fund_transfer_id=$1 AND reversed_at IS NULL', [transfer.id]);
+    await client.query('UPDATE fund_transfers SET from_account=$1,to_account=$2,amount=$3,reason=$4,note=$5,updated_at=now() WHERE id=$6', [from,to,amount,reason,note,transfer.id]);
+    await addAccountEntry(client, from, -amount, 'fund_transfer_out', transfer.id, req.session.userId!, reason, undefined, undefined, transfer.id);
+    await addAccountEntry(client, to, amount, 'fund_transfer_in', transfer.id, req.session.userId!, reason, undefined, undefined, transfer.id);
+    await audit(client, req.session.userId!, 'FUND_TRANSFER_UPDATED', 'FundTransfer', transfer.id, transfer, { ...transfer, from_account: from, to_account: to, amount, reason, note });
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Fund transfer update failed' });
+  } finally { client.release(); }
+});
+
 app.post('/api/fund-transfers/:id/reverse', adminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
