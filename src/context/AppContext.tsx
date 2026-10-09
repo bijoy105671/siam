@@ -1028,7 +1028,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createOneEntryAsync = async (input: OneEntryInput): Promise<Transaction> => {
     if (!USE_SERVER_API) return createOneEntry(input);
     const result = await (await import('../services/apiClient')).createServerOneEntry(input);
-    const tx = result.transaction as Transaction;
+    // The POST /api/entries response is the raw transaction row and does not join
+    // customer details. Populate them from the submitted form immediately so the
+    // just-created invoice shows Billed To without requiring a page refresh.
+    const rawTx = result.transaction as any;
+    const tx = {
+      ...rawTx,
+      id: String(rawTx.id ?? ''),
+      customerId: String(rawTx.customer_id ?? rawTx.customerId ?? input.customerId ?? ''),
+      customerName: String(rawTx.customer_name ?? rawTx.customerName ?? input.customerName ?? ''),
+      customerMobile: String(rawTx.customer_mobile ?? rawTx.customerMobile ?? input.customerMobile ?? ''),
+      serviceName: String(rawTx.service_name ?? rawTx.serviceName ?? input.serviceName ?? ''),
+      invoiceNumber: rawTx.invoice_number ?? rawTx.invoiceNumber ?? result.invoiceNumber,
+      serviceItems: input.serviceItems || rawTx.serviceItems || [],
+    } as Transaction;
     // Refresh the complete server-backed collections after One Entry.
     // This keeps customer/vendor profiles, their transactions, ledgers, and All Transactions in sync.
     const [customerRows, vendorRows, transactionRows, dashboard] = await Promise.all([
