@@ -1744,6 +1744,12 @@ app.get('/api/transactions', auth, async (req, res) => {
   const limit = Math.min(Number(req.query.limit || 100), 500);
   const { rows } = await pool.query(`
     SELECT t.*, c.name customer_name, c.mobile customer_mobile, s.name service_name, v.name vendor_name,
+      COALESCE((SELECT json_agg(json_build_object(
+        'id',ti.id,'lineNo',ti.line_no,'serviceId',ti.service_id,'serviceName',si.name,'description',ti.description,
+        'sellingPrice',ti.selling_price,'customerPaid',ti.customer_paid,'customerPaymentMethod',ti.customer_payment_method,
+        'vendorId',ti.vendor_id,'vendorCost',ti.vendor_cost,'vendorPaid',ti.vendor_paid,'vendorDue',ti.vendor_due,
+        'accountCost',ti.account_cost,'accountCostPaymentMethod',ti.account_cost_payment_method,'flightDetails',ti.flight_details
+      ) ORDER BY ti.line_no) FROM transaction_items ti LEFT JOIN services si ON si.id=ti.service_id WHERE ti.transaction_id=t.id), '[]'::json) AS service_items,
       (SELECT p.payment_method FROM payments p WHERE p.transaction_id=t.id AND p.payment_type='customer' AND p.reversed_at IS NULL ORDER BY p.paid_at DESC, p.id DESC LIMIT 1) AS customer_payment_method,
       (SELECT p.payment_method FROM payments p WHERE p.transaction_id=t.id AND p.payment_type='vendor' AND p.reversed_at IS NULL ORDER BY p.paid_at DESC, p.id DESC LIMIT 1) AS vendor_payment_method,
       COALESCE((SELECT -SUM(a.amount) FROM account_entries a WHERE a.source_id=t.id::text AND a.source_type='service_cost' AND a.reversed_at IS NULL),0) AS account_cost,
