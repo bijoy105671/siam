@@ -1287,17 +1287,21 @@ app.post('/api/admin/clear-all-data', adminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // Delete dependent ledger rows first so a loan/advance reference cannot abort
+    // the transaction and roll back the expense deletion as well.
     await client.query('DELETE FROM account_entries');
     await client.query('DELETE FROM payments');
+    await client.query('DELETE FROM loan_advance_adjustments');
+    await client.query('DELETE FROM loan_advances');
     await client.query('DELETE FROM transactions');
-    await client.query('DELETE FROM expenses');
+    const clearedExpenses = await client.query('DELETE FROM expenses');
     await client.query('DELETE FROM fund_transfers');
+    await client.query('DELETE FROM account_opening_balances');
     await client.query('DELETE FROM customers');
     await client.query('DELETE FROM vendors');
-    await client.query('DELETE FROM account_opening_balances');
-    await audit(client, req.session.userId!, 'ALL_INPUT_DATA_CLEARED', 'System', 'all-input-data', null, { clearedAt: new Date().toISOString(), preserved: ['users','services','app_settings','audit_logs'] });
+    await audit(client, req.session.userId!, 'ALL_INPUT_DATA_CLEARED', 'System', 'all-input-data', null, { clearedAt: new Date().toISOString(), expensesDeleted: clearedExpenses.rowCount || 0, preserved: ['users','services','app_settings','audit_logs'] });
     await client.query('COMMIT');
-    res.json({ ok: true, message: 'All business input data cleared. Users, services, settings and audit history were preserved.' });
+    res.json({ ok: true, expensesDeleted: clearedExpenses.rowCount || 0, message: `All business input data cleared. ${clearedExpenses.rowCount || 0} expense record(s) deleted. Users, services, settings and audit history were preserved.` });
   } catch (e) { await client.query('ROLLBACK'); res.status(400).json({ error: e instanceof Error ? e.message : 'Clear all data failed' }); }
   finally { client.release(); }
 });
