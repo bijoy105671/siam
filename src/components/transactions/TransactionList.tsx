@@ -743,7 +743,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                               const currentMethod = String(tx.paymentMethodDisplay || 'cash');
                               const methodText = window.prompt('Payment method (cash, bkash, nagad, rocket, bank, card, other)', currentMethod.toLowerCase());
                               if (methodText === null) return;
-                              const noteText = window.prompt('Payment note', tx.paymentNote || '');
+                              const noteText = window.prompt('Payment note', '');
                               if (noteText === null) return;
                               const referenceText = window.prompt('Payment reference', tx.paymentReference || '');
                               if (referenceText === null) return;
