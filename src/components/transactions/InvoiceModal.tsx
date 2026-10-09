@@ -45,7 +45,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   onOpenPayment,
   onOpenVerification,
 }) => {
-  const { settings, customers, partialPayments } = useApp();
+  const { settings, customers, partialPayments, users } = useApp();
 
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [verifyUrl, setVerifyUrl] = useState<string>('');
@@ -85,6 +85,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const txPayments = partialPayments.filter(
     (p) => p.transactionId === transaction.id && p.paymentType === 'customer'
   );
+  const issuer = users.find((u) => u.username === transaction.createdBy || u.fullName === transaction.createdBy);
+  const issuerPhone = issuer?.phone || settings.mobile;
 
   const handlePrint = () => {
     window.print();
@@ -197,12 +199,14 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 <p className="text-xs text-slate-600 font-medium">{settings.tagline}</p>
                 <p className="text-xs text-slate-500 mt-1 max-w-md">{settings.address}</p>
                 <p className="text-xs text-slate-500 font-mono flex items-center gap-1.5">
-                  <span>Mobile: {settings.mobile} · Email: {settings.email}</span>
+                  <span>Mobile: {settings.mobile} ·</span>
                   <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#25D366] text-white print:shadow-none" title="WhatsApp">
                     <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" aria-hidden="true" fill="currentColor">
                       <path d="M20.52 3.48A11.78 11.78 0 0 0 12.08 0C5.56 0 .26 5.3.26 11.82c0 2.08.54 4.12 1.57 5.92L.16 24l6.4-1.68a11.8 11.8 0 0 0 5.51 1.37h.01c6.52 0 11.82-5.3 11.82-11.82 0-3.16-1.23-6.13-3.38-8.39Zm-8.44 18.2h-.01a9.82 9.82 0 0 1-5.01-1.37l-.36-.21-3.8 1 1.01-3.7-.23-.38a9.81 9.81 0 1 1 8.4 4.66Zm5.38-7.36c-.29-.15-1.71-.84-1.98-.94-.27-.1-.46-.15-.65.15-.19.29-.75.94-.92 1.13-.17.19-.34.22-.63.07-.29-.15-1.2-.44-2.29-1.4-.85-.76-1.42-1.69-1.58-1.98-.17-.29-.02-.45.13-.6.13-.13.29-.34.44-.51.15-.17.19-.29.29-.49.1-.19.05-.36-.02-.51-.07-.15-.65-1.57-.89-2.15-.23-.56-.47-.48-.65-.49h-.55c-.19 0-.49.07-.75.36-.26.29-1  .98-1 2.39s1.03 2.77 1.18 2.96c.15.19 2.03 3.1 4.92 4.35.69.3 1.23.48 1.65.61.69.22 1.32.19 1.82.12.55-.08 1.71-.7 1.95-1.37.24-.68.24-1.26.17-1.38-.07-.12-.26-.19-.55-.34Z"/>
                     </svg>
                   </span>
+                  <span className="font-semibold text-slate-700">{settings.whatsapp}</span>
+                  <span>· Email: {settings.email}</span>
                 </p>
               </div>
             </div>
@@ -245,8 +249,9 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 Issued By / Desk
               </div>
               <div className="text-sm font-semibold text-slate-900 mt-0.5">{transaction.createdBy}</div>
+              <div className="text-slate-600">Contact: {issuerPhone}</div>
               <div className="text-slate-600">Service: {transaction.serviceName}</div>
-              <div className="text-slate-500 font-mono">Ref: {transaction.id}</div>
+              <div className="text-slate-500 font-mono">Ref: SA-{transaction.invoiceNumber.replace(/[^A-Za-z0-9-]/g, '').slice(-12)}</div>
             </div>
           </div>
 
@@ -441,15 +446,34 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     </button>
                   </div>
                 </div>
+                {settings.whatsappQrCode && (
+                  <div className="w-20 shrink-0 text-center space-y-1">
+                    <img src={settings.whatsappQrCode} alt="WhatsApp contact QR code" className="w-16 h-16 mx-auto object-contain border border-emerald-300 rounded-lg p-0.5 bg-white" />
+                    <div className="text-[8px] leading-tight font-bold text-emerald-700">WHATSAPP CONTACT</div>
+                  </div>
+                )}
               </div>
 
-              {/* Authorized Signature */}
-              <div className="text-center sm:text-right shrink-0 mt-4 sm:mt-0">
-                <div className="w-48 border-b-2 border-slate-900 pb-1 font-mono text-xs font-bold text-slate-800 sm:ml-auto">
-                  {transaction.createdBy}
+              {/* Authorized Officer Signature & Official Seal */}
+              <div className="flex items-end justify-center sm:justify-end gap-3 shrink-0 mt-4 sm:mt-0">
+                <div className="text-center shrink-0">
+                  <div className="w-[76px] h-[76px] rounded-full border-[3px] border-double border-rose-700 text-rose-800 flex flex-col items-center justify-center rotate-[-10deg] bg-rose-50/40 shadow-sm">
+                    <div className="text-[7px] font-black tracking-widest">SIAM AIR</div>
+                    <div className="text-[6px] font-bold border-y border-rose-700 px-1 py-0.5 my-0.5">OFFICIAL SEAL</div>
+                    <div className="text-[6px] font-black">BANGLADESH</div>
+                  </div>
+                  <div className="text-[8px] text-slate-500 mt-1">Agency Seal</div>
                 </div>
-                <div className="text-[10px] text-slate-500 uppercase font-semibold mt-1">
-                  {settings.signatureLabel}
+                <div className="text-center sm:text-right min-w-[130px]">
+                  {settings.authorizedSignatureUrl && (
+                    <img src={settings.authorizedSignatureUrl} alt="Authorized officer signature" className="h-12 max-w-[150px] object-contain ml-auto mb-1" />
+                  )}
+                  <div className="w-40 border-b-2 border-slate-900 pb-1 font-mono text-xs font-bold text-slate-800 sm:ml-auto">
+                    {transaction.createdBy}
+                  </div>
+                  <div className="text-[10px] text-slate-500 uppercase font-semibold mt-1">
+                    {settings.signatureLabel || 'Authorized Officer'}
+                  </div>
                 </div>
               </div>
             </div>
