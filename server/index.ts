@@ -1957,6 +1957,88 @@ app.post('/api/ledger/:type/:id/payment', auth, async (req, res) => {
   } finally { client.release(); }
 });
 
+app.patch('/api/payments/:id', adminOnly, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const amount = Number(req.body?.amount);
+    const method = String(req.body?.paymentMethod || '').toLowerCase();
+    const note = String(req.body?.note || '').trim() || null;
+    const reference = String(req.body?.reference || '').trim() || null;
+    const paidAt = req.body?.paidAt ? new Date(String(req.body.paidAt)) : null;
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error('Enter a valid payment amount greater than zero');
+    if (!ACCOUNT_METHODS.has(method)) throw new Error('Select a valid payment method');
+    if (paidAt && Number.isNaN(paidAt.getTime())) throw new Error('Invalid payment date');
+    await client.query('BEGIN');
+    const payment = (await client.query('SELECT * FROM payments WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+    if (!payment || payment.reversed_at) throw new Error('Payment not found or already reversed');
+    if (!payment.transaction_id) throw new Error('Opening-balance payments must be edited from the customer/vendor opening-balance ledger');
+    const tx = (await client.query('SELECT * FROM transactions WHERE id=$1 FOR UPDATE', [payment.transaction_id])).rows[0];
+    if (!tx || tx.deleted_at) throw new Error('Linked transaction is missing or deleted');
+    const type = String(payment.payment_type);
+    if (!['customer','vendor'].includes(type)) throw new Error('Unsupported payment type');
+    const oldAmount = Number(payment.amount);
+    const oldMethod = String(payment.payment_method).toLowerCase();
+    const entityId = String(payment.entity_id);
+    const outstandingBefore = type === 'customer' ? Number(tx.customer_due) + oldAmount : Number(tx.vendor_due) + oldAmount;
+    if (amount > outstandingBefore + 0.009) throw new Error('Payment exceeds the available outstanding due');
+    const entries = (await client.query('SELECT * FROM account_entries WHERE payment_id=$1 AND reversed_at IS NULL FOR UPDATE', [payment.id])).rows;
+    if (entries.length !== 1) throw new Error('Payment accounting entry is missing or ambiguous');
+    const entry = entries[0];
+    const locks = [...new Set([oldMethod, method])].sort();
+    for (const account of locks) await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [account]);
+    const oldEntryAmount = Number(entry.amount);
+    const nextEntryAmount = type === 'customer' ? amount : -amount;
+    if (type === 'vendor') {
+      const balanceWithoutThisPayment = await accountBalance(client, method) - (method === oldMethod ? oldEntryAmount : 0);
+      if (-nextEntryAmount > balanceWithoutThisPayment) throw new Error('Insufficient account balance for the edited vendor payment');
+    }
+    if (type === 'vendor') {
+      const itemRows = (await client.query('SELECT id,vendor_paid,vendor_due,vendor_cost FROM transaction_items WHERE transaction_id=$1 AND vendor_id=$2 ORDER BY line_no FOR UPDATE', [tx.id, entityId])).rows;
+      if (itemRows.length) {
+        let toRemove = oldAmount;
+        for (const item of [...itemRows].sort((x:any,y:any)=>Number(y.vendor_paid)-Number(x.vendor_paid))) {
+          if (toRemove <= 0.009) break;
+          const paid = Number(item.vendor_paid || 0);
+          const remove = Math.min(paid, toRemove);
+          if (remove > 0) await client.query('UPDATE transaction_items SET vendor_paid=GREATEST(0,vendor_paid-$1),vendor_due=LEAST(vendor_cost,GREATEST(0,vendor_due+$1)) WHERE id=$2',[remove,item.id]);
+          toRemove -= remove;
+        }
+        if (toRemove > 0.009) throw new Error('Cannot safely match this historical payment to service lines; no changes were saved');
+        let remaining = amount;
+        const dueRows = (await client.query('SELECT id,vendor_due,vendor_cost,vendor_paid FROM transaction_items WHERE transaction_id=$1 AND vendor_id=$2 ORDER BY line_no FOR UPDATE', [tx.id, entityId])).rows;
+        for (const item of dueRows) {
+          if (remaining <= 0.009) break;
+          const apply = Math.min(Number(item.vendor_due || 0), remaining);
+          if (apply > 0) await client.query('UPDATE transaction_items SET vendor_paid=vendor_paid+$1,vendor_due=GREATEST(0,vendor_due-$1) WHERE id=$2',[apply,item.id]);
+          remaining -= apply;
+        }
+        if (remaining > 0.009) throw new Error('Edited payment exceeds this vendor service-line due; no changes were saved');
+      }
+    }
+    await client.query('UPDATE payments SET amount=$1,payment_method=$2,note=$3,reference=$4,paid_at=COALESCE($5,paid_at) WHERE id=$6',
+      [amount,method,note,reference,paidAt,payment.id]);
+    await client.query('UPDATE account_entries SET account_name=$1,amount=$2,note=$3 WHERE id=$4',
+      [method,nextEntryAmount,note || entry.note,entry.id]);
+    if (type === 'customer') {
+      const paid = Number(tx.customer_paid) - oldAmount + amount;
+      const due = Math.max(0, Number(tx.selling_price) - paid);
+      await client.query('UPDATE transactions SET customer_paid=$1,customer_due=$2,status=$3,updated_at=now() WHERE id=$4',
+        [paid,due,due <= 0.009 ? 'PAID' : paid > 0 ? 'PARTIAL' : 'DUE',tx.id]);
+    } else {
+      const paid = Number(tx.vendor_paid) - oldAmount + amount;
+      const due = Math.max(0, Number(tx.vendor_cost) - paid);
+      await client.query('UPDATE transactions SET vendor_paid=$1,vendor_due=$2,updated_at=now() WHERE id=$3',[paid,due,tx.id]);
+    }
+    const updated = (await client.query('SELECT * FROM payments WHERE id=$1',[payment.id])).rows[0];
+    await audit(client, req.session.userId!, 'PAYMENT_UPDATED', 'Payment', payment.id, payment, updated);
+    await client.query('COMMIT');
+    res.json({ ok: true, payment: updated });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(()=>{});
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Payment update failed' });
+  } finally { client.release(); }
+});
+
 app.post('/api/payments/:id/reverse', adminOnly, async (req, res) => {
   const client = await pool.connect();
   try {
