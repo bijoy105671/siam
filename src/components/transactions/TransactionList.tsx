@@ -34,7 +34,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   paymentFocus = null,
   onOpenPayment,
 }) => {
-  const { transactions, partialPayments, transfers, loanAdvances, services, vendors, addVendorAsync, deleteTransaction, updateTransaction, updateLoanAdvance, deleteLoanAdvance, currentUser } = useApp();
+  const { transactions, partialPayments, transfers, loanAdvances, services, vendors, addVendorAsync, deleteTransaction, updateTransaction, updateLoanAdvance, updateLoanAdvanceAsync, deleteLoanAdvance, deleteLoanAdvanceAsync, currentUser } = useApp();
   // Support the role labels used by older accounts and the permission-based user model.
   // Some production users are stored as "Super Admin", "super_admin", etc.
   const normalizedRole = String(currentUser?.role || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -670,7 +670,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                             <button type="button" title="Delete Loan / Advance" onClick={async () => {
                               if (!window.confirm('Delete this loan / advance record? This affects party and account balances and will be audited.')) return;
                               try {
-                                await deleteLoanAdvance(tx.id);
+                                await deleteLoanAdvanceAsync(tx.id);
                                 window.alert('Loan / advance reversed and account balance recalculated.');
                                 window.location.reload();
                               } catch (error) { window.alert(error instanceof Error ? error.message : 'Loan / advance could not be deleted.'); }
@@ -1006,7 +1006,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                   if (!financialEditReason.trim()) throw new Error('Transfer reason লিখুন।');
                   await api.updateFundTransfer(editingFinancialRecord.id, { fromAccount: financialEditFrom, toAccount: financialEditTo, amount, reason: financialEditReason.trim(), note: financialEditNote });
                 } else {
-                  await updateLoanAdvance(editingFinancialRecord.id, { amount, note: financialEditNote } as any);
+                  await updateLoanAdvanceAsync(editingFinancialRecord.id, { amount, note: financialEditNote } as any);
                 }
                 setEditingFinancialRecord(null);
                 window.location.reload();
