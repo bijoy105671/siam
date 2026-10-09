@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from 'express';
 import type { Pool } from 'pg';
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 
 type Guard = (req: Request, res: Response, next: NextFunction) => void;
@@ -58,6 +58,21 @@ const ensureEcommerceSchema = async (pool: Pool) => {
     );
     INSERT INTO ecommerce_settings(id,value) VALUES (1, '{"currency":"BDT","announcement":"Order online — fast service from SIAM AIR & DIGITAL SERVICE","heroTitle":"Everything you need, in one trusted store.","heroSubtitle":"Air tickets, visa services, digital solutions and selected products — order online.","primaryColor":"#0f766e","secondaryColor":"#dc2626","deliveryFee":80,"freeDeliveryMinimum":3000,"requireLoginForCheckout":true,"codEnabled":true,"bkashEnabled":true,"nagadEnabled":true,"bankEnabled":true,"whatsappEnabled":true,"smsEnabled":false,"smsNotificationPhone":""}'::jsonb)
     ON CONFLICT (id) DO NOTHING;
+
+
+    CREATE TABLE IF NOT EXISTS ecommerce_flight_requests (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), reference text NOT NULL UNIQUE,
+      service_type text NOT NULL CHECK (service_type IN ('flight','hotel')),
+      customer_name text NOT NULL, email text NOT NULL, phone text NOT NULL, whatsapp text,
+      details jsonb NOT NULL DEFAULT '{}'::jsonb, document_type text, document_name text,
+      document_mime text, document_iv text, document_tag text, document_ciphertext bytea,
+      status text NOT NULL DEFAULT 'QUOTE_PENDING' CHECK (status IN ('QUOTE_PENDING','QUOTED','PAYMENT_PENDING','PAYMENT_VERIFIED','BOOKED','TICKET_UPLOADED','COMPLETED','CANCELLED')),
+      quoted_amount numeric(14,2), currency text NOT NULL DEFAULT 'BDT', carrier_type text,
+      admin_note text, payment_reference text, ticket_reference text,
+      created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_ecommerce_flight_requests_created ON ecommerce_flight_requests(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ecommerce_flight_requests_contact ON ecommerce_flight_requests(phone,email);
 
     CREATE TABLE IF NOT EXISTS ecommerce_notifications (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), order_id uuid REFERENCES ecommerce_orders(id) ON DELETE CASCADE,
@@ -135,6 +150,60 @@ export const registerStorefrontRoutes = (app: Express, pool: Pool, auth: Guard, 
       res.json({settings:{name:value.name||'SIAM AIR & DIGITAL SERVICE',tagline:value.tagline||'',logoUrl:value.logoUrl||'',address:value.address||'',mobile:value.mobile||'',whatsapp:value.whatsapp||'',email:value.email||'',website:value.website||''},services:servicesResult.rows,products:productsResult.rows,ecommerce:ecomSettings});
     } catch(e){res.status(503).json({error:e instanceof Error?e.message:'Unable to load storefront data'});}
   });
+  // Travel quote requests use a dedicated ecommerce table and never write to accounting ledgers.
+  app.post('/api/storefront/flight-requests', async (req,res)=>{
+    const serviceType=String(req.body?.serviceType||'').toLowerCase();
+    const customerName=String(req.body?.customerName||'').trim().slice(0,160);
+    const email=normalizeEmail(req.body?.email).slice(0,254);
+    const phone=normalizePhone(req.body?.phone).slice(0,32);
+    const whatsapp=normalizePhone(req.body?.whatsapp).slice(0,32)||null;
+    const details=req.body?.details && typeof req.body.details==='object' && !Array.isArray(req.body.details)?req.body.details:{};
+    if(!['flight','hotel'].includes(serviceType))return res.status(400).json({error:'Choose flight or hotel request.'});
+    if(!customerName||!/^\S+@\S+\.\S+$/.test(email)||phone.replace(/\D/g,'').length<7)return res.status(400).json({error:'Valid name, email and phone are required.'});
+    if(serviceType==='flight'&&(!String(details.from||'').trim()||!String(details.to||'').trim()||!/^\d{4}-\d{2}-\d{2}$/.test(String(details.depart||''))))return res.status(400).json({error:'Origin, destination and departure date are required.'});
+    if(serviceType==='hotel'&&(!String(details.destination||'').trim()||!/^\d{4}-\d{2}-\d{2}$/.test(String(details.checkIn||''))||!/^\d{4}-\d{2}-\d{2}$/.test(String(details.checkOut||''))||String(details.checkOut)<=String(details.checkIn)))return res.status(400).json({error:'Destination and valid check-in/check-out dates are required.'});
+    const doc=req.body?.document;
+    let encrypted:{name:string;mime:string;iv:string;tag:string;ciphertext:Buffer}|null=null;
+    if(doc&&typeof doc==='object'&&typeof doc.base64==='string'){
+      const keyHex=String(process.env.ECOM_DOCUMENT_ENCRYPTION_KEY||'');
+      if(!/^[a-fA-F0-9]{64}$/.test(keyHex))return res.status(503).json({error:'Secure travel-document storage is not configured yet. Your file was not saved; please contact SIAM AIR directly.'});
+      const name=String(doc.name||'document').slice(0,180),mime=String(doc.mime||'application/octet-stream').slice(0,100);
+      const raw=Buffer.from(doc.base64,'base64');
+      if(!raw.length||raw.length>5*1024*1024)return res.status(413).json({error:'Travel document must be no larger than 5 MB.'});
+      if(!['application/pdf','image/jpeg','image/png'].includes(mime))return res.status(400).json({error:'Travel document must be a PDF, JPG or PNG.'});
+      const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',Buffer.from(keyHex,'hex'),iv);
+      cipher.setAAD(Buffer.from('siam-ecommerce-travel-document-v1'));
+      const ciphertext=Buffer.concat([cipher.update(raw),cipher.final()]);
+      encrypted={name,mime,iv:iv.toString('hex'),tag:cipher.getAuthTag().toString('hex'),ciphertext};
+    }
+    if(serviceType==='flight'&&!encrypted)return res.status(400).json({error:'For international flight requests, attach a passport copy. Secure document storage must be configured first.'});
+    const carrierType=String(details.preferredAirline||'').toLowerCase()==='legacy carrier'?'LEGACY_CARRIER':null;
+    // Server controls the commission rule; client-supplied commission values are ignored.
+    const safeDetails={...details,carrierCommissionRule:carrierType==='LEGACY_CARRIER'?7:0,pricingStatus:'QUOTE_PENDING'};
+    const reference='SAQ-'+new Date().toISOString().slice(2,10).replace(/-/g,'')+'-'+randomBytes(3).toString('hex').toUpperCase();
+    try{
+      const {rows}=await pool.query(
+        'INSERT INTO ecommerce_flight_requests(reference,service_type,customer_name,email,phone,whatsapp,details,document_type,document_name,document_mime,document_iv,document_tag,document_ciphertext,carrier_type) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id,reference,service_type,status,created_at',
+        [reference,serviceType,customerName,email,phone,whatsapp,JSON.stringify(safeDetails),encrypted?String(req.body?.documentType||'passport').slice(0,40):null,encrypted?.name||null,encrypted?.mime||null,encrypted?.iv||null,encrypted?.tag||null,encrypted?.ciphertext||null,carrierType]);
+      return res.status(201).json({request:rows[0],reference:rows[0].reference});
+    }catch(e){console.error('flight quote request save failed',e);return res.status(503).json({error:'Unable to save your request right now. Please contact SIAM AIR directly.'});}
+  });
+  app.get('/api/storefront/flight-requests',adminOnly,async(_req,res)=>{
+    const {rows}=await pool.query('SELECT id,reference,service_type,customer_name,email,phone,whatsapp,details,document_type,document_name,document_mime,(document_ciphertext IS NOT NULL) AS has_document,status,quoted_amount,currency,carrier_type,admin_note,payment_reference,ticket_reference,created_at,updated_at FROM ecommerce_flight_requests ORDER BY created_at DESC LIMIT 500');
+    res.json(rows);
+  });
+  app.patch('/api/storefront/flight-requests/:id',adminOnly,async(req,res)=>{
+    const allowed=['QUOTE_PENDING','QUOTED','PAYMENT_PENDING','PAYMENT_VERIFIED','BOOKED','TICKET_UPLOADED','COMPLETED','CANCELLED'];
+    const status=String(req.body?.status||'').toUpperCase();
+    if(!allowed.includes(status))return res.status(400).json({error:'Invalid travel request status.'});
+    const amount=req.body?.quotedAmount===null||req.body?.quotedAmount===undefined||req.body?.quotedAmount===''?null:Number(req.body.quotedAmount);
+    if(amount!==null&&(!Number.isFinite(amount)||amount<0||amount>100000000))return res.status(400).json({error:'Invalid quote amount.'});
+    if(['QUOTED','PAYMENT_PENDING','PAYMENT_VERIFIED','BOOKED','TICKET_UPLOADED','COMPLETED'].includes(status)&&amount===null)return res.status(400).json({error:'Enter a verified quote amount before advancing this request.'});
+    const {rows}=await pool.query('UPDATE ecommerce_flight_requests SET status=$1,quoted_amount=$2,admin_note=$3,payment_reference=$4,ticket_reference=$5,updated_at=now() WHERE id=$6 RETURNING id,reference,service_type,status,quoted_amount,currency,admin_note,payment_reference,ticket_reference,updated_at',[status,amount,String(req.body?.adminNote||'').slice(0,2000)||null,String(req.body?.paymentReference||'').slice(0,180)||null,String(req.body?.ticketReference||'').slice(0,180)||null,req.params.id]);
+    if(!rows[0])return res.status(404).json({error:'Travel request not found.'});
+    res.json({request:rows[0]});
+  });
+
   app.get('/api/storefront/products',async(_req,res)=>{const{rows}=await pool.query('SELECT * FROM ecommerce_products WHERE active=true ORDER BY featured DESC,sort_order,name');res.json(rows);});
 
   app.post('/api/storefront/register',async(req,res)=>{
