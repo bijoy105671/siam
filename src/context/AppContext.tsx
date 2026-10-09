@@ -470,6 +470,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             customerName: String(mapped.customer_name ?? mapped.customerName ?? ''), customerMobile: String(mapped.customer_mobile ?? mapped.customerMobile ?? ''),
             vendorId: mapped.vendor_id ? String(mapped.vendor_id) : undefined, vendorName: mapped.vendor_name ?? mapped.vendorName ?? undefined,
             serviceId: mapped.service_id ? String(mapped.service_id) : undefined, serviceName: String(mapped.service_name ?? mapped.serviceName ?? ''),
+            serviceItems: (() => {
+              const rawItems = mapped.service_items ?? mapped.serviceItems;
+              if (!rawItems) return undefined;
+              const parsedItems = typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems;
+              return Array.isArray(parsedItems) ? parsedItems.map((item: any) => ({
+                id: item.id, lineNo: Number(item.lineNo ?? item.line_no ?? 0),
+                serviceId: item.serviceId ?? item.service_id,
+                serviceName: item.serviceName ?? item.service_name ?? 'General Service',
+                description: item.description || undefined, sellingPrice: Number(item.sellingPrice ?? item.selling_price ?? 0),
+                customerPaid: Number(item.customerPaid ?? item.customer_paid ?? 0),
+                customerPaymentMethod: item.customerPaymentMethod ?? item.customer_payment_method,
+                vendorId: item.vendorId ?? item.vendor_id, vendorName: item.vendorName ?? item.vendor_name,
+                vendorCost: Number(item.vendorCost ?? item.vendor_cost ?? 0),
+                vendorPaid: Number(item.vendorPaid ?? item.vendor_paid ?? 0), vendorDue: Number(item.vendorDue ?? item.vendor_due ?? 0),
+                accountCost: Number(item.accountCost ?? item.account_cost ?? 0),
+                accountCostPaymentMethod: item.accountCostPaymentMethod ?? item.account_cost_payment_method,
+                flightDetails: item.flightDetails ?? item.flight_details,
+              })) : undefined;
+            })(),
             invoiceNumber: mapped.invoice_number ?? mapped.invoiceNumber, createdAt: mapped.created_at ?? mapped.createdAt,
             updatedAt: mapped.updated_at ?? mapped.updatedAt, createdBy: mapped.created_by ?? mapped.createdBy,
             sellingPrice: Number(mapped.selling_price ?? mapped.sellingPrice ?? 0), customerPaid: Number(mapped.customer_paid ?? mapped.customerPaid ?? 0),
@@ -594,6 +613,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             vendorName: mapped.vendor_name ?? mapped.vendorName ?? undefined,
             serviceId: mapped.service_id ? String(mapped.service_id) : undefined,
             serviceName: String(mapped.service_name ?? mapped.serviceName ?? ''),
+            serviceItems: (() => {
+              const rawItems = mapped.service_items ?? mapped.serviceItems;
+              if (!rawItems) return undefined;
+              const parsedItems = typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems;
+              return Array.isArray(parsedItems) ? parsedItems.map((item: any) => ({
+                id: item.id, lineNo: Number(item.lineNo ?? item.line_no ?? 0),
+                serviceId: item.serviceId ?? item.service_id,
+                serviceName: item.serviceName ?? item.service_name ?? 'General Service',
+                description: item.description || undefined, sellingPrice: Number(item.sellingPrice ?? item.selling_price ?? 0),
+                customerPaid: Number(item.customerPaid ?? item.customer_paid ?? 0),
+                customerPaymentMethod: item.customerPaymentMethod ?? item.customer_payment_method,
+                vendorId: item.vendorId ?? item.vendor_id, vendorName: item.vendorName ?? item.vendor_name,
+                vendorCost: Number(item.vendorCost ?? item.vendor_cost ?? 0),
+                vendorPaid: Number(item.vendorPaid ?? item.vendor_paid ?? 0), vendorDue: Number(item.vendorDue ?? item.vendor_due ?? 0),
+                accountCost: Number(item.accountCost ?? item.account_cost ?? 0),
+                accountCostPaymentMethod: item.accountCostPaymentMethod ?? item.account_cost_payment_method,
+                flightDetails: item.flightDetails ?? item.flight_details,
+              })) : undefined;
+            })(),
             invoiceNumber: mapped.invoice_number ?? mapped.invoiceNumber,
             createdAt: mapped.created_at ?? mapped.createdAt,
             updatedAt: mapped.updated_at ?? mapped.updatedAt,
