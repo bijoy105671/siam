@@ -81,7 +81,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
   if (!transaction) return null;
 
-  const customer = customers.find((c) => c.id === transaction.customerId);
+  const customer = customers.find((c) => c.id === transaction.customerId)
+    || customers.find((c) => c.name.trim().toLowerCase() === String(transaction.customerName || '').trim().toLowerCase())
+    || customers.find((c) => c.mobile && c.mobile.replace(/\\D/g, '') === String(transaction.customerMobile || '').replace(/\\D/g, ''));
+  const billedCustomerName = transaction.customerName || customer?.name || 'Customer';
+  const billedCustomerMobile = transaction.customerMobile || customer?.mobile || '';
   const txPayments = partialPayments.filter(
     (p) => p.transactionId === transaction.id && p.paymentType === 'customer'
   );
@@ -115,6 +119,27 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full my-auto overflow-hidden border border-slate-200">
+        <style>{`
+          @media print {
+            @page { size: A4 portrait; margin: 5mm; }
+            body * { visibility: hidden !important; }
+            #printable-invoice, #printable-invoice * { visibility: visible !important; }
+            #printable-invoice {
+              position: fixed !important; inset: 0 auto auto 0 !important;
+              width: 100% !important; max-width: none !important; margin: 0 !important;
+              padding: 5mm !important; border: 0 !important; border-radius: 0 !important;
+              box-shadow: none !important; overflow: visible !important; background: #fff !important;
+              font-size: 10px !important;
+            }
+            .no-print { display: none !important; }
+            #printable-invoice .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 10px !important; }
+            #printable-invoice .p-6, #printable-invoice .p-8 { padding: 8px !important; }
+            #printable-invoice .pb-5 { padding-bottom: 8px !important; }
+            #printable-invoice .text-2xl { font-size: 17px !important; }
+            #printable-invoice .text-xl { font-size: 15px !important; }
+            #printable-invoice tr, #printable-invoice img { break-inside: avoid !important; }
+          }
+        `}</style>
         {/* Top Controls (Hidden on Print) */}
         <div className="p-3 sm:p-4 bg-slate-900 text-white flex items-center justify-between no-print">
           <div className="flex items-center gap-2">
@@ -237,8 +262,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <div className="text-[10px] font-mono uppercase text-slate-400 font-semibold tracking-wider">
                 Billed To (Customer)
               </div>
-              <div className="text-sm font-bold text-slate-900 mt-0.5">{transaction.customerName}</div>
-              <div className="text-slate-600">Mobile: {transaction.customerMobile}</div>
+              <div className="text-sm font-bold text-slate-900 mt-0.5">{billedCustomerName}</div>
+              <div className="text-slate-600">Mobile: {billedCustomerMobile || '—'}</div>
               {customer?.passportNumber && (
                 <div className="text-slate-600 font-mono">Passport No: {customer.passportNumber}</div>
               )}
@@ -474,7 +499,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                       <div className="text-[7px] font-bold">{formatDate(transaction.date)}</div>
                     </div>
                     {settings.authorizedSignatureUrl && (
-                      <img src={settings.authorizedSignatureUrl} alt="Authorized signature" className="absolute inset-0 m-auto w-[145px] h-[58px] object-contain opacity-75 z-10" />
+                      <img src={settings.authorizedSignatureUrl} alt="Authorized signature" className="absolute inset-0 m-auto w-[145px] h-[58px] object-contain opacity-65 z-30" />
                     )}
                   </div>
                   <div className="border-b-2 border-blue-950 w-full mt-1" />
