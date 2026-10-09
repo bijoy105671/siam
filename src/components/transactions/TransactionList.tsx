@@ -735,7 +735,24 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         <td className="py-3 px-4 text-right font-sans">
                           <div className="text-[10px] text-slate-500 mb-1">{tx.paymentMethodDisplay} · {tx.paymentReference || 'No reference'}</div>
                           <div className="flex items-center justify-end gap-1">
-                            <button type="button" title="Edit Payment" onClick={() => window.alert('Direct payment editing needs a server-side edit endpoint. To protect the customer/vendor ledger and account balance, this record has not been changed.')} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" aria-label="Edit payment"><Edit className="w-4 h-4" /></button>
+                            <button type="button" title="Edit Payment" onClick={async () => {
+                              const amountText = window.prompt('Correct payment amount', String(amount));
+                              if (amountText === null) return;
+                              const correctedAmount = Number(amountText);
+                              if (!Number.isFinite(correctedAmount) || correctedAmount <= 0) { window.alert('Enter a valid amount greater than zero.'); return; }
+                              const currentMethod = String(tx.paymentMethodDisplay || 'cash');
+                              const methodText = window.prompt('Payment method (cash, bkash, nagad, rocket, bank, card, other)', currentMethod.toLowerCase());
+                              if (methodText === null) return;
+                              const noteText = window.prompt('Payment note', tx.paymentNote || '');
+                              if (noteText === null) return;
+                              const referenceText = window.prompt('Payment reference', tx.paymentReference || '');
+                              if (referenceText === null) return;
+                              try {
+                                await api.updatePayment(tx.id, { amount: correctedAmount, paymentMethod: methodText.trim().toLowerCase(), note: noteText, reference: referenceText });
+                                window.alert('Payment updated. Due and account balance have been recalculated.');
+                                window.location.reload();
+                              } catch (error) { window.alert(error instanceof Error ? error.message : 'Payment could not be updated.'); }
+                            }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" aria-label="Edit payment"><Edit className="w-4 h-4" /></button>
                             <button type="button" title="Delete / Reverse Payment" onClick={async () => {
                               if (!window.confirm('Reverse this payment? The linked due balance and account balance will be recalculated.')) return;
                               try { await api.reversePayment(tx.id); window.location.reload(); }
