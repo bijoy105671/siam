@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from 'express';
 import type { Pool } from 'pg';
-import { createCipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 
 type Guard = (req: Request, res: Response, next: NextFunction) => void;
@@ -191,6 +191,19 @@ export const registerStorefrontRoutes = (app: Express, pool: Pool, auth: Guard, 
   app.get('/api/storefront/flight-requests',adminOnly,async(_req,res)=>{
     const {rows}=await pool.query('SELECT id,reference,service_type,customer_name,email,phone,whatsapp,details,document_type,document_name,document_mime,(document_ciphertext IS NOT NULL) AS has_document,status,quoted_amount,currency,carrier_type,admin_note,payment_reference,ticket_reference,created_at,updated_at FROM ecommerce_flight_requests ORDER BY created_at DESC LIMIT 500');
     res.json(rows);
+  });
+  app.get('/api/storefront/flight-requests/:id/document',adminOnly,async(req,res)=>{
+    const keyHex=String(process.env.ECOM_DOCUMENT_ENCRYPTION_KEY||'');
+    if(!/^[a-fA-F0-9]{64}$/.test(keyHex))return res.status(503).json({error:'Travel-document encryption key is not configured.'});
+    const {rows}=await pool.query('SELECT document_name,document_mime,document_iv,document_tag,document_ciphertext FROM ecommerce_flight_requests WHERE id=$1',[req.params.id]);
+    const d=rows[0];if(!d||!d.document_ciphertext)return res.status(404).json({error:'No travel document is stored for this request.'});
+    try{
+      const decipher=createDecipheriv('aes-256-gcm',Buffer.from(keyHex,'hex'),Buffer.from(String(d.document_iv),'hex'));
+      decipher.setAAD(Buffer.from('siam-ecommerce-travel-document-v1'));decipher.setAuthTag(Buffer.from(String(d.document_tag),'hex'));
+      const plain=Buffer.concat([decipher.update(d.document_ciphertext),decipher.final()]);
+      const safeName=String(d.document_name||'travel-document').replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,120);
+      res.setHeader('Cache-Control','no-store, private');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Type',String(d.document_mime||'application/octet-stream'));res.setHeader('Content-Disposition','attachment; filename="'+safeName+'"');res.send(plain);
+    }catch(e){console.error('travel document decrypt failed',e);res.status(500).json({error:'Unable to decrypt travel document. Check the configured encryption key.'});}
   });
   app.patch('/api/storefront/flight-requests/:id',adminOnly,async(req,res)=>{
     const allowed=['QUOTE_PENDING','QUOTED','PAYMENT_PENDING','PAYMENT_VERIFIED','BOOKED','TICKET_UPLOADED','COMPLETED','CANCELLED'];
