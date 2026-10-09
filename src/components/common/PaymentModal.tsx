@@ -30,7 +30,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             : []))
     : [];
   const [selectedVendorId, setSelectedVendorId] = useState(
-    transaction.vendorId || transaction.serviceItems?.find((item) => item.vendorId)?.vendorId || ''
+    vendorOptions[0]?.id || transaction.vendorId || transaction.serviceItems?.find((item) => item.vendorId)?.vendorId || ''
   );
   const maxDue = paymentType === 'customer'
     ? transaction.customerDue
@@ -296,7 +296,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               )}
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || (paymentType === 'vendor' && (!selectedVendorId || maxDue <= 0))}
                 className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed rounded-lg shadow-xs cursor-pointer"
               >
                 {isSubmitting ? 'Saving Payment…' : paymentType === 'customer' ? 'Receive Customer Payment' : 'Pay Vendor & Record'}
