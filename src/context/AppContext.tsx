@@ -103,6 +103,7 @@ interface OneEntryInput {
 interface AppContextType {
   // Current user & Auth
   currentUser: User | null;
+  authReady: boolean;
   users: User[];
   login: (username: string, password: string) => boolean;
   loginAsync: (username: string, password: string) => Promise<boolean>;
@@ -263,6 +264,7 @@ const STORAGE_KEY = 'siam_air_business_data_v3_clean';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load state from localStorage or initial clean data
+  const [authReady, setAuthReady] = useState(!USE_SERVER_API);
   const [serverAccountBalances, setServerAccountBalances] = useState<AccountBalances | null>(null);
   const [serverTodaySummary, setServerTodaySummary] = useState<AppContextType['todaySummary'] | null>(null);
   const [data, setData] = useState(() => {
@@ -362,7 +364,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!USE_SERVER_API) return;
     let cancelled = false;
     api.me().then(({ user }) => {
-      if (cancelled || !user) return;
+      if (cancelled) return;
+      if (!user) {
+        setData((prev: any) => ({ ...prev, currentUserId: undefined }));
+        return;
+      }
       const u: any = user;
       const mapped: User = {
         id: String(u.id),
@@ -379,8 +385,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         users: [...prev.users.filter((u: User) => u.id !== mapped.id), mapped],
         currentUserId: mapped.id,
       }));
-    }).catch(() => {
-      if (!cancelled) setData((prev: any) => ({ ...prev, currentUserId: undefined }));
+    }).catch((error) => {
+      // A real 401/403 means the server session is no longer valid. Other failures
+      // (network hiccups/5xx) must not be treated as a logout.
+      const status = Number((error as any)?.status || (error as any)?.statusCode || 0);
+      if (!cancelled && (status === 401 || status === 403)) {
+        setData((prev: any) => ({ ...prev, currentUserId: undefined }));
+      }
+      if (!cancelled) console.error('Session restore failed:', error);
+    }).finally(() => {
+      if (!cancelled) setAuthReady(true);
     });
     return () => { cancelled = true; };
   }, []);
@@ -2572,6 +2586,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider
       value={{
         currentUser,
+        authReady,
         users: data.users,
         login,
         loginAsync,
