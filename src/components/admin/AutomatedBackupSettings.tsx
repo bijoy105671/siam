@@ -1083,7 +1083,7 @@ export const AutomatedBackupSettings: React.FC = () => {
             <h4 className="text-xs font-bold text-slate-900">Protected: Clear All Business Data</h4>
           </div>
           <p className="text-[11px] text-slate-600">
-            Permanently clears transactions, customer/vendor records, payments, expenses, transfers, account balances and other business input data. Users, services, business settings and audit history are preserved.
+            Permanently clears all entered business data, including transactions, customer/vendor records, payments, expenses, fund transfers, opening balances, Loan & Advance entries, and Loan & Advance adjustments. Users, services catalog, business settings and audit history are preserved.
           </p>
           <button
             type="button"
@@ -1094,7 +1094,9 @@ export const AutomatedBackupSettings: React.FC = () => {
               if (!confirm('FINAL WARNING: This will permanently clear all business input data. Continue?')) return;
               try {
                 const result = await api.clearAllData(code);
-                alert(result.message || 'All business data cleared successfully.');
+                // Drop the browser's cached business data too, so old loan/advance rows cannot reappear while server data reloads.
+                try { localStorage.removeItem('siam_air_business_data_v3_clean'); } catch { /* ignore cache cleanup errors */ }
+                alert(result.message || 'All entered business data, including Loan & Advance entries and adjustments, cleared successfully.');
                 window.location.reload();
               } catch (error) {
                 alert(error instanceof Error ? error.message : 'Unable to clear business data.');
