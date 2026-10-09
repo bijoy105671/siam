@@ -25,6 +25,7 @@ import { LoginModal } from './components/auth/LoginModal';
 import { SecurityOtpModal } from './components/auth/SecurityOtpModal';
 import { EcommerceControl } from './components/ecommerce/EcommerceControl';
 import { InvoiceVerificationPage } from './components/verification/InvoiceVerificationPage';
+import { RecycleBin } from './components/admin/RecycleBin';
 import { Customer, Transaction, Vendor } from './types';
 import { USE_SERVER_API } from './services/apiClient';
 
@@ -344,6 +345,8 @@ const MainLayout: React.FC = () => {
           {currentView === 'saas_admin' && <SaasSubscriptionAdmin />}
 
           {currentView === 'audit' && <AdminSettings defaultTab="audit" />}
+
+          {currentView === 'recycle_bin' && <RecycleBin />}
 
           {currentView === 'backup' && <AdminSettings defaultTab="backup" />}
 
