@@ -208,13 +208,19 @@ export const ReportsView: React.FC = () => {
               <div className="text-lg font-bold text-slate-700 mt-0.5">{formatCurrency(totalDirectCost)}</div>
             </div>
             <div>
-              <div className="text-[10px] text-slate-500 uppercase font-semibold">Gross Profit Margin</div>
-              <div className="text-lg font-bold text-emerald-700 mt-0.5">{formatCurrency(totalGrossProfit)}</div>
+              <div className="text-[10px] text-slate-500 uppercase font-semibold">Gross Profit / (Loss)</div>
+              <div className={`text-lg font-bold mt-0.5 ${signedGrossProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {timeframe === 'all' && USE_SERVER_API && !allTimeTotals
+                  ? (allTimeTotalsError ? 'Unable to verify' : 'Loading…')
+                  : formatCurrency(signedGrossProfit)}
+              </div>
             </div>
             <div>
               <div className="text-[10px] text-slate-500 uppercase font-semibold">Net Business Profit</div>
               <div className={`text-lg font-bold mt-0.5 ${netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {formatCurrency(netProfit)}
+                {timeframe === 'all' && USE_SERVER_API && !allTimeTotals
+                  ? (allTimeTotalsError ? 'Unable to verify' : 'Loading…')
+                  : formatCurrency(netProfit)}
               </div>
             </div>
           </div>
@@ -296,8 +302,8 @@ export const ReportsView: React.FC = () => {
                       <td className="py-2.5 px-3 text-center font-bold">{row.count}</td>
                       <td className="py-2.5 px-3 text-right text-slate-900 font-bold">{formatCurrency(row.sales)}</td>
                       <td className="py-2.5 px-3 text-right text-slate-600">{formatCurrency(row.cost)}</td>
-                      <td className="py-2.5 px-3 text-right font-bold text-emerald-700">{formatCurrency(row.profit)}</td>
-                      <td className="py-2.5 px-3 text-right font-semibold text-blue-600">{marginPct}%</td>
+                      <td className={`py-2.5 px-3 text-right font-bold ${row.profit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatCurrency(row.profit)}</td>
+                      <td className={`py-2.5 px-3 text-right font-semibold ${marginPct >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>{marginPct}%</td>
                     </tr>
                   );
                 })}
