@@ -465,17 +465,16 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
               {/* Invoice Seal & Sign Section */}
               <div className="shrink-0 mt-5 w-full sm:w-auto">
-                <div className="text-center text-[10px] font-bold uppercase tracking-[0.18em] text-slate-700 mb-3">Seal and Sign</div>
                 <div className="w-[190px] mx-auto sm:ml-auto sm:mr-0 text-center">
                   <div className="relative h-[100px] w-[150px] mx-auto flex items-center justify-center">
-                    <div className="absolute inset-0 m-auto w-[88px] h-[88px] rounded-full border-[3px] border-double border-blue-900 text-blue-950 flex flex-col items-center justify-center rotate-[-10deg] bg-blue-50/20 px-1">
+                    <div className="absolute inset-0 m-auto w-[88px] h-[88px] rounded-full border-[3px] border-double border-blue-900 text-blue-950 flex flex-col items-center justify-center rotate-[-10deg] bg-blue-50/20 px-1 z-20">
                       <div className="text-[7px] font-black tracking-wide leading-tight">SIAM AIR AND</div>
                       <div className="text-[7px] font-black tracking-wide leading-tight">DIGITAL SERVICE</div>
                       <div className="w-full text-center text-[6px] font-bold border-y border-blue-900 px-0.5 py-1 my-1">OFFICIAL SEAL</div>
                       <div className="text-[7px] font-bold">{formatDate(transaction.date)}</div>
                     </div>
                     {settings.authorizedSignatureUrl && (
-                      <img src={settings.authorizedSignatureUrl} alt="Authorized signature" className="absolute inset-0 m-auto w-[145px] h-[58px] object-contain opacity-80 z-10" />
+                      <img src={settings.authorizedSignatureUrl} alt="Authorized signature" className="absolute inset-0 m-auto w-[145px] h-[58px] object-contain opacity-75 z-10" />
                     )}
                   </div>
                   <div className="border-b-2 border-blue-950 w-full mt-1" />
