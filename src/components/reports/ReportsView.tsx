@@ -246,10 +246,17 @@ export const ReportsView: React.FC = () => {
             <div className="flex justify-between py-3 border-t-2 border-b-2 border-slate-900 text-base font-bold px-2">
               <span className="text-slate-900">NET PROFIT (Before Tax)</span>
               <span className={netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}>
-                {formatCurrency(netProfit)}
+                {timeframe === 'all' && USE_SERVER_API && !allTimeTotals
+                  ? (allTimeTotalsError ? 'Unable to verify' : 'Loading…')
+                  : formatCurrency(netProfit)}
               </span>
             </div>
           </div>
+          {timeframe === 'all' && USE_SERVER_API && allTimeTotalsError && (
+            <p className="mt-3 text-xs text-rose-600">
+              Server totals could not be verified: {allTimeTotalsError}. Cached figures are not shown as a verified all-time net profit.
+            </p>
+          )}
         </div>
 
         {/* SERVICE-WISE PROFIT MARGIN TABLE */}
