@@ -1301,7 +1301,7 @@ app.post('/api/admin/clear-all-data', adminOnly, async (req, res) => {
     await client.query('DELETE FROM vendors');
     await audit(client, req.session.userId!, 'ALL_INPUT_DATA_CLEARED', 'System', 'all-input-data', null, { clearedAt: new Date().toISOString(), expensesDeleted: clearedExpenses.rowCount || 0, preserved: ['users','services','app_settings','audit_logs'] });
     await client.query('COMMIT');
-    res.json({ ok: true, expensesDeleted: clearedExpenses.rowCount || 0, message: `All business input data cleared. ${clearedExpenses.rowCount || 0} expense record(s) deleted. Users, services, settings and audit history were preserved.` });
+    res.json({ ok: true, expensesDeleted: clearedExpenses.rowCount || 0, message: `All entered business data cleared, including transactions, customer/vendor records, payments, expenses, fund transfers, opening balances, Loan & Advance entries and adjustments. ${clearedExpenses.rowCount || 0} expense record(s) deleted. Users, services, settings and audit history were preserved.` });
   } catch (e) { await client.query('ROLLBACK'); res.status(400).json({ error: e instanceof Error ? e.message : 'Clear all data failed' }); }
   finally { client.release(); }
 });
