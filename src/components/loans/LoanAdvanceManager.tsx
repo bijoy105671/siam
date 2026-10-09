@@ -303,7 +303,21 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
               <td className="p-3">{r.direction === 'received' ? <span className="text-emerald-600 flex items-center gap-1"><ArrowDownLeft className="w-3.5 h-3.5"/>Received</span> : <span className="text-rose-600 flex items-center gap-1"><ArrowUpRight className="w-3.5 h-3.5"/>Given</span>}</td>
               <td className="p-3 text-right font-bold">{formatCurrency(r.amount)}</td><td className="p-3">{r.paymentMethod}</td>
               <td className="p-3 text-right font-bold text-blue-600">{formatCurrency(getAvailable(r.id))}</td>
-              <td className="p-3 text-right whitespace-nowrap"><button disabled={(r.partyType==='customer'&&r.direction!=='received')||(r.partyType==='vendor'&&r.direction!=='given')||getAvailable(r.id)<=0} onClick={() => handleAdjust(r.id)} title="Adjust / Settle against due" className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded"><SlidersHorizontal className="w-3.5 h-3.5"/></button><button onClick={() => startEdit(r.id)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"><Pencil className="w-3.5 h-3.5"/></button><button onClick={() => {if(confirm(getAvailable(r.id) < r.amount ? 'This entry has adjustments. Reverse the adjustments first, then delete it.' : 'Delete this loan/advance entry?') && getAvailable(r.id) === r.amount) deleteLoanAdvance(r.id)}} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5"/></button></td>
+              <td className="p-3 text-right whitespace-nowrap">
+                <div className="inline-flex flex-wrap justify-end gap-1">
+                  <button type="button" disabled={(r.partyType==='customer'&&r.direction!=='received')||(r.partyType==='vendor'&&r.direction!=='given')||getAvailable(r.id)<=0} onClick={() => handleAdjust(r.id)} title="Adjust / Settle against due" className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded disabled:opacity-40 disabled:cursor-not-allowed"><SlidersHorizontal className="w-3.5 h-3.5"/><span>Settle</span></button>
+                  <button type="button" onClick={() => startEdit(r.id)} title="Edit loan / advance" className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded"><Pencil className="w-3.5 h-3.5"/><span>Edit</span></button>
+                  <button type="button" onClick={async () => {
+                    if (getAvailable(r.id) < r.amount) {
+                      alert('This entry has settlement adjustments. Reverse those adjustments first, then delete it.');
+                      return;
+                    }
+                    if (!confirm('Delete this loan/advance entry? This will also update its account balance.')) return;
+                    try { await deleteLoanAdvanceAsync(r.id); }
+                    catch (err) { alert(err instanceof Error ? err.message : 'Loan/advance delete failed. Please try again.'); }
+                  }} title="Delete loan / advance" className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded"><Trash2 className="w-3.5 h-3.5"/><span>Delete</span></button>
+                </div>
+              </td>
             </tr>
           ))}{!loanAdvances.length && <tr><td colSpan={8} className="p-10 text-center text-slate-400">No loan or advance records yet.</td></tr>}</tbody>
         </table></div>
@@ -322,7 +336,11 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
               <td className="p-3">{tx?.invoiceNumber || a.transactionId}</td>
               <td className="p-3 text-right font-bold text-emerald-600">{formatCurrency(a.amount)}</td>
               <td className="p-3 text-slate-500">{a.note || '—'}</td>
-              <td className="p-3 text-right"><button onClick={() => { if (confirm('Reverse this adjustment? No cash will be moved.')) void deleteLoanAdvanceAdjustmentAsync(a.id).catch(err => alert(err instanceof Error ? err.message : 'Adjustment reversal failed')); }} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded" title="Reverse adjustment"><RotateCcw className="w-3.5 h-3.5"/></button></td>
+              <td className="p-3 text-right"><button type="button" onClick={async () => {
+                if (!confirm('Reverse this adjustment? The original invoice due will be restored; no cash will be moved.')) return;
+                try { await deleteLoanAdvanceAdjustmentAsync(a.id); }
+                catch (err) { alert(err instanceof Error ? err.message : 'Adjustment reversal failed. Please try again.'); }
+              }} className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded" title="Reverse adjustment"><RotateCcw className="w-3.5 h-3.5"/><span>Reverse</span></button></td>
             </tr>;
           })}{!adjustmentRows.length && <tr><td colSpan={6} className="p-8 text-center text-slate-400">No adjustments yet.</td></tr>}</tbody>
         </table></div>
