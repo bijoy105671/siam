@@ -151,6 +151,8 @@ export const api = {
   clearAllData: (backupCode: string) => apiRequest<{ ok: boolean; message: string }>('/api/admin/clear-all-data', { method: 'POST', body: JSON.stringify({ backupCode }) }),
   deleteTransaction: (id: string) =>
     apiRequest<{ ok: boolean }>(`/api/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  updatePayment: (id: string, input: { amount: number; paymentMethod: string; note?: string; reference?: string; paidAt?: string }) =>
+    apiRequest<{ ok: boolean; payment: unknown }>(`/api/payments/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   reversePayment: (id: string) =>
     apiRequest<{ ok: boolean }>(`/api/payments/${encodeURIComponent(id)}/reverse`, { method: 'POST' }),
   reverseExpense: (id: string) =>
