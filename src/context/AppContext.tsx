@@ -2138,7 +2138,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     if (dest === 'cloud') {
       const provider = data.backupSchedule?.cloudConfig?.provider || 'Google Drive';
-      const folder = data.backupSchedule?.cloudConfig?.folderPath || 'SIAM_AIR_Backups';
       return { success: false, message: `No live ${provider} connector is configured. No authentication or write-access test was performed.` };
     }
     return { success: false, message: 'Email and cloud upload are not integrated. No external destination was tested.' };
