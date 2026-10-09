@@ -189,7 +189,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  recordPayment: (input: { transactionId: string; paymentType: 'customer' | 'vendor'; amount: number; paymentMethod: string; note?: string; reference?: string; paidAt?: string }) =>
+  recordPayment: (input: { transactionId: string; entityId?: string; paymentType: 'customer' | 'vendor'; amount: number; paymentMethod: string; note?: string; reference?: string; paidAt?: string }) =>
     apiRequest<{ ok: boolean }>('/api/transactions/' + encodeURIComponent(input.transactionId) + '/payments', {
       method: 'POST',
       body: JSON.stringify(input),
