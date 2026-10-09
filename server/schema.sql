@@ -98,6 +98,29 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS deleted_by uuid REFERENCES users(id);
 CREATE INDEX IF NOT EXISTS idx_transactions_deleted_at ON transactions(deleted_at);
 
+CREATE TABLE IF NOT EXISTS transaction_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  transaction_id uuid NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+  line_no integer NOT NULL,
+  service_id uuid REFERENCES services(id),
+  description text,
+  flight_details jsonb,
+  selling_price numeric(14,2) NOT NULL DEFAULT 0,
+  customer_paid numeric(14,2) NOT NULL DEFAULT 0,
+  customer_payment_method text,
+  vendor_id uuid REFERENCES vendors(id),
+  vendor_cost numeric(14,2) NOT NULL DEFAULT 0,
+  vendor_paid numeric(14,2) NOT NULL DEFAULT 0,
+  vendor_due numeric(14,2) NOT NULL DEFAULT 0,
+  account_cost numeric(14,2) NOT NULL DEFAULT 0,
+  account_cost_payment_method text,
+  gross_profit numeric(14,2) NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (transaction_id, line_no)
+);
+CREATE INDEX IF NOT EXISTS idx_transaction_items_transaction ON transaction_items(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_transaction_items_vendor ON transaction_items(vendor_id);
+
 CREATE TABLE IF NOT EXISTS payments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   transaction_id uuid REFERENCES transactions(id),
