@@ -312,18 +312,19 @@ export const AutomatedBackupSettings: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><b>Important safety status:</b> this screen currently creates an encrypted browser snapshot only. It does not upload to Google Drive/S3, send email, or restore the live PostgreSQL database. Cloud/email tests will report unavailable until real provider integrations are configured. Keep a separate verified backup before making production changes.</div>
       {/* 1. Header Banner & Live Status Overview */}
       <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white rounded-2xl p-5 sm:p-6 shadow-md border border-slate-800">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1.5 max-w-2xl">
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-400/30">
-                Automated Disaster Recovery
+                Local Backup Export
               </span>
               {enabled ? (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Active Daily Schedule ({scheduledTime} BST)
+                  Browser Schedule Configured ({scheduledTime} BST)
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-700 text-slate-300">
@@ -334,13 +335,11 @@ export const AutomatedBackupSettings: React.FC = () => {
 
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
               <ShieldCheck className="w-6 h-6 text-blue-400" />
-              Automated Daily Encrypted Database Backup
+              Encrypted App-State Snapshot Export
             </h2>
 
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              Configures automated scheduled exports of all customer ledgers, vendor accounts, ticket bookings,
-              and financial cash/bank books encrypted with <strong className="text-white">AES-256-GCM</strong> and
-              dispatched directly to your pre-defined email or cloud storage vault.
+              Generates a locally encrypted app-state snapshot using <strong className="text-white">AES-256-GCM</strong>. Email/cloud delivery and server-side PostgreSQL backup/restore are not implemented in this screen. Do not treat a configured schedule as a production backup.
             </p>
           </div>
 
