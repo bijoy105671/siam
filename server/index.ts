@@ -1877,10 +1877,13 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
     await client.query('BEGIN');
     const tx = (await client.query('SELECT * FROM transactions WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
     if (!tx) throw new Error('Transaction not found');
-    const outstanding = paymentType === 'customer' ? Number(tx.customer_due) : Number(tx.vendor_due);
-    if (value > outstanding) throw new Error(`Payment exceeds outstanding due (outstanding: ${outstanding})`);
-    const entityId = paymentType === 'customer' ? tx.customer_id : tx.vendor_id;
-    if (!entityId) throw new Error('No entity linked to this payment');
+    const entityId = paymentType === 'customer' ? tx.customer_id : String(req.body?.entityId || tx.vendor_id || '');
+    if (!entityId) throw new Error('Select the vendor for this service before recording a vendor payment');
+    const hasItemLines = paymentType === 'vendor' && (await client.query('SELECT 1 FROM transaction_items WHERE transaction_id=$1 LIMIT 1',[tx.id])).rows.length > 0;
+    const outstanding = paymentType === 'customer' ? Number(tx.customer_due) : hasItemLines
+      ? Number((await client.query('SELECT COALESCE(SUM(vendor_due),0) AS due FROM transaction_items WHERE transaction_id=$1 AND vendor_id=$2',[tx.id,entityId])).rows[0]?.due || 0)
+      : Number(tx.vendor_due);
+    if (value > outstanding) throw new Error(`Payment exceeds this ${paymentType === 'vendor' ? 'vendor' : 'customer'} outstanding due (outstanding: ${outstanding})`);
     if (paymentType === 'vendor') {
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [method]);
       const balance = await accountBalance(client, method);
@@ -1895,7 +1898,19 @@ app.post('/api/transactions/:id/payments', auth, async (req, res) => {
       await addAccountEntry(client, method, value, 'customer_payment', tx.id, req.session.userId!, note, payment.id);
     } else {
       const due = outstanding - value;
-      await client.query('UPDATE transactions SET vendor_paid=vendor_paid+$1, vendor_due=$2, updated_at=now() WHERE id=$3', [value, due, tx.id]);
+      if (hasItemLines) {
+        let remaining = value;
+        const lineRows = (await client.query('SELECT id,vendor_due FROM transaction_items WHERE transaction_id=$1 AND vendor_id=$2 AND vendor_due>0 ORDER BY line_no FOR UPDATE',[tx.id,entityId])).rows;
+        for (const line of lineRows) {
+          if (remaining <= 0) break;
+          const applied = Math.min(remaining, Number(line.vendor_due));
+          await client.query('UPDATE transaction_items SET vendor_paid=vendor_paid+$1, vendor_due=GREATEST(0,vendor_due-$1) WHERE id=$2',[applied,line.id]);
+          remaining -= applied;
+        }
+        await client.query('UPDATE transactions SET vendor_paid=vendor_paid+$1, vendor_due=GREATEST(0,vendor_due-$1), updated_at=now() WHERE id=$2',[value,tx.id]);
+      } else {
+        await client.query('UPDATE transactions SET vendor_paid=vendor_paid+$1, vendor_due=$2, updated_at=now() WHERE id=$3', [value, due, tx.id]);
+      }
       await addAccountEntry(client, method, -value, 'vendor_payment', tx.id, req.session.userId!, note, payment.id);
     }
     await audit(client, req.session.userId!, 'PAYMENT_RECORDED', 'Transaction', tx.id, tx, { paymentType, amount: value, paymentMethod: method });
