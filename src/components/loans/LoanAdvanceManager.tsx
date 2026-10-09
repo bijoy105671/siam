@@ -194,6 +194,51 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
     adjustLoanAdvanceAsync(loanAdvanceId, tx.id, value, noteValue).then(() => alert('Loan / Advance adjusted successfully.')).catch(err => alert(err instanceof Error ? err.message : 'Adjustment could not be completed.'));
   };
 
+  const handleCashSettlement = async (loanAdvanceId: string) => {
+    const record = loanAdvances.find((r) => r.id === loanAdvanceId);
+    if (!record) return;
+    const available = getAvailable(loanAdvanceId);
+    if (available <= 0) {
+      alert('এই Loan/Advance-এর settle করার মতো অবশিষ্ট ব্যালেন্স নেই।');
+      return;
+    }
+    const raw = window.prompt(
+      'Party: ' + record.partyName + '\\nAvailable balance: ৳' + available +
+      '\\nএখন বাস্তবে যত টাকা ফেরত/পরিশোধ হচ্ছে সেই Amount লিখুন:',
+      String(available)
+    );
+    if (raw === null) return;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value <= 0 || value > available) {
+      alert('Amount অবশ্যই ০-এর বেশি এবং Available Balance-এর সমান বা কম হতে হবে।');
+      return;
+    }
+    const noteValue = window.prompt('Settlement note (optional):', 'Loan / Advance settlement');
+    const now = new Date();
+    const dhaka = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(now).reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {} as Record<string, string>);
+    try {
+      await addLoanAdvanceAsync({
+        partyType: record.partyType,
+        partyId: record.partyId,
+        partyName: record.partyName,
+        kind: record.kind,
+        direction: record.direction === 'received' ? 'given' : 'received',
+        amount: value,
+        paymentMethod: record.paymentMethod,
+        date: `${dhaka.year}-${dhaka.month}-${dhaka.day}`,
+        time: `${dhaka.hour}:${dhaka.minute}`,
+        note: noteValue?.trim() || 'Loan / Advance settlement',
+        reference: record.reference || undefined,
+      });
+      alert('Settlement record saved. Account balance and Loan / Advance balance have been updated.');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Settlement save করা যায়নি।');
+    }
+  };
+
   const totals = useMemo(() => {
     const received = loanAdvances.filter(r => r.direction === 'received').reduce((s, r) => s + r.amount, 0);
     const given = loanAdvances.filter(r => r.direction === 'given').reduce((s, r) => s + r.amount, 0);
@@ -252,7 +297,7 @@ export const LoanAdvanceManager: React.FC<LoanAdvanceManagerProps> = ({ onOpenPa
                 const dueTx = transactions.find(t => r.partyType === 'customer' ? t.customerId === r.partyId && t.customerDue > 0 : t.vendorId === r.partyId && t.vendorDue > 0);
                 if (dueTx && onOpenPayment) onOpenPayment(dueTx, r.partyType);
                 else alert('No outstanding invoice due found for this party.');
-              }} disabled={!onOpenPayment || !transactions.some(t => r.partyType === 'customer' ? t.customerId === r.partyId && t.customerDue > 0 : t.vendorId === r.partyId && t.vendorDue > 0)} className="px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">Pay Due</button><button type="button" disabled={!loanAdvances.some(x=>x.partyType===r.partyType&&x.partyId===r.partyId&&getAvailable(x.id)>0&&((r.partyType==='customer'&&x.direction==='received')||(r.partyType==='vendor'&&x.direction==='given')))} onClick={()=>{const source=[...loanAdvances].reverse().find(x=>x.partyType===r.partyType&&x.partyId===r.partyId&&getAvailable(x.id)>0&&((r.partyType==='customer'&&x.direction==='received')||(r.partyType==='vendor'&&x.direction==='given'))); if(source) handleAdjust(source.id);}} className="px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">Settle Balance</button></div>
+              }} disabled={!onOpenPayment || !transactions.some(t => r.partyType === 'customer' ? t.customerId === r.partyId && t.customerDue > 0 : t.vendorId === r.partyId && t.vendorDue > 0)} className="px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">Pay Due</button><button type="button" disabled={!loanAdvances.some(x=>x.partyType===r.partyType&&x.partyId===r.partyId&&getAvailable(x.id)>0)} onClick={()=>{const source=[...loanAdvances].reverse().find(x=>x.partyType===r.partyType&&x.partyId===r.partyId&&getAvailable(x.id)>0); if(source) void handleCashSettlement(source.id);}} className="px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">Settle Balance</button></div>
             </div>;
           })}
           {!partyAccountRows.length && <div className="p-6 text-center text-slate-400 text-xs">No loan/advance account found.</div>}
