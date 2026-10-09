@@ -730,6 +730,20 @@ app.delete('/api/admin/saas/users/:id', adminOnly, async (req,res) => {
       const otherActive=(await client.query("SELECT count(*)::int AS count FROM users WHERE organization_id=$1 AND is_active=true AND id<>$2",[orgId,u.id])).rows[0]?.count||0;
       if(Number(otherActive)===0) await client.query("UPDATE organizations SET status='inactive',updated_at=now() WHERE id=$1",[orgId]);
     }
+    // These are nullable attribution fields. Clear the FK pointers while retaining
+    // all financial records and audit events so deleting a login cannot fail due to
+    // historical transactions, and does not erase the business ledger.
+    await client.query("UPDATE transactions SET created_by=NULL,deleted_by=NULL WHERE created_by=$1 OR deleted_by=$1",[u.id]);
+    await client.query("UPDATE payments SET recorded_by=NULL,reversed_by=NULL WHERE recorded_by=$1 OR reversed_by=$1",[u.id]);
+    await client.query("UPDATE expenses SET created_by=NULL,reversed_by=NULL WHERE created_by=$1 OR reversed_by=$1",[u.id]);
+    await client.query("UPDATE fund_transfers SET created_by=NULL,reversed_by=NULL WHERE created_by=$1 OR reversed_by=$1",[u.id]);
+    await client.query("UPDATE account_entries SET created_by=NULL WHERE created_by=$1",[u.id]);
+    await client.query("UPDATE loan_advances SET created_by=NULL WHERE created_by=$1",[u.id]);
+    await client.query("UPDATE loan_advance_adjustments SET created_by=NULL,reversed_by=NULL WHERE created_by=$1 OR reversed_by=$1",[u.id]);
+    await client.query("UPDATE appointment_reminders SET created_by=NULL WHERE created_by=$1",[u.id]);
+    await client.query("UPDATE flight_directory SET created_by=NULL WHERE created_by=$1",[u.id]);
+    await client.query("UPDATE subscription_payments SET verified_by=NULL WHERE verified_by=$1",[u.id]);
+    await client.query("UPDATE audit_logs SET user_id=NULL WHERE user_id=$1",[u.id]);
     await client.query("DELETE FROM users WHERE id=$1",[u.id]);
     await audit(client,req.session.userId!,'SAAS_USER_LOGIN_REMOVED','User',u.id,null,{organizationId:u.organization_id, businessDataPreserved:true});
     await client.query('COMMIT');
