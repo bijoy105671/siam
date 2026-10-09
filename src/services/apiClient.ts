@@ -163,6 +163,11 @@ export const api = {
     apiRequest<{ ok: boolean }>(`/api/fund-transfers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   reverseFundTransfer: (id: string) =>
     apiRequest<{ ok: boolean }>(`/api/fund-transfers/${encodeURIComponent(id)}/reverse`, { method: 'POST' }),
+  cashAdjustments: () => apiRequest<any[]>('/api/cash-adjustments'),
+  createCashAdjustment: (input: Record<string, any>) =>
+    apiRequest<{ adjustment: any }>('/api/cash-adjustments', { method: 'POST', body: JSON.stringify(input) }),
+  updateCashAdjustment: (id: string, input: Record<string, any>) =>
+    apiRequest<{ adjustment: any }>(`/api/cash-adjustments/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   accountBalances: () =>
     apiRequest<{ balances: Record<string, number>; total: number }>('/api/accounts/balances'),
   dashboard: () =>
