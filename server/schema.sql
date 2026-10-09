@@ -148,6 +148,19 @@ CREATE TABLE IF NOT EXISTS expenses (
   reversed_at timestamptz
 );
 
+CREATE TABLE IF NOT EXISTS cash_adjustments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  direction text NOT NULL CHECK (direction IN ('cash_in','cash_out')),
+  account_name text NOT NULL,
+  amount numeric(14,2) NOT NULL CHECK (amount > 0),
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  reason text NOT NULL,
+  note text,
+  created_by uuid REFERENCES users(id),
+  updated_at timestamptz,
+  reversed_at timestamptz
+);
+
 CREATE TABLE IF NOT EXISTS fund_transfers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   from_account text NOT NULL,
