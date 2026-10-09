@@ -171,7 +171,7 @@ export const VendorLedgerModal: React.FC<VendorLedgerModalProps> = ({
                   )}
 
                   {ledger.transactions.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={(tx as any).lineItemId || tx.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-2.5 px-3 text-slate-500">{formatDate(tx.date)}</td>
                       <td className="py-2.5 px-3 font-bold text-slate-900">{tx.invoiceNumber}</td>
                       <td className="py-2.5 px-3">
