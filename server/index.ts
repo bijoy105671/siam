@@ -2175,6 +2175,8 @@ app.get('/api/loan-advances/adjustments', auth, async (_req, res) => {
 app.post('/api/loan-advances', auth, async (req, res) => {
   const client = await pool.connect();
   try {
+    // Start the transaction before looking up the party so tenant-scoped RLS is active.
+    await client.query('BEGIN');
     const body = req.body || {};
     const partyType = String(body.partyType || '').toLowerCase();
     const partyId = String(body.partyId || '');
@@ -2187,9 +2189,8 @@ app.post('/api/loan-advances', auth, async (req, res) => {
     if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be positive');
     if (!ACCOUNT_METHODS.has(method)) throw new Error('Invalid payment method');
     const partyTable = partyType === 'customer' ? 'customers' : 'vendors';
-    const party = (await client.query(`SELECT id,name FROM ${partyTable} WHERE id=$1`, [partyId])).rows[0];
-    if (!party) throw new Error('Party not found');
-    await client.query('BEGIN');
+    const party = (await client.query(`SELECT id,name FROM ${partyTable} WHERE id=$1 FOR UPDATE`, [partyId])).rows[0];
+    if (!party) throw new Error('Party not found: the selected customer/vendor could not be found in this business account');
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [method]);
     if (direction === 'given') {
       const balance = await accountBalance(client, method);
@@ -2198,11 +2199,61 @@ app.post('/api/loan-advances', auth, async (req, res) => {
     const row = (await client.query(`
       INSERT INTO loan_advances (party_type,party_id,party_name,kind,direction,amount,payment_method,occurred_at,note,reference,created_by)
       VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::timestamptz,now()),$9,$10,$11) RETURNING *
-    `, [partyType, partyId, party.name, kind, direction, amount, method, body.occurredAt || null, body.note || null, body.reference || null, req.session.userId])).rows[0];
+    `, [partyType, party.id, party.name, kind, direction, amount, method, body.occurredAt || null, body.note || null, body.reference || null, req.session.userId])).rows[0];
     await addAccountEntry(client, method, direction === 'received' ? amount : -amount, 'loan_advance', row.id, req.session.userId!, row.note);
+
+    // Automatically apply received customer funds to customer due, and vendor payments
+    // to vendor due. Any amount beyond existing due remains as the loan/advance balance.
+    const canApply = (partyType === 'customer' && direction === 'received') ||
+      (partyType === 'vendor' && direction === 'given');
+    let remaining = amount;
+    if (canApply) {
+      const isCustomer = partyType === 'customer';
+      const dueColumn = isCustomer ? 'customer_due' : 'vendor_due';
+      const partyColumn = isCustomer ? 'customer_id' : 'vendor_id';
+      const dueRows = (await client.query(
+        `SELECT id, customer_paid, customer_due, selling_price, vendor_paid, vendor_due, vendor_cost
+         FROM transactions
+         WHERE ${partyColumn}=$1 AND COALESCE(${dueColumn},0)>0 AND deleted_at IS NULL
+         ORDER BY created_at ASC, id ASC FOR UPDATE`,
+        [party.id]
+      )).rows;
+      for (const dueRow of dueRows) {
+        if (remaining <= 0.009) break;
+        const due = Number(isCustomer ? dueRow.customer_due : dueRow.vendor_due);
+        const applied = Math.min(due, remaining);
+        if (applied <= 0) continue;
+        const adjustment = (await client.query(
+          `INSERT INTO loan_advance_adjustments
+           (loan_advance_id, transaction_id, party_type, party_id, amount, occurred_at, note, created_by)
+           VALUES ($1,$2,$3,$4,$5,COALESCE($6::timestamptz,now()),$7,$8) RETURNING *`,
+          [row.id, dueRow.id, partyType, party.id, applied, body.occurredAt || null,
+           'Automatically applied to existing ' + (isCustomer ? 'customer due' : 'vendor due'), req.session.userId]
+        )).rows[0];
+        if (isCustomer) {
+          const paid = Number(dueRow.customer_paid || 0) + applied;
+          const dueAfter = Math.max(0, Number(dueRow.selling_price || 0) - paid);
+          await client.query(
+            `UPDATE transactions SET customer_paid=$1, customer_due=$2,
+             status=CASE WHEN $2<=0.009 THEN 'PAID' WHEN $1>0.009 THEN 'PARTIAL' ELSE 'DUE' END,
+             updated_at=now() WHERE id=$3`,
+            [paid, dueAfter, dueRow.id]
+          );
+        } else {
+          const paid = Number(dueRow.vendor_paid || 0) + applied;
+          const dueAfter = Math.max(0, Number(dueRow.vendor_cost || 0) - paid);
+          await client.query(
+            'UPDATE transactions SET vendor_paid=$1, vendor_due=$2, updated_at=now() WHERE id=$3',
+            [paid, dueAfter, dueRow.id]
+          );
+        }
+        await audit(client, req.session.userId!, 'LOAN_ADVANCE_AUTO_APPLIED', 'LoanAdvance', adjustment.id, null, adjustment);
+        remaining -= applied;
+      }
+    }
     await audit(client, req.session.userId!, 'LOAN_ADVANCE_CREATED', 'LoanAdvance', row.id, null, row);
     await client.query('COMMIT');
-    res.status(201).json({ loanAdvance: mapLoanAdvance(row) });
+    res.status(201).json({ loanAdvance: mapLoanAdvance(row), appliedToDue: amount - remaining, remainingAdvance: remaining });
   } catch (e) { await client.query('ROLLBACK').catch(()=>{}); res.status(400).json({ error: e instanceof Error ? e.message : 'Loan/advance creation failed' }); }
   finally { client.release(); }
 });
