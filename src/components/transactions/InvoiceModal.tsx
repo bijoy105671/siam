@@ -85,7 +85,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const txPayments = partialPayments.filter(
     (p) => p.transactionId === transaction.id && p.paymentType === 'customer'
   );
-  const issuer = users.find((u) => u.username === transaction.createdBy || u.fullName === transaction.createdBy);
+  const issuer = users.find((u) => u.id === transaction.createdBy || u.username === transaction.createdBy || u.fullName === transaction.createdBy);
+  const issuerName = issuer?.fullName || issuer?.username || (/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i.test(transaction.createdBy) ? 'Authorized Staff' : transaction.createdBy) || 'Authorized Staff';
   const issuerPhone = issuer?.phone || settings.mobile;
 
   const handlePrint = () => {
@@ -248,7 +249,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <div className="text-[10px] font-mono uppercase text-slate-400 font-semibold tracking-wider">
                 Issued By / Desk
               </div>
-              <div className="text-sm font-semibold text-slate-900 mt-0.5">{transaction.createdBy}</div>
+              <div className="text-sm font-semibold text-slate-900 mt-0.5">{issuerName}</div>
               <div className="text-slate-600">Contact: {issuerPhone}</div>
               <div className="text-slate-600">Service: {transaction.serviceName}</div>
               <div className="text-slate-500 font-mono">Ref: SA-{transaction.invoiceNumber.replace(/[^A-Za-z0-9-]/g, '').slice(-12)}</div>
@@ -469,7 +470,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     <img src={settings.authorizedSignatureUrl} alt="Authorized officer signature" className="h-12 max-w-[150px] object-contain ml-auto mb-1" />
                   )}
                   <div className="w-40 border-b-2 border-slate-900 pb-1 font-mono text-xs font-bold text-slate-800 sm:ml-auto">
-                    {transaction.createdBy}
+                    {issuerName}
                   </div>
                   <div className="text-[10px] text-slate-500 uppercase font-semibold mt-1">
                     {settings.signatureLabel || 'Authorized Officer'}
