@@ -28,7 +28,7 @@ export const ReportsView: React.FC = () => {
   } = useApp();
 
   const [timeframe, setTimeframe] = useState<'all' | 'today' | 'this_month' | 'this_year'>('this_month');
-  const [allTimeTotals, setAllTimeTotals] = useState<{ totalSales: number; signedGrossProfit: number; totalExpenses: number } | null>(null);
+  const [allTimeTotals, setAllTimeTotals] = useState<{ totalSales: number; signedGrossProfit: number; totalExpenses: number; netCashAdjustment: number; cashInAdjustments: number; cashOutAdjustments: number } | null>(null);
   const [allTimeTotalsError, setAllTimeTotalsError] = useState<string | null>(null);
 
   // All reporting periods use server aggregates so an incomplete/cached client list
@@ -44,6 +44,9 @@ export const ReportsView: React.FC = () => {
         totalSales: Number(response.totalSales || 0),
         signedGrossProfit: Number(response.signedGrossProfit || 0),
         totalExpenses: Number(response.totalExpenses || 0),
+        netCashAdjustment: Number(response.netCashAdjustment || 0),
+        cashInAdjustments: Number(response.cashInAdjustments || 0),
+        cashOutAdjustments: Number(response.cashOutAdjustments || 0),
       });
     }).catch((error) => {
       if (cancelled) return;
@@ -97,7 +100,10 @@ export const ReportsView: React.FC = () => {
   const totalGrossProfit = Math.max(0, signedGrossProfit);
   const totalGrossLoss = Math.max(0, -signedGrossProfit);
   const totalExpenses = useServerReport ? allTimeTotals.totalExpenses : localTotalExpenses;
-  const netProfit = signedGrossProfit - totalExpenses;
+  const netCashAdjustment = useServerReport ? allTimeTotals.netCashAdjustment : 0;
+  const cashInAdjustments = useServerReport ? allTimeTotals.cashInAdjustments : 0;
+  const cashOutAdjustments = useServerReport ? allTimeTotals.cashOutAdjustments : 0;
+  const netProfit = signedGrossProfit - totalExpenses + netCashAdjustment;
 
   // Service-wise breakdown
   const serviceBreakdown = services.map((s) => {
@@ -217,9 +223,16 @@ export const ReportsView: React.FC = () => {
               </div>
             </div>
             <div>
+              <div className="text-[10px] text-slate-500 uppercase font-semibold">Cash Adjustment (In − Out)</div>
+              <div className={`text-lg font-bold mt-0.5 ${netCashAdjustment >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {USE_SERVER_API && !allTimeTotals ? (allTimeTotalsError ? 'Unable to verify' : 'Loading…') : formatCurrency(netCashAdjustment)}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-0.5">In: {formatCurrency(cashInAdjustments)} · Out: {formatCurrency(cashOutAdjustments)}</div>
+            </div>
+            <div>
               <div className="text-[10px] text-slate-500 uppercase font-semibold">Net Business Profit</div>
               <div className={`text-lg font-bold mt-0.5 ${netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {timeframe === 'all' && USE_SERVER_API && !allTimeTotals
+                {USE_SERVER_API && !allTimeTotals
                   ? (allTimeTotalsError ? 'Unable to verify' : 'Loading…')
                   : formatCurrency(netProfit)}
               </div>
