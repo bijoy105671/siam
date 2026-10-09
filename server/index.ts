@@ -1356,7 +1356,25 @@ app.get('/api/vendors/:id/ledger', auth, async (req, res) => {
   const vendorId = req.params.id;
   const vendor = (await pool.query('SELECT * FROM vendors WHERE id=$1', [vendorId])).rows[0];
   if (!vendor) return res.status(404).json({ error: 'Vendor not found' });
-  const transactions = (await pool.query('SELECT * FROM transactions WHERE vendor_id=$1 AND deleted_at IS NULL ORDER BY date DESC, time DESC, created_at DESC', [vendorId])).rows;
+  const legacyTransactions = (await pool.query(`SELECT t.* FROM transactions t
+    WHERE t.vendor_id=$1 AND t.deleted_at IS NULL
+    AND NOT EXISTS (SELECT 1 FROM transaction_items ti WHERE ti.transaction_id=t.id)
+    ORDER BY t.date DESC,t.time DESC,t.created_at DESC`, [vendorId])).rows;
+  const itemRows = (await pool.query(`SELECT t.*, ti.id AS line_item_id, ti.line_no AS line_no,
+      ti.service_id AS item_service_id, s.name AS item_service_name, ti.description AS item_description,
+      ti.flight_details AS item_flight_details, ti.vendor_cost AS item_vendor_cost,
+      ti.vendor_paid AS item_vendor_paid, ti.vendor_due AS item_vendor_due
+    FROM transaction_items ti JOIN transactions t ON t.id=ti.transaction_id
+    LEFT JOIN services s ON s.id=ti.service_id
+    WHERE ti.vendor_id=$1 AND t.deleted_at IS NULL
+    ORDER BY t.date DESC,t.time DESC,t.created_at DESC,ti.line_no ASC`, [vendorId])).rows;
+  const transactions = [
+    ...itemRows.map((row:any) => ({...row, vendor_id:vendorId, service_id:row.item_service_id,
+      service_name:row.item_service_name || row.service_name, description:row.item_description || row.description,
+      flight_details:row.item_flight_details || row.flight_details, vendor_cost:row.item_vendor_cost,
+      vendor_paid:row.item_vendor_paid, vendor_due:row.item_vendor_due, line_item_id:row.line_item_id})),
+    ...legacyTransactions,
+  ].sort((a:any,b:any)=>String(b.date).localeCompare(String(a.date)) || String(b.time).localeCompare(String(a.time)));
   const payments = (await pool.query("SELECT p.*, t.invoice_number, (p.paid_at AT TIME ZONE 'Asia/Dhaka')::date::text AS paid_date, to_char(p.paid_at AT TIME ZONE 'Asia/Dhaka','HH24:MI') AS paid_time FROM payments p LEFT JOIN transactions t ON t.id=p.transaction_id WHERE p.entity_id=$1 AND p.payment_type='vendor' AND p.reversed_at IS NULL AND (p.transaction_id IS NULL OR t.deleted_at IS NULL) ORDER BY p.paid_at DESC", [vendorId])).rows;
   const totalCost = transactions.filter((t:any) => t.status !== 'CANCELLED').reduce((s:number,t:any)=>s+Number(t.vendor_cost),0);
   const totalPaid = payments.reduce((s:number,p:any)=>s+Number(p.amount),0);
