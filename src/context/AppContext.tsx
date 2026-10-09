@@ -154,6 +154,7 @@ interface AppContextType {
 
   addPartialPayment: (params: {
     transactionId: string;
+    entityId?: string;
     paymentType: 'customer' | 'vendor';
     amount: number;
     paymentMethod: PaymentMethod;
@@ -1499,12 +1500,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    if (params.paymentType === 'vendor' && !targetTx.vendorId) {
-      window.alert('This transaction has no linked vendor account.');
+    const vendorEntityId = params.entityId || targetTx.vendorId;
+    if (params.paymentType === 'vendor' && !vendorEntityId) {
+      window.alert('Select the vendor linked to this service before recording payment.');
       return;
     }
 
-    const outstanding = params.paymentType === 'customer' ? Number(targetTx.customerDue) : Number(targetTx.vendorDue);
+    const outstanding = params.paymentType === 'customer' ? Number(targetTx.customerDue) :
+      targetTx.serviceItems?.length
+        ? targetTx.serviceItems.filter((item) => item.vendorId === vendorEntityId).reduce((sum, item) => sum + Number(item.vendorDue || 0), 0)
+        : Number(targetTx.vendorDue);
     if (!Number.isFinite(outstanding) || outstanding <= 0) {
       window.alert('There is no outstanding balance for this payment.');
       return;
@@ -1519,8 +1524,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: `pay_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
         transactionId: params.transactionId,
         paymentType: params.paymentType,
-        entityId: params.paymentType === 'customer' ? targetTx.customerId : (targetTx.vendorId || 'vend_unknown'),
-        entityName: params.paymentType === 'customer' ? targetTx.customerName : (targetTx.vendorName || 'Vendor'),
+        entityId: params.paymentType === 'customer' ? targetTx.customerId : (vendorEntityId || 'vend_unknown'),
+        entityName: params.paymentType === 'customer' ? targetTx.customerName : (targetTx.vendorName || data.vendors.find((v: Vendor) => v.id === vendorEntityId)?.name || 'Vendor'),
         amount,
         paymentMethod: params.paymentMethod,
         date: params.date,
@@ -1556,6 +1561,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (USE_SERVER_API) {
       await api.recordPayment({
         transactionId: params.transactionId,
+        entityId: params.paymentType === 'vendor' ? vendorEntityId : undefined,
         paymentType: params.paymentType,
         amount,
         paymentMethod: params.paymentMethod,
@@ -2463,7 +2469,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Vendor Ledger helper
   const getVendorLedger = (vendorId: string) => {
     const vendor = data.vendors.find((v: Vendor) => v.id === vendorId);
-    const txs = data.transactions.filter((t: Transaction) => t.vendorId === vendorId);
+    const txs = data.transactions.flatMap((t: Transaction) => {
+      if (t.serviceItems && t.serviceItems.length > 0) {
+        return t.serviceItems.filter((item) => item.vendorId === vendorId).map((item) => ({
+          ...t, vendorId, vendorName: vendor?.name || item.vendorName || t.vendorName,
+          serviceId: item.serviceId || t.serviceId, serviceName: item.serviceName,
+          description: item.description || t.description, flightDetails: item.flightDetails || t.flightDetails,
+          vendorCost: Number(item.vendorCost || 0), vendorPaid: Number(item.vendorPaid || 0),
+          vendorDue: Number(item.vendorDue || 0), serviceItems: t.serviceItems,
+        } as Transaction));
+      }
+      return t.vendorId === vendorId ? [t] : [];
+    });
     const payments = data.partialPayments.filter(
       (p: PartialPayment) => p.entityId === vendorId && p.paymentType === 'vendor'
     );
