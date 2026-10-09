@@ -2638,7 +2638,7 @@ app.patch('/api/fund-transfers/:id', adminOnly, async (req, res) => {
     balances.set(oldTo, (balances.get(oldTo) || 0) - oldAmount);
     if ((balances.get(from) || 0) < amount) throw new Error('Insufficient balance in the selected source account');
     await client.query('UPDATE account_entries SET reversed_at=now() WHERE fund_transfer_id=$1 AND reversed_at IS NULL', [transfer.id]);
-    await client.query('UPDATE fund_transfers SET from_account=$1,to_account=$2,amount=$3,reason=$4,note=$5,updated_at=now() WHERE id=$6', [from,to,amount,reason,note,transfer.id]);
+    await client.query('UPDATE fund_transfers SET from_account=$1,to_account=$2,amount=$3,reason=$4,note=$5 WHERE id=$6', [from,to,amount,reason,note,transfer.id]);
     await addAccountEntry(client, from, -amount, 'fund_transfer_out', transfer.id, req.session.userId!, reason, undefined, undefined, transfer.id);
     await addAccountEntry(client, to, amount, 'fund_transfer_in', transfer.id, req.session.userId!, reason, undefined, undefined, transfer.id);
     await audit(client, req.session.userId!, 'FUND_TRANSFER_UPDATED', 'FundTransfer', transfer.id, transfer, { ...transfer, from_account: from, to_account: to, amount, reason, note });
