@@ -34,7 +34,13 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   onOpenPayment,
 }) => {
   const { transactions, partialPayments, transfers, loanAdvances, services, vendors, addVendorAsync, deleteTransaction, updateTransaction, currentUser } = useApp();
-  const canManageTransactions = ['admin', 'administrator', 'owner', 'super_admin'].includes(String(currentUser?.role || '').toLowerCase());
+  // Support the role labels used by older accounts and the permission-based user model.
+  // Some production users are stored as "Super Admin", "super_admin", etc.
+  const normalizedRole = String(currentUser?.role || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const canManageTransactions =
+    ['admin', 'administrator', 'owner', 'superadmin', 'superuser', 'businessowner'].includes(normalizedRole) ||
+    currentUser?.permissions?.canEditTransaction === true ||
+    currentUser?.permissions?.canDeleteTransaction === true;
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
