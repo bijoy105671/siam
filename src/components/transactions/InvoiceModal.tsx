@@ -317,6 +317,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {(transaction.serviceItems && transaction.serviceItems.length > 0 ? transaction.serviceItems : [{
+                id: undefined,
+                serviceId: transaction.serviceId,
                 serviceName: transaction.serviceName,
                 description: transaction.description || 'Standard travel agency service booking',
                 sellingPrice: transaction.sellingPrice,
