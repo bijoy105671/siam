@@ -91,6 +91,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: null,
     },
     {
+      id: 'cash_adjustment',
+      label: 'Cash Adjustment',
+      icon: WalletCards,
+      badge: null,
+    },
+    {
       id: 'transfers',
       label: 'Fund Transfers',
       icon: ArrowLeftRight,
