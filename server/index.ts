@@ -1761,7 +1761,7 @@ app.post('/api/admin/recycle-bin/:id/restore', adminOnly, async (req, res) => {
 app.get('/api/transactions', auth, async (req, res) => {
   const limit = Math.min(Number(req.query.limit || 100), 500);
   const { rows } = await pool.query(`
-    SELECT t.*, c.name customer_name, c.mobile customer_mobile, s.name service_name, v.name vendor_name,
+    SELECT t.*, c.name customer_name, c.mobile customer_mobile, COALESCE((SELECT string_agg(si.name, ' + ' ORDER BY ti.line_no) FROM transaction_items ti JOIN services si ON si.id=ti.service_id WHERE ti.transaction_id=t.id), s.name) AS service_name, v.name vendor_name,
       COALESCE((SELECT json_agg(json_build_object(
         'id',ti.id,'lineNo',ti.line_no,'serviceId',ti.service_id,'serviceName',si.name,'description',ti.description,
         'sellingPrice',ti.selling_price,'customerPaid',ti.customer_paid,'customerPaymentMethod',ti.customer_payment_method,
