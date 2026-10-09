@@ -29,8 +29,24 @@ import { Customer, Transaction, Vendor } from './types';
 import { USE_SERVER_API } from './services/apiClient';
 
 const MainLayout: React.FC = () => {
-  const { currentUser, appointments } = useApp();
-  const [currentView, setCurrentView] = useState('dashboard');
+  const { currentUser, appointments, authReady } = useApp();
+  const [currentView, setCurrentView] = useState(() => {
+    try {
+      const savedView = sessionStorage.getItem('siam_current_view');
+      return savedView || 'dashboard';
+    } catch {
+      return 'dashboard';
+    }
+  });
+
+  // Preserve the user's current module across a page reload in this browser tab.
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('siam_current_view', currentView);
+    } catch {
+      // Storage may be disabled; navigation still works for the current session.
+    }
+  }, [currentView]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // URL QR Scan Verification State
@@ -169,6 +185,17 @@ const MainLayout: React.FC = () => {
 
   // Production mode requires an authenticated server session before showing business data.
   // Keep public invoice verification accessible from a QR link.
+  if (!verificationParams && USE_SERVER_API && !authReady) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4" role="status" aria-live="polite">
+        <div className="flex flex-col items-center gap-3 text-slate-600">
+          <div className="h-9 w-9 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-600" />
+          <span className="text-sm font-medium">Restoring your secure session…</span>
+        </div>
+      </div>
+    );
+  }
+
   if (!verificationParams && USE_SERVER_API && !currentUser) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
