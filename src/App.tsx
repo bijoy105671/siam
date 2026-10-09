@@ -26,6 +26,7 @@ import { SecurityOtpModal } from './components/auth/SecurityOtpModal';
 import { EcommerceControl } from './components/ecommerce/EcommerceControl';
 import { InvoiceVerificationPage } from './components/verification/InvoiceVerificationPage';
 import { RecycleBin } from './components/admin/RecycleBin';
+import { CashAdjustment } from './components/finance/CashAdjustment';
 import { Customer, Transaction, Vendor } from './types';
 import { USE_SERVER_API } from './services/apiClient';
 
@@ -347,6 +348,7 @@ const MainLayout: React.FC = () => {
           {currentView === 'audit' && <AdminSettings defaultTab="audit" />}
 
           {currentView === 'recycle_bin' && <RecycleBin />}
+          {currentView === 'cash_adjustment' && <CashAdjustment />}
 
           {currentView === 'backup' && <AdminSettings defaultTab="backup" />}
 
