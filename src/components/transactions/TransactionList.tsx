@@ -34,6 +34,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   onOpenPayment,
 }) => {
   const { transactions, partialPayments, transfers, loanAdvances, services, vendors, addVendorAsync, deleteTransaction, updateTransaction, currentUser } = useApp();
+  const canManageTransactions = ['admin', 'administrator', 'owner', 'super_admin'].includes(String(currentUser?.role || '').toLowerCase());
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -280,6 +281,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       setEditVendorId(tx.vendorId || '');
       setEditVendorName(tx.vendorName || vendors.find((v) => v.id === tx.vendorId)?.name || '');
       setEditVendorCost(tx.vendorCost ?? '');
+      setEditVendorPaid(tx.vendorPaid ?? '');
+      setEditVendorDue(tx.vendorDue ?? '');
+      setEditVendorPaymentMethod((tx.vendorPaymentMethod || 'Cash') as PaymentMethod);
       setEditSellingPrice(tx.sellingPrice ?? '');
       setEditCustomerPaid(tx.customerPaid ?? '');
       setEditCustomerPaymentMethod((tx.customerPaymentMethod || 'Cash') as PaymentMethod);
@@ -820,7 +824,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                             <Eye className="w-4 h-4" />
                           </button>
 
-                          {currentUser?.role === 'admin' && (
+                          {canManageTransactions && (
                             <button
                               type="button"
                               onClick={(event) => {
@@ -834,7 +838,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                             </button>
                           )}
 
-                          {currentUser?.role === 'admin' && (
+                          {canManageTransactions && (
                             <button
                               onClick={() => {
                                 if (
