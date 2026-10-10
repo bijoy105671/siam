@@ -1520,6 +1520,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Partial Payment
   const addPartialPayment = async (params: {
     transactionId: string;
+    entityId?: string;
     paymentType: 'customer' | 'vendor';
     amount: number;
     paymentMethod: PaymentMethod;
