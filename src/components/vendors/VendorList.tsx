@@ -62,7 +62,7 @@ export const VendorList: React.FC<VendorListProps> = ({ onSelectTransaction, onO
     if (sortBy === 'receivable_high') return lb.vendorReceivable - la.vendorReceivable;
     if (sortBy === 'receivable_low') return la.vendorReceivable - lb.vendorReceivable;
     if (sortBy === 'name') return a.name.localeCompare(b.name);
-    const dateA = Math.max(...la.transactions.map((t) => new Date(t.date || t.createdAt || 0).getTime()), new Date(a.createdAt || 0).getTime(), 0);
+    const dateA = Math.max(...la.transactions.map((t) => new Date(t.date || 0).getTime()), new Date(a.createdAt || 0).getTime(), 0);
     const dateB = Math.max(...lb.transactions.map((t) => new Date(t.date || t.createdAt || 0).getTime()), new Date(b.createdAt || 0).getTime(), 0);
     return sortBy === 'oldest' ? dateA - dateB : dateB - dateA;
   });
