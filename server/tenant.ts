@@ -48,15 +48,15 @@ export const installTenantAwarePool = (pool: Pool) => {
         (client as any).query = async (...queryArgs: any[]): Promise<QueryResult> => {
           const sql = sqlText(queryArgs);
           if (sql.startsWith('BEGIN')) {
-            const result = await originalClientQuery(...queryArgs);
+            const result = await (originalClientQuery as any)(...queryArgs);
             await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
             return result;
           }
           if (sql.startsWith('COMMIT') || sql.startsWith('ROLLBACK') || sql.startsWith('SET ') || sql.startsWith('SELECT SET_CONFIG')) {
-            return originalClientQuery(...queryArgs);
+            return (originalClientQuery as any)(...queryArgs);
           }
           await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
-          return originalClientQuery(...queryArgs);
+          return (originalClientQuery as any)(...queryArgs);
         };
         return callback(undefined, client, release);
       });
@@ -72,15 +72,15 @@ export const installTenantAwarePool = (pool: Pool) => {
         (client as any).query = async (...queryArgs: any[]): Promise<QueryResult> => {
           const sql = sqlText(queryArgs);
           if (sql.startsWith('BEGIN')) {
-            const result = await originalClientQuery(...queryArgs);
+            const result = await (originalClientQuery as any)(...queryArgs);
             await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
             return result;
           }
           if (sql.startsWith('COMMIT') || sql.startsWith('ROLLBACK') || sql.startsWith('SET ') || sql.startsWith('SELECT SET_CONFIG')) {
-            return originalClientQuery(...queryArgs);
+            return (originalClientQuery as any)(...queryArgs);
           }
           await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
-          return originalClientQuery(...queryArgs);
+          return (originalClientQuery as any)(...queryArgs);
         };
         resolve(client);
       });
