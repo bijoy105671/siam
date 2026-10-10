@@ -1573,7 +1573,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const outstanding = params.paymentType === 'customer' ? Number(targetTx.customerDue) :
       targetTx.serviceItems?.length
-        ? targetTx.serviceItems.filter((item) => item.vendorId === vendorEntityId).reduce((sum: number, item: TransactionServiceItem) => sum + Number(item.vendorDue || 0), 0)
+        ? targetTx.serviceItems.filter((item: TransactionServiceItem) => item.vendorId === vendorEntityId).reduce((sum: number, item: TransactionServiceItem) => sum + Number(item.vendorDue || 0), 0)
         : Number(targetTx.vendorDue);
     if (!Number.isFinite(outstanding) || outstanding <= 0) {
       window.alert('There is no outstanding balance for this payment.');
