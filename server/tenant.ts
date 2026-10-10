@@ -48,15 +48,15 @@ export const installTenantAwarePool = (pool: Pool) => {
         (client as any).query = async (...queryArgs: any[]): Promise<QueryResult> => {
           const sql = sqlText(queryArgs);
           if (sql.startsWith('BEGIN')) {
-            const result = await (originalClientQuery as any)(...queryArgs);
+            const result = await Reflect.apply(originalClientQuery, undefined, queryArgs);
             await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
             return result;
           }
           if (sql.startsWith('COMMIT') || sql.startsWith('ROLLBACK') || sql.startsWith('SET ') || sql.startsWith('SELECT SET_CONFIG')) {
-            return (originalClientQuery as any)(...queryArgs);
+            return Reflect.apply(originalClientQuery, undefined, queryArgs);
           }
           await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
-          return (originalClientQuery as any)(...queryArgs);
+          return Reflect.apply(originalClientQuery, undefined, queryArgs);
         };
         return callback(undefined, client, release);
       });
@@ -72,15 +72,15 @@ export const installTenantAwarePool = (pool: Pool) => {
         (client as any).query = async (...queryArgs: any[]): Promise<QueryResult> => {
           const sql = sqlText(queryArgs);
           if (sql.startsWith('BEGIN')) {
-            const result = await (originalClientQuery as any)(...queryArgs);
+            const result = await Reflect.apply(originalClientQuery, undefined, queryArgs);
             await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
             return result;
           }
           if (sql.startsWith('COMMIT') || sql.startsWith('ROLLBACK') || sql.startsWith('SET ') || sql.startsWith('SELECT SET_CONFIG')) {
-            return (originalClientQuery as any)(...queryArgs);
+            return Reflect.apply(originalClientQuery, undefined, queryArgs);
           }
           await originalClientQuery("SELECT set_config('app.organization_id', $1, true)", [organizationId]);
-          return (originalClientQuery as any)(...queryArgs);
+          return Reflect.apply(originalClientQuery, undefined, queryArgs);
         };
         resolve(client);
       });
