@@ -130,7 +130,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   // deliberately kept outside the sales transaction table in the database.
   // Here we add them only to the All Transactions display so they can be
   // audited without affecting Sales, Profit, or invoice totals.
-  const displayTransactions: DisplayTransaction[] = [
+  const displayTransactions = ([
     ...transactions.map((tx) => ({ ...tx, recordType: 'sale' as const })),
     ...partialPayments.map((p) => ({
       id: p.id,
@@ -374,7 +374,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       'Vendor Due',
       'Gross Profit',
       'Status',
-    ];
+    ] as unknown as DisplayTransaction[];
 
     const rows = filteredTransactions.map((t) => [
       t.invoiceNumber,
