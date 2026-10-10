@@ -29,8 +29,8 @@ export const DuePaymentManager: React.FC<DuePaymentManagerProps> = ({ type, onOp
     return ledger.transactions.find(t => isCustomer ? t.customerDue > 0 : t.vendorDue > 0) || null;
   };
   const getOpeningBalance = (id: string) => {
-    const ledger = isCustomer ? getCustomerLedger(id) : getVendorLedger(id);
-    return isCustomer ? Number(ledger.customer?.openingDue || 0) : Number(ledger.vendor?.openingPayable || 0);
+    if (type === 'customer') return Number(getCustomerLedger(id).customer?.openingDue || 0);
+    return Number(getVendorLedger(id).vendor?.openingPayable || 0);
   };
   return <div className="space-y-5">
     <div><h1 className="text-xl sm:text-2xl font-bold text-slate-900">{isCustomer ? 'Customer Due Payment' : 'Vendor Due Payment'}</h1><p className="text-xs text-slate-500 mt-1">Search, open statement, then record full or partial payment.</p></div>
