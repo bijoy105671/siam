@@ -64,6 +64,7 @@ interface OneEntryInput {
   customerPassportNumber?: string;
   customerPassportExpiry?: string;
   customerPhoto?: string;
+  vendorPhoto?: string;
 
   // Service
   serviceItems?: TransactionServiceItem[];
