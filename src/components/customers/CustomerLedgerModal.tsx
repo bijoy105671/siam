@@ -9,6 +9,7 @@ interface CustomerLedgerModalProps {
   onClose: () => void;
   onSelectTransaction: (tx: Transaction) => void;
   onOpenPayment?: (tx: Transaction) => void;
+  onOpenDueManager?: () => void;
 }
 
 export const CustomerLedgerModal: React.FC<CustomerLedgerModalProps> = ({
