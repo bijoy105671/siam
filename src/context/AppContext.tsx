@@ -63,6 +63,7 @@ interface OneEntryInput {
   customerAddress?: string;
   customerPassportNumber?: string;
   customerPassportExpiry?: string;
+  customerPhoto?: string;
 
   // Service
   serviceItems?: TransactionServiceItem[];
@@ -163,6 +164,7 @@ interface AppContextType {
     time: string;
     note?: string;
     reference?: string;
+    paidAt?: string;
   }) => void;
 
   addCustomer: (cust: Omit<Customer, 'id' | 'createdAt'>) => Customer;
@@ -236,6 +238,7 @@ interface AppContextType {
     totalPaid: number;
     invoiceDue: number;
     loanAdvanceReceived: number;
+    loanAdvanceGiven: number;
     loanAdvanceApplied: number;
     availableAdvance: number;
     currentDue: number;
@@ -1553,8 +1556,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const lineVendorIds = Array.from(new Set(
       (targetTx.serviceItems || [])
-        .map((item) => item.vendorId)
-        .filter((id): id is string => Boolean(id))
+        .map((item: TransactionServiceItem) => item.vendorId)
+        .filter((id: string | undefined): id is string => Boolean(id))
     ));
     // For a single-vendor invoice, infer the vendor from its service line.
     // Multi-vendor invoices must pass the explicitly selected vendor entityId.
@@ -1569,7 +1572,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const outstanding = params.paymentType === 'customer' ? Number(targetTx.customerDue) :
       targetTx.serviceItems?.length
-        ? targetTx.serviceItems.filter((item) => item.vendorId === vendorEntityId).reduce((sum, item) => sum + Number(item.vendorDue || 0), 0)
+        ? targetTx.serviceItems.filter((item) => item.vendorId === vendorEntityId).reduce((sum: number, item: TransactionServiceItem) => sum + Number(item.vendorDue || 0), 0)
         : Number(targetTx.vendorDue);
     if (!Number.isFinite(outstanding) || outstanding <= 0) {
       window.alert('There is no outstanding balance for this payment.');
@@ -1588,7 +1591,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         entityId: params.paymentType === 'customer' ? targetTx.customerId : (vendorEntityId || 'vend_unknown'),
         entityName: params.paymentType === 'customer' ? targetTx.customerName : (
           data.vendors.find((v: Vendor) => v.id === vendorEntityId)?.name ||
-          targetTx.serviceItems?.find((item) => item.vendorId === vendorEntityId)?.vendorName ||
+          targetTx.serviceItems?.find((item: TransactionServiceItem) => item.vendorId === vendorEntityId)?.vendorName ||
           targetTx.vendorName || 'Vendor'
         ),
         amount,
