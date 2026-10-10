@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Bell, ExternalLink, Plus, RefreshCw, Save, ShoppingBag, Trash2, Palette } from 'lucide-react';
+import { Bell, ExternalLink, Plus, RefreshCw, Save, ShoppingBag, Trash2, Palette, Truck } from 'lucide-react';
 import { api, USE_SERVER_API } from '../../services/apiClient';
 
 type Product = { id:string; kind:string; sku?:string; name:string; name_bn?:string; description?:string; description_bn?:string; category?:string; image_url?:string; price:number; compare_price?:number|null; stock?:number|null; active:boolean; featured:boolean; sort_order:number };
