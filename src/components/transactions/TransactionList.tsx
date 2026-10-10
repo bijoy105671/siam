@@ -374,7 +374,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       'Vendor Due',
       'Gross Profit',
       'Status',
-    ] as unknown as DisplayTransaction[];
+    ] as unknown as DisplayTransaction[]);
 
     const rows = filteredTransactions.map((t) => [
       t.invoiceNumber,
