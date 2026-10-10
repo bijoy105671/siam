@@ -11,8 +11,8 @@ type ImportedPassenger = { name: string; passport: string; ticketNumber: string;
 
 type Sector = {
   airline: string; flightNo: string; from: string; to: string;
-  departureDate: string; departureTime: string; arrivalDate: string; arrivalTime: string;
-  bookingClass: string; seat: string; baggage: string; duration: string; aircraft: string; terminal: string;
+  departureDate: string; departureTime: string; arrivalDate?: string; arrivalTime?: string;
+  bookingClass: string; seat?: string; baggage: string; duration?: string; aircraft?: string; terminal?: string;
 };
 
 const FIXED_TICKET_TEMPLATE = { id: 'siam-v8', name: 'SIAM AIR Ticket View / Print — V8', accent: '#15803d', header: '#0f766e', radius: '12px' };
