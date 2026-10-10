@@ -188,7 +188,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       paymentMethodDisplay: la.paymentMethod || 'Cash',
       paymentReference: la.reference || undefined,
       notes: la.note || '',
-    })),
+    } as DisplayTransaction)),
     ...cashAdjustments.map((ca) => {
       const occurred = new Date(ca.occurred_at);
       const date = Number.isNaN(occurred.getTime()) ? '' : `${occurred.getFullYear()}-${String(occurred.getMonth()+1).padStart(2,'0')}-${String(occurred.getDate()).padStart(2,'0')}`;
