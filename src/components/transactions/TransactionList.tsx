@@ -111,7 +111,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   };
 
   type DisplayTransaction = Transaction & {
-    recordType?: 'sale' | 'payment' | 'transfer' | 'cash_adjustment';
+    recordType?: 'sale' | 'payment' | 'transfer' | 'cash_adjustment' | 'loan_advance';
     transferFrom?: string;
     transferTo?: string;
     transferAmount?: number;
@@ -130,7 +130,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   // deliberately kept outside the sales transaction table in the database.
   // Here we add them only to the All Transactions display so they can be
   // audited without affecting Sales, Profit, or invoice totals.
-  const displayTransactions: DisplayTransaction[] = [
+  const displayTransactions = ([
     ...transactions.map((tx) => ({ ...tx, recordType: 'sale' as const })),
     ...partialPayments.map((p) => ({
       id: p.id,
@@ -165,14 +165,14 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     ...loanAdvances.map((la) => ({
       id: la.id,
       invoiceNumber: `LOAN-${la.id.slice(0, 8)}`,
-      date: la.date || la.occurredAt?.slice(0, 10) || '',
+      date: la.date || '',
       time: la.time || '',
       createdBy: la.createdBy,
       customerId: la.partyType === 'customer' ? la.partyId : '',
       customerName: la.partyType === 'customer' ? la.partyName : '—',
       customerMobile: '',
       serviceId: '',
-      serviceName: `${String(la.loanKind || la.type || 'loan').toUpperCase()} ${la.direction === 'received' ? 'RECEIVED' : 'GIVEN'}`,
+      serviceName: `${String(la.kind || 'loan').toUpperCase()} ${la.direction === 'received' ? 'RECEIVED' : 'GIVEN'}`,
       sellingPrice: 0, customerPaid: 0, customerDue: 0,
       customerPaymentMethod: la.paymentMethod || 'Cash',
       vendorId: la.partyType === 'vendor' ? la.partyId : undefined,
@@ -181,14 +181,14 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       vendorPaymentMethod: la.paymentMethod || undefined,
       grossProfit: 0, status: 'PAID' as const,
       recordType: 'loan_advance' as const,
-      loanKind: (la.loanKind || la.type || 'loan') as 'loan' | 'advance',
+      loanKind: (la.kind || 'loan') as 'loan' | 'advance',
       loanDirection: la.direction as 'received' | 'given',
       loanPartyType: la.partyType as 'customer' | 'vendor',
       loanAmount: Number(la.amount || 0),
       paymentMethodDisplay: la.paymentMethod || 'Cash',
       paymentReference: la.reference || undefined,
-      notes: la.note || la.notes,
-    })),
+      notes: la.note || '',
+    } as DisplayTransaction)),
     ...cashAdjustments.map((ca) => {
       const occurred = new Date(ca.occurred_at);
       const date = Number.isNaN(occurred.getTime()) ? '' : `${occurred.getFullYear()}-${String(occurred.getMonth()+1).padStart(2,'0')}-${String(occurred.getDate()).padStart(2,'0')}`;
@@ -374,7 +374,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       'Vendor Due',
       'Gross Profit',
       'Status',
-    ];
+    ] as unknown as DisplayTransaction[]);
 
     const rows = filteredTransactions.map((t) => [
       t.invoiceNumber,

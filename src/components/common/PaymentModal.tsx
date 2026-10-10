@@ -79,7 +79,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         time: timeStr,
         note: note || `Partial payment for Ref: ${transaction.invoiceNumber}`,
         reference: transaction.invoiceNumber,
-        paidAt: `${todayStr}T${timeStr}:00+06:00`,
       });
       setRecordedAmount(numAmount);
       setIsSuccess(true);

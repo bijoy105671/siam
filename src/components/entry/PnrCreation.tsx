@@ -11,8 +11,8 @@ type ImportedPassenger = { name: string; passport: string; ticketNumber: string;
 
 type Sector = {
   airline: string; flightNo: string; from: string; to: string;
-  departureDate: string; departureTime: string; arrivalDate: string; arrivalTime: string;
-  bookingClass: string; seat: string; baggage: string; duration: string; aircraft: string; terminal: string;
+  departureDate: string; departureTime: string; arrivalDate?: string; arrivalTime?: string;
+  bookingClass: string; seat?: string; baggage: string; duration?: string; aircraft?: string; terminal?: string;
 };
 
 const FIXED_TICKET_TEMPLATE = { id: 'siam-v8', name: 'SIAM AIR Ticket View / Print — V8', accent: '#15803d', header: '#0f766e', radius: '12px' };
@@ -265,7 +265,7 @@ const parseImportedText = (raw: string) => {
       from: String(s.from || '').toUpperCase(),
       to: String(s.to || '').toUpperCase(),
       departureDate: dateValue(s.departureDate),
-      arrivalDate: dateValue(s.arrivalDate)
+      arrivalDate: dateValue(s.arrivalDate || '')
     };
     if (!normalized.flightNo && !normalized.from && !normalized.to) return;
     const same = sectors.find(x => normalized.flightNo && x.flightNo === normalized.flightNo && x.from === normalized.from && x.to === normalized.to);
@@ -462,16 +462,16 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
       await api.saveFlightDirectory({
         flightNo: sector.flightNo,
         airline: sector.airline,
-        airlineCode: normalizeAirlineCode(sector.airline) || inferAirlineCode(sector.flightNo),
+        airlineCode: normalizeAirlineCode(sector.airline || '') || inferAirlineCode(sector.flightNo),
         from: sector.from,
         fromName: sector.from,
         to: sector.to,
         toName: sector.to,
         departureTime: sector.departureTime,
-        arrivalTime: sector.arrivalTime,
-        duration: sector.duration,
-        aircraft: sector.aircraft,
-        terminal: sector.terminal,
+        arrivalTime: sector.arrivalTime || '',
+        duration: sector.duration || '',
+        aircraft: sector.aircraft || '',
+        terminal: sector.terminal || '',
         bookingClass: sector.bookingClass,
         baggage: sector.baggage,
       });
@@ -908,8 +908,8 @@ export const PnrCreation: React.FC<PnrCreationProps> = ({ onClose }) => {
               </label>
               {field('From',s.from,v=>updateSector(i,'from',v))}{field('To',s.to,v=>updateSector(i,'to',v))}
               {field('Departure Date',s.departureDate,v=>{ updateSector(i,'departureDate',v); if (v && s.airline && s.flightNo) { const x=(flightOptions[i]||[]).find((r:any)=>r.flight_no===s.flightNo); if(x) chooseFlightOption(i,x); } },'date')}{field('Departure Time',s.departureTime,v=>updateSector(i,'departureTime',v),'time')}
-              {field('Arrival Date',s.arrivalDate,v=>updateSector(i,'arrivalDate',v),'date')}{field('Arrival Time',s.arrivalTime,v=>updateSector(i,'arrivalTime',v),'time')}
-              {field('Booking Class',s.bookingClass,v=>updateSector(i,'bookingClass',v))}{field('Seat',s.seat,v=>updateSector(i,'seat',v))}{field('Baggage',s.baggage,v=>updateSector(i,'baggage',v))}{field('Duration',s.duration,v=>updateSector(i,'duration',v))}{field('Aircraft',s.aircraft,v=>updateSector(i,'aircraft',v))}{field('Terminal',s.terminal,v=>updateSector(i,'terminal',v))}
+              {field('Arrival Date',s.arrivalDate || '',v=>updateSector(i,'arrivalDate',v),'date')}{field('Arrival Time',s.arrivalTime || '',v=>updateSector(i,'arrivalTime',v),'time')}
+              {field('Booking Class',s.bookingClass,v=>updateSector(i,'bookingClass',v))}{field('Seat',s.seat || '',v=>updateSector(i,'seat',v))}{field('Baggage',s.baggage,v=>updateSector(i,'baggage',v))}{field('Duration',s.duration || '',v=>updateSector(i,'duration',v))}{field('Aircraft',s.aircraft || '',v=>updateSector(i,'aircraft',v))}{field('Terminal',s.terminal || '',v=>updateSector(i,'terminal',v))}
             </div>
           </div>)}</div>
         </section>
